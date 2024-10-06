@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Termine Tracking</title>
+      <link rel="stylesheet" href="style.css">
+   </head>
+   <body>
+      <div class="wrapper">
+         <!-- Sidebar -->
+         <aside class="sidebar">
+            <h2>Navigation</h2>
+            <ul>
+               <li><a href="termineFiltern.html">Termine Filtern</a></li>
+               <li><a href="termineBearbeiten.html">Termine Bearbeiten</a></li>
+               <li><a href="termineTracking.html" class="active">Termine Tracking</a></li>
+            </ul>
+         </aside>
+         <div class="container">
+            <h1>Terminverwaltung und Übersetzerzuweisung</h1>
+            <div id="notification" class="notification" style="display: none;"></div>
+            <div class="upload-section">
+               <h2>Excel-Datei hochladen (Termine Tracking)</h2>
+               <div class="input-group">
+                  <input type="file" id="trackingFile">
+               </div>
+            </div>
+            <div class="tables-section">
+               <div id="dataContainer">
+                  <table id="dataTable">
+                     <thead>
+                        <tr>
+						   <th>Lfd. Nr.</th>
+                           <th>Start</th>
+                           <th>Pat. Nr	</th>
+                           <th>Patient</th>
+                           <th>Geschlecht</th>
+                           <th>Bemerkung</th>
+                           <th>Arzt</th>
+                           <th>Ort</th>
+                           <th>Übersetzer</th>
+						   <th>Anzahl Termine</th>
+                           <th>Status</th>
+						   <th>Aktion</th> <!-- Neue Spalte für Aktionen -->
+
+                        </tr>
+                     </thead>
+                     <tbody id="tableBody">
+                        <!-- Datenzeilen werden hier durch JavaScript eingefügt -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+            <!-- Action section -->
+            <div class="action-section">
+			   <button id="addRowButton">Neue Zeile hinzufügen</button>
+               <button id="saveChanges">Als Excel speichern</button>
+			   <button id="savePdfButton">Als PDF speichern</button>
+            </div>
+			
+			
+			
+			
+<!-- Modal für das Hinzufügen einer neuen Zeile -->
+<div id="addRowModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="toggleAddRowModal()">&times;</span>
+    <h2>Neue Zeile hinzufügen</h2>
+    <form id="addRowForm">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="terminUhrzeit">Termin Uhrzeit:</label>
+          <input type="time" id="terminUhrzeit" />
+        </div>
+		<div class="form-group">
+        <label for="kostengarantie">Kostengarantie:</label>
+        <select id="kostengarantie">
+          <option value="Nein">Nein</option>
+		  <option value="Ja">Ja</option>
+        </select>
+      </div>
+	  <div class="form-group">
+		<label for="patientNr">Patienten Nr:</label>
+		<input type="number" id="patientNr"  />
+	  </div>
+		
+		        <div class="form-group">
+          <label for="patientGeschlecht">Patienten Geschlecht:</label>
+		  <select id="patientGeschlecht">
+          <option value="M : Männlich">M</option>
+		  <option value="F  : Weiblich">F</option>
+        </select>
+		  
+        </div>
+        <div class="form-group">
+          <label for="patientName">Patienten Name:</label>
+          <input type="text" id="patientName" required />
+        </div>
+		<div class="form-group">
+          <label for="patientVorname">Patienten Vorname:</label>
+          <input type="text" id="patientVorname" required />
+        </div>
+        <div class="form-group">
+          <label for="arztNr">Arzt Nr:</label>
+          <input type="number" id="arztNr" required />
+        </div>
+        <div class="form-group">
+          <label for="arztName">Arzt Name:</label>
+          <input type="text" id="arztName" required />
+        </div>
+        <div class="form-group">
+          <label for="bemerkung">Bemerkung:</label>
+          <input type="text" id="bemerkung" required />
+        </div>
+
+
+        <div class="form-group">
+          <label for="patientStatus">Patienten Status:</label>
+          <input type="text" id="patientStatus" required />
+        </div>
+
+        <div class="form-group">
+          <label for="arztVorname">Ort:</label>
+          <input type="text" id="arztVorname" required />
+        </div>
+        <div class="form-group">
+          <label for="uebersetzer">Übersetzer:</label>
+          <input type="text" id="uebersetzer" required />
+        </div>
+      </div>
+      <div class="modal-buttons">
+        <button type="button" id="confirmAddRowButton" class="saveButton">Hinzufügen</button>
+        <button type="button" id="cancelAddRowButton" class="cancelButton" onclick="toggleAddRowModal()">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+			
+			
+         </div>
+      </div>
+	  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+	  	  	     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
+      <script src="termineTrackingApp.js"></script>
+   </body>
+</html>

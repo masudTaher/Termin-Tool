@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Termine Bearbeiten</title>
+      <link rel="stylesheet" href="style.css">
+	  
+
+	  
+   </head>
+   <body>
+      <div class="wrapper">
+         <!-- Sidebar -->
+         <aside class="sidebar">
+            <h2>Navigation</h2>
+            <ul>
+               <li><a href="termineFiltern.html">Termine Filtern</a></li>
+               <li><a href="termineBearbeiten.html" class="active">Termine Bearbeiten</a></li>
+               <li><a href="termineTracking.html">Termine Tracking</a></li>
+            </ul>
+         </aside>
+         <div class="container" id="second-page">
+            <h1>Terminverwaltung und Übersetzerzuweisung</h1>
+            <div id="notification" class="notification" style="display: none;"></div>
+            <!-- Upload section -->
+            <div class="upload-section">
+               <h2>Excel-Datei hochladen (Termine Bearbeiten)</h2>
+               <input type="file" id="uploadButton" accept=".xlsx, .xls" />
+            </div>
+            <!-- Table section -->
+            <div class="tables-section">
+               <div>
+                  <table id="dataTable">
+                     <thead>
+                        <!-- Header wird hier durch JavaScript eingefügt -->
+                     </thead>
+                     <tbody id="tableBody">
+                        <!-- Datenzeilen werden hier durch JavaScript eingefügt -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+            <!-- Action section -->
+            <div class="action-section">
+				<button id="minUeber">Min. Übersetzer ermitteln</button>
+               <button id="saveExcelButton">Als Excel speichern</button>
+			   <button id="savePdfButton">Als PDF speichern</button>
+            </div>
+			
+			
+			
+			
+         </div>
+      </div>
+      
+	  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+	  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+	  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
+      <script src="termineBearbeitenApp.js"></script>
+   </body>
+</html>

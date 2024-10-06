@@ -1,0 +1,662 @@
+/* Grundlegende Stileinstellungen für die gesamte Seite */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  font-size: larger;
+    font-weight: bold;
+
+  background-color: #f0f4f8;
+  color: #333;
+  line-height: 1.6;
+  padding:10px;
+}
+
+/* Sidebar styles (not fixed) */
+.wrapper {
+  display: flex;
+  min-height: 98vh
+}
+
+.sidebar {
+  width: 250px;
+  
+
+  min-width: 200px; /* Mindestbreite für die Sidebar */
+	  height: auto; /* Sidebar Höhe wird durch Inhalt bestimmt */
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1); /* Optional: Schatten für Sidebar */
+
+  background-color: #2c3e50;
+  padding: 20px;
+  color: #fff;
+  height: auto; /* Sidebar height is determined by content */
+}
+
+.sidebar h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  margin: 15px 0;
+}
+
+.sidebar ul li a {
+  color: #fff;
+  text-decoration: none;
+  display: block;
+  padding: 10px;
+  background-color: #34495e;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+}
+
+.sidebar ul li a:hover {
+  background-color: #1abc9c;
+}
+
+.sidebar ul li a.active {
+  background-color: #3498db;
+  color: white;
+  font-weight: bold;
+  border-radius: 5px;
+  padding: 10px 15px;
+}
+
+/* Main content container */
+.container {
+	
+	  overflow: hidden; /* Verhindert Überlauf */
+
+	
+  flex: 1; /* Makes the container grow to take the remaining space */
+  margin-left: 20px; /* Add some space between sidebar and main content */
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Headings */
+h1, h2 {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+/* Upload section */
+.upload-section, .tables-section, .action-section {
+  margin-bottom: 40px;
+}
+
+/* Input file styles */
+input[type="file"] {
+  display: block;
+  margin: 0 auto;
+  padding: 10px 15px;
+  border: 2px solid #3498db;
+  border-radius: 5px;
+  background-color: #ecf0f1;
+  color: #2980b9;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+input[type="file"]:hover {
+  background-color: #3498db;
+  color: #fff;
+}
+
+/* Button styles */
+button {
+  padding: 10px 20px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background-color: #2980b9;
+  transform: scale(1.05);
+}
+
+/* Table styles */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  table-layout: fixed; /* Set a fixed table layout */
+}
+
+table th, table td {
+  padding: 12px;
+  text-align: left;
+  white-space: normal; /* Allow line breaks */
+  overflow: hidden; /* Prevent text overflow */
+  text-overflow: ellipsis; /* Show "..." for truncated text */
+  word-wrap: break-word; /* Wrap long words */
+}
+
+/* Table column widths for both tables */
+#gefiltert-tabelle th:nth-child(1), #gefiltert-tabelle td:nth-child(1),
+#entfernt-tabelle th:nth-child(1), #entfernt-tabelle td:nth-child(1) {
+  width: 10%;
+}
+
+#gefiltert-tabelle th:nth-child(2), #gefiltert-tabelle td:nth-child(2),
+#entfernt-tabelle th:nth-child(2), #entfernt-tabelle td:nth-child(2) {
+  width: 10%;
+}
+
+#gefiltert-tabelle th:nth-child(3), #gefiltert-tabelle td:nth-child(3),
+#entfernt-tabelle th:nth-child(3), #entfernt-tabelle td:nth-child(3) {
+  width: 15%;
+}
+
+#gefiltert-tabelle th:nth-child(4), #gefiltert-tabelle td:nth-child(4),
+#entfernt-tabelle th:nth-child(4), #entfernt-tabelle td:nth-child(4) {
+  width: 15%;
+}
+
+#gefiltert-tabelle th:nth-child(5), #gefiltert-tabelle td:nth-child(5),
+#entfernt-tabelle th:nth-child(5), #entfernt-tabelle td:nth-child(5) {
+  width: 15%;
+}
+
+#gefiltert-tabelle th:nth-child(6), #gefiltert-tabelle td:nth-child(6),
+#entfernt-tabelle th:nth-child(6), #entfernt-tabelle td:nth-child(6) {
+  width: 15%;
+}
+
+/* Table header */
+thead {
+  background-color: #3498db;
+  color: white;
+  font-weight: bold;
+}
+
+/* Hover effect for table rows */
+table tbody tr:hover {
+  background-color: #f9f9f9;
+  cursor: grab;
+  transition: background-color 0.3s ease;
+}
+
+/* Tables section */
+.tables-section {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* Individual table container */
+.tables-section div {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+  overflow-y: auto; /* Enable vertical scrolling */
+  max-height: 800px; /* Max height for scrolling */
+}
+
+th, td {
+  border-radius: 5px;
+}
+
+thead th {
+  background-color: #2980b9;
+  color: #fff;
+  border: none;
+}
+
+td {
+  border: none;
+}
+
+/* No table row border for the last row */
+tr:last-child {
+  border-bottom: none;
+}
+
+.tables-section,
+.action-section {
+  display: none; /* Standardmäßig ausblenden */
+}
+
+/* Notification section */
+.notification {
+  position: fixed;
+  top: 40px;
+  right: 40px;
+  padding: 10px;
+  background-color: #f44336;
+  color: white;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  z-index: 1000;
+  max-width: 300px;
+  text-align: center;
+}
+
+/* Action section centered */
+.action-section {
+  text-align: center;
+}
+
+
+/* Hamburger styles */
+.hamburger {
+    display: none;
+    font-size: 30px;
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    cursor: pointer;
+    z-index: 10;
+    color: #333;
+}
+
+@media (max-width: 768px) {
+    .wrapper {
+        flex-direction: column;
+    }
+
+    .container {
+        margin-left: 0; /* Ensure no space for sidebar */
+        padding-top: 60px; /* Adjust padding to avoid overlap with hamburger */
+    }
+
+    .tables-section {
+        flex-direction: column;
+    }
+
+    .tables-section div {
+        margin: 0 0 10px;
+        min-width: 100%;
+    }
+}
+
+
+
+/* Anpassungen für die Tabelle auf der zweiten Seite */
+#second-page .tables-section {
+  position: relative;
+  overflow: auto; /* Ermöglicht sowohl horizontales als auch vertikales Scrollen */
+  max-height: 8000px; /* Feste Höhe für vertikales Scrollen */
+  width: 100%; /* Füllt den Container horizontal aus */
+  border: 1px solid #ddd; /* Optional: Eine Umrandung für den Container */
+  border-radius: 8px; /* Optional: Runde Ecken für den Container */
+  box-sizing: border-box; /* Einschließen von Padding und Border in der Breitenberechnung */
+}
+
+/* Tabelle innerhalb der Tabelle-Sektion auf der zweiten Seite */
+#second-page .tables-section table {
+  width: 100%; /* Tabelle füllt den Container aus */
+  border-collapse: collapse; /* Verhindert doppelte Ränder */
+  table-layout: auto; /* Ermöglicht dynamische Spaltenbreiten */
+  min-width: 600px; /* Mindestbreite für horizontales Scrollen */
+}
+
+/* Tabellenheader */
+#second-page .tables-section thead {
+  background-color: #3498db;
+  color: white;
+  font-weight: bold;
+}
+
+/* Tabellenzellen-Stile */
+#second-page .tables-section th, 
+#second-page .tables-section td {
+  padding: 12px;
+  text-align: left;
+  overflow: hidden; /* Verhindert Überlauf außerhalb der Zelle */
+  text-overflow: ellipsis; /* Zeigt "..." für abgeschnittenen Text */
+  white-space: normal; /* Erlaubt Zeilenumbrüche innerhalb der Zelle */
+  word-wrap: break-word; /* Bricht lange Wörter um */
+  overflow-wrap: break-word; /* Alternativ: Bricht lange Wörter um */
+}
+
+/* Hover-Effekt für Tabellenzeilen */
+#second-page .tables-section tbody tr:hover {
+  background-color: #f9f9f9;
+  cursor: grab;
+  transition: background-color 0.3s ease;
+}
+
+
+
+/* Anpassungen für die Tabelle auf der zweiten Seite */
+#third-page .tables-section {
+  position: relative;
+  overflow: auto; /* Ermöglicht sowohl horizontales als auch vertikales Scrollen */
+  max-height: 500px; /* Feste Höhe für vertikales Scrollen */
+  width: 100%; /* Füllt den Container horizontal aus */
+  border: 1px solid #ddd; /* Optional: Eine Umrandung für den Container */
+  border-radius: 8px; /* Optional: Runde Ecken für den Container */
+  box-sizing: border-box; /* Einschließen von Padding und Border in der Breitenberechnung */
+}
+
+/* Tabelle innerhalb der Tabelle-Sektion auf der zweiten Seite */
+#third-page .tables-section table {
+  width: 100%; /* Tabelle füllt den Container aus */
+  border-collapse: collapse; /* Verhindert doppelte Ränder */
+  min-width: 600px; /* Mindestbreite für horizontales Scrollen */
+}
+
+/* Tabellenheader */
+#third-page .tables-section thead {
+  background-color: #3498db;
+  color: white;
+  font-weight: bold;
+}
+
+/* Tabellenzellen-Stile */
+#third-page .tables-section th, 
+#third-page .tables-section td {
+  padding: 12px;
+  text-align: left;
+  overflow: hidden; /* Verhindert Überlauf außerhalb der Zelle */
+  text-overflow: ellipsis; /* Zeigt "..." für abgeschnittenen Text */
+  white-space: normal; /* Erlaubt Zeilenumbrüche innerhalb der Zelle */
+  word-wrap: break-word; /* Bricht lange Wörter um */
+  overflow-wrap: break-word; /* Alternativ: Bricht lange Wörter um */
+}
+
+/* Hover-Effekt für Tabellenzeilen */
+#third-page .tables-section tbody tr:hover {
+  background-color: #f9f9f9;
+  cursor: grab;
+  transition: background-color 0.3s ease;
+}
+
+
+/* Individual table container */
+#dataContainer {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+  overflow-y: auto; /* Enable vertical scrolling */
+  max-height: 800px; /* Max height for scrolling */
+}
+
+
+
+/* Grundlegende Modal-Stile */
+.modal {
+  display: none; 
+  position: fixed; 
+  z-index: 1; 
+  left: 0;
+  top: 0;
+  width: 100%; 
+  height: 100%; 
+  overflow: auto; 
+  background-color: rgba(0, 0, 0, 0.4); 
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 10% auto; 
+  padding: 20px;
+  border: 1px solid #888;
+  width: 70%; /* Breite des Modals */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Entfernen des Schließen-Symbols */
+.close {
+  display: none; /* Versteckt das Schließen-Symbol */
+}
+
+/* Formular-Stile */
+#addRowForm, #editRowForm {
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Abstand zwischen den Elementen */
+}
+
+.modal-body {
+  display: flex; /* Flexbox für die Eingabefelder */
+  flex-wrap: wrap; /* Umbrüche erlauben */
+  justify-content: space-between; /* Platz zwischen den Elementen */
+}
+
+/* Stil für die Gruppen */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  width: 48%; /* Breite der Formgruppen (48% für zwei Spalten) */
+  box-sizing: border-box; /* Berechnung der Breite inklusive Padding */
+}
+
+/* Stil für die Labels */
+.form-group label {
+  margin-bottom: 5px;
+  font-weight: bold;
+  font-size: 18px; /* Größere Schriftgröße für Labels */
+}
+
+/* Größere Input-Felder */
+.form-group input {
+  padding: 12px; /* Größeres Padding für größere Input-Felder */
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px; /* Größere Schriftgröße für Input-Felder */
+}
+
+/* Stil für die Schaltflächen */
+.modal-buttons {
+  display: flex; /* Flexbox für die Schaltflächen */
+  justify-content: center; /* Zentrieren der Schaltflächen */
+  margin-top: auto; /* Schiebe die Schaltflächen nach unten */
+}
+
+/* Zusätzliche Stile für Schaltflächen */
+.modal-buttons button {
+  padding: 10px 20px; /* Padding für Schaltflächen */
+  border: none; /* Keine Rahmen */
+  border-radius: 4px; /* Abgerundete Ecken */
+  margin: 0 10px; /* Abstand zwischen den Schaltflächen */
+  cursor: pointer; /* Zeiger-Cursor */
+  font-size: 16px; /* Schriftgröße */
+  transition: background-color 0.3s; /* Animation für den Hover-Effekt */
+}
+
+/* Hover-Effekte für die Schaltflächen */
+.modal-buttons button:hover {
+  background-color: #ddd; /* Hintergrundfarbe bei Hover */
+}	    /* Entfernen des Schließen-Symbols */
+    .close {
+      display: none; /* Versteckt das Schließen-Symbol */
+    }
+
+
+
+
+
+#editRowForm label {
+    font-weight: bold;
+    font-size: 18px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-right: 65px;
+}
+/* Größere Input-Felder */
+#editRowForm input {
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+    margin-right: 60px;
+}
+
+
+    .saveButton {
+      background-color: #3498db;
+      color: #fff;
+    }
+    .saveButton:hover {
+      background-color: #2980b9;
+    }
+    .cancelButton {
+      background-color: #e74c3c;
+      color: #fff;
+    }
+    .cancelButton:hover {
+      background-color: #c0392b;
+    }
+
+/* Verhindert die Sichtbarkeit von <br>-Tags nur innerhalb des Formulars */
+#editRowForm br {
+  display: none;
+}
+
+/* Stil für das Modal zum Hinzufügen einer Spalte */
+#addColumnModal {
+  display: none;
+}
+
+#addColumnModal .modal-content {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#addColumnModal .modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+#addColumnModal .modal-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#addColumnModal #confirmAddColumnButton {
+  background-color: #3498db;
+  color: #fff;
+}
+
+#addColumnModal #confirmAddColumnButton:hover {
+  background-color: #2980b9;
+}
+
+#addColumnModal #cancelAddColumnButton {
+  background-color: #e74c3c;
+  color: #fff;
+}
+
+#addColumnModal #cancelAddColumnButton:hover {
+  background-color: #c0392b;
+}
+
+/* Stil für den Schließen-Button */
+#addColumnModal .close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+
+    /* Dropdown Styling */
+    select {
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      background-color: #f9f9f9;
+      color: #333;
+      box-sizing: border-box;
+      transition: border-color 0.3s ease;
+    }
+	
+	
+	select:focus {
+      border-color: #00aaff;
+      outline: none;
+    }
+
+    /* Zeit-Input Styling */
+#dataTable    input[type="text"] {
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      background-color: #f9f9f9;
+      color: #333;
+      width: 100%;
+      box-sizing: border-box;
+      transition: border-color 0.3s ease;
+    }
+
+ #dataTable    input[type="text"]:focus {
+      border-color: #00aaff;
+      outline: none;
+    }
+
+    /* Fehlerzustand für ungültige Eingaben */
+ #dataTable    input[type="text"].error {
+      border-color: red;
+      background-color: #ffe6e6;
+    }
+	
+	
+.button-container {
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column; /* Vertikale Anordnung der Elemente */
+    align-items: center; /* Zentriert die Elemente horizontal */
+    margin-bottom: 20px; /* Abstand nach unten */
+}
+
+
+
+input[type="checkbox"] {
+  transform: scale(1.2);
+}
+
+
+
+
+.delete-button {
+      background-color: #e74c3c;
+      color: #fff;
+}
+
+.delete-button:hover {
+      background-color: #c0392b;
+}
+
+
+

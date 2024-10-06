@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Termine Filtern</title>
+      <link rel="stylesheet" href="style.css">
+   </head>
+   <body>
+      <div class="wrapper">
+         <!-- Sidebar -->
+         <aside id="sidebar" class="sidebar">
+            <h2>Navigation</h2>
+            <ul>
+               <li><a href="termineFiltern.html" class="active">Termine Filtern</a></li>
+               <li><a href="termineBearbeiten.html">Termine Bearbeiten</a></li>
+               <li><a href="termineTracking.html">Termine Tracking</a></li>
+            </ul>
+         </aside>
+         <!-- Main content -->
+         <div class="container">
+            <h1>Terminverwaltung und Übersetzerzuweisung</h1>
+            <div id="notification" class="notification" style="display: none;"></div>
+            <!-- Excel-Datei hochladen -->
+            <div class="upload-section">
+               <h2>Excel-Datei hochladen (Termine Filtern)</h2>
+               <input type="file" id="fileInput" accept=".xlsx, .xls">
+            </div>
+            <div class="tables-section">
+               <div>
+                  <h2>Gefilterte Termine (Bleiben)</h2>
+                  <table id="gefiltert-tabelle" ondragover="allowDrop(event)" ondrop="drop(event, 'gefiltert')">
+                     <thead>
+                        <tr>
+                           <th>Uhrzeit</th>
+                           <th>Patient Name</th>
+                           <th>Arzt Name</th>
+                           <th>Bemerkung</th>
+                           <th>Ort</th>
+                        </tr>
+                     </thead>
+                     <tbody id="gefiltert-tbody">
+                        <!-- Dynamische Inhalte -->
+                     </tbody>
+                  </table>
+               </div>
+               <div>
+                  <h2>Herausgefilterte Termine (Entfernt)</h2>
+                  <table id="entfernt-tabelle" ondragover="allowDrop(event)" ondrop="drop(event, 'entfernt')">
+                     <thead>
+                        <tr>
+                           <th>Uhrzeit</th>
+                           <th>Patient Name</th>
+                           <th>Arzt Name</th>
+                           <th>Bemerkung</th>
+                           <th>Ort</th>
+                        </tr>
+                     </thead>
+                     <tbody id="entfernt-tbody">
+                        <!-- Dynamische Inhalte -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+            <!-- Aktionen -->
+            <div class="action-section">
+               <button onclick="saveToExcel()">Änderungen speichern</button>
+            </div>
+         </div>
+      </div>
+      <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+      <script src="termineFilternApp.js"></script>
+   </body>
+</html>
