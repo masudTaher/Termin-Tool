@@ -100,7 +100,7 @@ function renderTrackingTable(data) {
         row.innerHTML = `
 			            <td>${index + 1}</td> <!-- Add the Lfd. Nr. column -->
 
-            <td>${termin.Termin_Uhrzeit || ''}</td>
+			<td contenteditable="true" onblur="updateTimeCell(event, ${index})">${termin.Termin_Uhrzeit || ''}</td>
 			<td>${termin.Patient_Nr || ''}</td>
 
             <td>${termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'] || ''}</td>
@@ -135,6 +135,31 @@ function renderTrackingTable(data) {
     document.querySelectorAll('.status-select').forEach(select =>
         select.addEventListener('change', updateStatusFromSelect));
 }
+
+
+function updateTimeCell(event, index) {
+    const newValue = event.target.innerText; // Get the new value from the cell
+
+    // Validierung des neuen Wertes im Format HH:MM:SS
+    if (!/^\d{2}:\d{2}:\d{2}$/.test(newValue)) {
+        alert("Bitte eine gültige Uhrzeit im Format HH:MM:SS eingeben.");
+        return;
+    }
+
+    // Update der Daten im Array
+    if (trackingData && trackingData[index]) {
+        trackingData[index].Termin_Uhrzeit = newValue; // Update the time in the data array
+    } else {
+        console.error('trackingData array is not defined or index is out of bounds');
+    }
+
+    // Sortieren der Daten
+    sortTrackingDataByTime(trackingData);
+
+    // Tabelle neu rendern
+    renderTrackingTable(trackingData);
+}
+
 
 
 // Funktion zum Löschen einer Zeile
