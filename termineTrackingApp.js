@@ -104,7 +104,7 @@ function renderTrackingTable(data) {
 			<td>${termin.Patient_Nr || ''}</td>
 
             <td>${termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'] || ''}</td>
-			<td>${termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) || ''}</td>
+			<td>${termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : ''}</td>
 			            <td>${termin.Bemerkung || ''}</td>
 
             <td>${termin['Arzt Nr::Name'] || ''}</td>

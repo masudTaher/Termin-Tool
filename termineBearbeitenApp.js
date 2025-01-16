@@ -87,7 +87,7 @@ const headerMapping = {
 };
 
 // Geschlecht Optionen für das Dropdown
-const genderOptions = ["F : Weiblich", "M : Männlich"];
+const genderOptions = ["F : Weiblich","M : Männlich"];
 
 // Globale Variable für die Farbkodierung
 const colorMapping = {};
@@ -328,12 +328,21 @@ function validateAndUpdateDate(rowIndex, header, inputElement) {
 
 // Dropdown für das Geschlecht rendern
 function renderDropdown(selectedValue, rowIndex, header) {
+    // Bereinige nur den ausgewählten Wert für den Vergleich
+    const cleanedValue = (selectedValue || "").trim().replace(/\s*:\s*/g, ":");
+
+    // Generiere die Optionen (Originalwerte bleiben unverändert)
     let options = genderOptions.map(option => {
-        const selected = option === selectedValue ? 'selected' : '';
-        return `<option value="${option}" ${selected}>${option}</option>`;
+        // Bereinige die Option nur für den Vergleich
+        const cleanedOption = option.trim().replace(/\s*:\s*/g, ":");
+        const selected = cleanedOption === cleanedValue ? 'selected' : '';
+        return `<option value="${option}" ${selected}>${option}</option>`; // Originalwert anzeigen
     }).join('');
 
-    return `<select onchange="updateCell(${rowIndex}, '${header}', this.value)">${options}</select>`;
+    // Füge eine Standardoption hinzu, falls kein Wert ausgewählt ist
+    const placeholder = !cleanedValue ? '<option value="" selected>Bitte wählen</option>' : '<option value="">Bitte wählen</option>';
+
+    return `<select onchange="updateCell(${rowIndex}, '${header}', this.value)">${placeholder}${options}</select>`;
 }
 
 // Input für Uhrzeit (HH:mm:ss) rendern
