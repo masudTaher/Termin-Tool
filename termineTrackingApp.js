@@ -103,7 +103,12 @@ function renderTrackingTable(data) {
 			<td contenteditable="true" onblur="updateTimeCell(event, ${index})">${termin.Termin_Uhrzeit || ''}</td>
 			<td>${termin.Patient_Nr || ''}</td>
 
-            <td>${termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'] || ''}</td>
+            <td>
+				${(termin['Patienten Nr::Patienten_Vorname'] || termin['Patienten Nr::Patienten_Name'])
+					? (termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] ? ' ' + termin['Patienten Nr::Patienten_Name'] : '')
+						: ''}				
+			</td>
+
 			<td>${termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : ''}</td>
 			            <td>${termin.Bemerkung || ''}</td>
 
