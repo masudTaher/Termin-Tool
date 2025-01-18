@@ -472,7 +472,7 @@ function berechneMinimaleUebersetzer(termine, maxTermineProTag = 2) {
         let zugewiesen = false;
 
         // Extrahiere das Geschlecht des Patienten (nur den ersten Buchstaben, M oder F)
-        const patientenGeschlecht = termin['Patienten Nr::Patienten_Geschlecht'].charAt(0);
+        const patientenGeschlecht = termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : 'M';
 
         // Versuche, einen vorhandenen Übersetzer mit passendem Geschlecht zu finden
         for (const uebersetzer of uebersetzerList) {
