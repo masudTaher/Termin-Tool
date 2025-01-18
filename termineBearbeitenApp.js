@@ -594,7 +594,7 @@ document.getElementById('savePdfButton').addEventListener('click', () => {
             // endTimeFormatted, // Use the formatted end time
 			termin.Patient_Nr,
             termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'],
-            termin['Patienten Nr::Patienten_Geschlecht'].charAt(0),
+            termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '',
             bemerkung,
             termin['Arzt Nr::Name'],
             termin['Arzt Nr::Vorname'],

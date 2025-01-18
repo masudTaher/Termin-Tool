@@ -324,7 +324,7 @@ document.getElementById('savePdfButton').addEventListener('click', () => {
             termin.Termin_Uhrzeit ? formatTimePdf(termin.Termin_Uhrzeit) : '', // Check if Termin_Uhrzeit is empty, if not, format it
 			termin.Patient_Nr,
             termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'],
-            termin['Patienten Nr::Patienten_Geschlecht'].charAt(0),
+			termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '',
             bemerkung,
             termin['Arzt Nr::Name']? termin['Arzt Nr::Name'] : '',
             termin['Arzt Nr::Vorname'],
