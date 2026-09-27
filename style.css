@@ -1,3 +1,25 @@
+/* Wiederkehrende Werte */
+:root {
+  --farbe-primaer: #3498db;
+  --farbe-primaer-dunkel: #2980b9;
+  --farbe-gefahr: #e74c3c;
+  --farbe-gefahr-dunkel: #c0392b;
+  --farbe-text: #333;
+  --farbe-ueberschrift: #2c3e50;
+  --farbe-hell: #f9f9f9;
+  --farbe-fokus: #00aaff;
+
+  --sidebar-breite: 250px;
+  --container-abstand: 20px;
+
+  --radius: 5px;
+  --radius-eingabe: 4px;
+  --radius-karte: 8px;
+
+  --schatten-karte: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --max-tabellen-hoehe: 980px;
+}
+
 /* Grundlegende Stileinstellungen für die gesamte Seite */
 * {
   margin: 0;
@@ -10,42 +32,33 @@ body {
   font-size: larger;
   font-weight: bold;
   background-color: #f0f4f8;
-  color: #333;
+  color: var(--farbe-text);
   line-height: 1.6;
 }
 
-/* Sidebar styles (not fixed) */
 .wrapper {
   display: flex;
   min-height: 100vh;
 }
 
-/* Sidebar styles */
+/* Sidebar: standardmäßig links außerhalb des Bildschirms, wird über den Toggle-Button eingeblendet */
 .sidebar {
-    width: 250px;
-    min-width: 200px;
-    padding: 20px;
-    color: #fff;
-    position: fixed;
-    left: -250px; /* Sidebar ist standardmäßig außerhalb des Bildschirms */
-    top: 50px;
-    transition: left 0.3s ease; /* Übergang nur für die left-Eigenschaft */
+  width: var(--sidebar-breite);
+  min-width: 200px;
+  padding: 20px;
+  color: #fff;
+  position: fixed;
+  left: calc(-1 * var(--sidebar-breite));
+  top: 50px;
+  transition: left 0.3s ease;
 }
 
-
-/* Sidebar aktiv */
 .sidebar.active {
-    left: 0; /* Sidebar ist sichtbar, wenn aktiv */
-}
-
-.sidebar h2 {
-  text-align: center;
-  margin-bottom: 20px;
+  left: 0;
 }
 
 .sidebar ul {
   list-style: none;
-  padding: 0;
 }
 
 .sidebar ul li {
@@ -58,7 +71,7 @@ body {
   display: block;
   padding: 10px;
   background-color: #34495e;
-  border-radius: 5px;
+  border-radius: var(--radius);
   transition: background-color 0.3s;
 }
 
@@ -67,22 +80,22 @@ body {
 }
 
 .sidebar ul li a.active {
-  background-color: #3498db;
+  background-color: var(--farbe-primaer);
   font-weight: bold;
 }
 
-/* Container styles */
+/* Container */
 .container {
-    margin-left: 20px; /* Margin für den Container */
-    width: calc(100% - 20px);
-    padding: 5px;
-    transition: margin-left 0.3s ease, width 0.3s ease; /* Übergänge für Margin und Width */
+  margin-left: var(--container-abstand);
+  width: calc(100% - var(--container-abstand));
+  padding: 5px;
+  transition: margin-left 0.3s ease, width 0.3s ease;
 }
 
-/* Container erweitert (wenn die Sidebar aktiv ist) */
+/* Container erweitert: Platz für die eingeblendete Sidebar */
 .container.expanded {
-    margin-left: 270px; /* Platz für die Sidebar */
-    width: calc(100% - 270px); /* Breite anpassen, wenn die Sidebar aktiv ist */
+  margin-left: calc(var(--sidebar-breite) + var(--container-abstand));
+  width: calc(100% - (var(--sidebar-breite) + var(--container-abstand)));
 }
 
 .toggle-btn {
@@ -92,32 +105,19 @@ body {
   z-index: 1001;
 }
 
+/* Übrige Button-Stile kommen von der allgemeinen button-Regel */
 .toggle-btn button {
-  padding: 10px 20px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
   font-size: 18px;
-  transition: background-color 0.3s ease, transform 0.2s ease;
 }
-
-.toggle-btn button:hover {
-  background-color: #2980b9;
-  transform: scale(1.05);
-}
-
-
 
 /* Headings */
-h1, h2 {
+h2 {
   text-align: center;
-  color: #2c3e50;
+  color: var(--farbe-ueberschrift);
   margin-bottom: 10px;
 }
 
-/* Upload section */
+/* Seitenbereiche */
 .upload-section, .tables-section, .action-section {
   margin-bottom: 20px;
 }
@@ -127,33 +127,33 @@ input[type="file"] {
   display: block;
   margin: 0 auto;
   padding: 10px 15px;
-  border: 2px solid #3498db;
-  border-radius: 5px;
+  border: 2px solid var(--farbe-primaer);
+  border-radius: var(--radius);
   background-color: #ecf0f1;
-  color: #2980b9;
+  color: var(--farbe-primaer-dunkel);
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
 
 input[type="file"]:hover {
-  background-color: #3498db;
+  background-color: var(--farbe-primaer);
   color: #fff;
 }
 
 /* Button styles */
 button {
   padding: 10px 20px;
-  background-color: #3498db;
+  background-color: var(--farbe-primaer);
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius);
   cursor: pointer;
   font-size: 16px;
   transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
 button:hover {
-  background-color: #2980b9;
+  background-color: var(--farbe-primaer-dunkel);
   transform: scale(1.05);
 }
 
@@ -162,71 +162,57 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 20px;
-  table-layout: fixed; /* Set a fixed table layout */
+  table-layout: fixed;
 }
 
 table th, table td {
   padding: 12px;
   text-align: left;
-  white-space: normal; /* Allow line breaks */
-  overflow: hidden; /* Prevent text overflow */
-  text-overflow: ellipsis; /* Show "..." for truncated text */
-  word-wrap: break-word; /* Wrap long words */
+  white-space: normal; /* Zeilenumbrüche erlauben */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-wrap: break-word; /* Lange Wörter umbrechen */
+  border-radius: var(--radius);
 }
 
-/* Table header */
+/* Die Hintergrundfarbe von thead ist an den abgerundeten Ecken der th-Zellen sichtbar */
 thead {
-  background-color: #3498db;
+  background-color: var(--farbe-primaer);
   color: white;
   font-weight: bold;
 }
 
-/* Hover effect for table rows */
+thead th {
+  background-color: var(--farbe-primaer-dunkel);
+  color: #fff;
+}
+
 table tbody tr:hover {
-  background-color: #f9f9f9;
+  background-color: var(--farbe-hell);
   cursor: grab;
   transition: background-color 0.3s ease;
 }
 
-/* Tables section */
+/* Tabellen- und Aktionsbereich sind ausgeblendet, bis Daten geladen sind (JS setzt display: flex/block) */
 .tables-section {
-  display: flex;
+  display: none;
   justify-content: space-between;
   gap: 20px;
 }
 
-/* Individual table container */
+/* Karte um jede Tabelle */
 .tables-section div {
   background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-karte);
+  box-shadow: var(--schatten-karte);
   padding: 15px;
-  overflow-y: auto; /* Enable vertical scrolling */
-  max-height: 980px; /* Max height for scrolling */
+  overflow-y: auto;
+  max-height: var(--max-tabellen-hoehe);
 }
 
-th, td {
-  border-radius: 5px;
-}
-
-thead th {
-  background-color: #2980b9;
-  color: #fff;
-  border: none;
-}
-
-td {
-  border: none;
-}
-
-/* No table row border for the last row */
-tr:last-child {
-  border-bottom: none;
-}
-
-.tables-section,
 .action-section {
-  display: none; /* Standardmäßig ausblenden */
+  display: none;
+  text-align: center;
 }
 
 /* Notification section */
@@ -237,7 +223,7 @@ tr:last-child {
   padding: 10px;
   background-color: #f44336;
   color: white;
-  border-radius: 5px;
+  border-radius: var(--radius);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
   font-family: Arial, sans-serif;
   font-size: 14px;
@@ -246,394 +232,136 @@ tr:last-child {
   text-align: center;
 }
 
-/* Action section centered */
-.action-section {
-  text-align: center;
-}
-
 @media (max-width: 768px) {
-    .wrapper {
-        flex-direction: column;
-    }
+  .wrapper {
+    flex-direction: column;
+  }
 
-    .container {
-        margin-left: 0; /* Ensure no space for sidebar */
-        padding-top: 60px; /* Adjust padding to avoid overlap with hamburger */
-    }
+  .container {
+    margin-left: 0;
+    padding-top: 60px; /* Abstand, damit der Toggle-Button nichts überdeckt */
+  }
 
-    .tables-section {
-        flex-direction: column;
-    }
+  .tables-section {
+    flex-direction: column;
+  }
 
-    .tables-section div {
-        margin: 0 0 10px;
-        min-width: 100%;
-    }
+  .tables-section div {
+    margin: 0 0 10px;
+    min-width: 100%;
+  }
 }
 
-
-
-/* Anpassungen für die Tabelle auf der zweiten Seite */
-#second-page .tables-section {
-  position: relative;
-  overflow: auto; /* Ermöglicht sowohl horizontales als auch vertikales Scrollen */
-  max-height: 98ß0px; /* Feste Höhe für vertikales Scrollen */
-  width: 100%; /* Füllt den Container horizontal aus */
-  border: 1px solid #ddd; /* Optional: Eine Umrandung für den Container */
-  border-radius: 8px; /* Optional: Runde Ecken für den Container */
-  box-sizing: border-box; /* Einschließen von Padding und Border in der Breitenberechnung */
-}
-
-/* Tabelle innerhalb der Tabelle-Sektion auf der zweiten Seite */
-#second-page .tables-section table {
-  width: 100%; /* Tabelle füllt den Container aus */
-  border-collapse: collapse; /* Verhindert doppelte Ränder */
-  table-layout: auto; /* Ermöglicht dynamische Spaltenbreiten */
-  min-width: 600px; /* Mindestbreite für horizontales Scrollen */
-}
-
-/* Tabellenheader */
-#second-page .tables-section thead {
-  background-color: #3498db;
-  color: white;
-  font-weight: bold;
-}
-
-/* Tabellenzellen-Stile */
-#second-page .tables-section th, 
-#second-page .tables-section td {
-  padding: 12px;
-  text-align: left;
-  overflow: hidden; /* Verhindert Überlauf außerhalb der Zelle */
-  text-overflow: ellipsis; /* Zeigt "..." für abgeschnittenen Text */
-  white-space: normal; /* Erlaubt Zeilenumbrüche innerhalb der Zelle */
-  word-wrap: break-word; /* Bricht lange Wörter um */
-  overflow-wrap: break-word; /* Alternativ: Bricht lange Wörter um */
-}
-
-/* Hover-Effekt für Tabellenzeilen */
-#second-page .tables-section tbody tr:hover {
-  background-color: #f9f9f9;
-  cursor: grab;
-  transition: background-color 0.3s ease;
-}
-
-
-
-/* Anpassungen für die Tabelle auf der zweiten Seite */
-#third-page .tables-section {
-  position: relative;
-  overflow: auto; /* Ermöglicht sowohl horizontales als auch vertikales Scrollen */
-  max-height: 980px; /* Feste Höhe für vertikales Scrollen */
-  width: 100%; /* Füllt den Container horizontal aus */
-  border: 1px solid #ddd; /* Optional: Eine Umrandung für den Container */
-  border-radius: 8px; /* Optional: Runde Ecken für den Container */
-  box-sizing: border-box; /* Einschließen von Padding und Border in der Breitenberechnung */
-}
-
-/* Tabelle innerhalb der Tabelle-Sektion auf der zweiten Seite */
-#third-page .tables-section table {
-  width: 100%; /* Tabelle füllt den Container aus */
-  border-collapse: collapse; /* Verhindert doppelte Ränder */
-  min-width: 600px; /* Mindestbreite für horizontales Scrollen */
-}
-
-/* Tabellenheader */
-#third-page .tables-section thead {
-  background-color: #3498db;
-  color: white;
-  font-weight: bold;
-}
-
-/* Tabellenzellen-Stile */
-#third-page .tables-section th, 
-#third-page .tables-section td {
-  padding: 12px;
-  text-align: left;
-  overflow: hidden; /* Verhindert Überlauf außerhalb der Zelle */
-  text-overflow: ellipsis; /* Zeigt "..." für abgeschnittenen Text */
-  white-space: normal; /* Erlaubt Zeilenumbrüche innerhalb der Zelle */
-  word-wrap: break-word; /* Bricht lange Wörter um */
-  overflow-wrap: break-word; /* Alternativ: Bricht lange Wörter um */
-}
-
-/* Hover-Effekt für Tabellenzeilen */
-#third-page .tables-section tbody tr:hover {
-  background-color: #f9f9f9;
-  cursor: grab;
-  transition: background-color 0.3s ease;
-}
-
-
-/* Individual table container */
-#dataContainer {
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  padding: 15px;
-  overflow-y: auto; /* Enable vertical scrolling */
-  max-height: 980px; /* Max height for scrolling */
-}
-
-
-
-/* Grundlegende Modal-Stile */
+/* Modal (Termine Tracking: "Neue Zeile hinzufügen") */
 .modal {
-  display: none; 
-  position: fixed; 
-  z-index: 1; 
+  display: none;
+  position: fixed;
+  z-index: 1;
   left: 0;
   top: 0;
-  width: 100%; 
-  height: 100%; 
-  overflow: auto; 
-  background-color: rgba(0, 0, 0, 0.4); 
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
 .modal-content {
   background-color: #fefefe;
-  margin: 10% auto; 
+  margin: 10% auto;
   padding: 20px;
   border: 1px solid #888;
-  width: 70%; /* Breite des Modals */
+  width: 70%;
   display: flex;
   flex-direction: column;
 }
 
-/* Entfernen des Schließen-Symbols */
+/* Schließen-Symbol ist bewusst ausgeblendet; geschlossen wird über "Abbrechen" */
 .close {
-  display: none; /* Versteckt das Schließen-Symbol */
+  display: none;
 }
 
-/* Formular-Stile */
-#addRowForm, #editRowForm {
+#addRowForm {
   display: flex;
   flex-direction: column;
-  gap: 15px; /* Abstand zwischen den Elementen */
+  gap: 15px;
 }
 
 .modal-body {
-  display: flex; /* Flexbox für die Eingabefelder */
-  flex-wrap: wrap; /* Umbrüche erlauben */
-  justify-content: space-between; /* Platz zwischen den Elementen */
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
 }
 
-/* Stil für die Gruppen */
+/* Zwei Spalten */
 .form-group {
   display: flex;
   flex-direction: column;
-  width: 48%; /* Breite der Formgruppen (48% für zwei Spalten) */
-  box-sizing: border-box; /* Berechnung der Breite inklusive Padding */
+  width: 48%;
 }
 
-/* Stil für die Labels */
 .form-group label {
   margin-bottom: 5px;
   font-weight: bold;
-  font-size: 18px; /* Größere Schriftgröße für Labels */
+  font-size: 18px;
 }
 
-/* Größere Input-Felder */
 .form-group input {
-  padding: 12px; /* Größeres Padding für größere Input-Felder */
+  padding: 12px;
   border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px; /* Größere Schriftgröße für Input-Felder */
+  border-radius: var(--radius-eingabe);
+  font-size: 16px;
 }
 
-/* Stil für die Schaltflächen */
 .modal-buttons {
-  display: flex; /* Flexbox für die Schaltflächen */
-  justify-content: center; /* Zentrieren der Schaltflächen */
-  margin-top: auto; /* Schiebe die Schaltflächen nach unten */
-}
-
-/* Zusätzliche Stile für Schaltflächen */
-.modal-buttons button {
-  padding: 10px 20px; /* Padding für Schaltflächen */
-  border: none; /* Keine Rahmen */
-  border-radius: 4px; /* Abgerundete Ecken */
-  margin: 0 10px; /* Abstand zwischen den Schaltflächen */
-  cursor: pointer; /* Zeiger-Cursor */
-  font-size: 16px; /* Schriftgröße */
-  transition: background-color 0.3s; /* Animation für den Hover-Effekt */
-}
-
-/* Hover-Effekte für die Schaltflächen */
-.modal-buttons button:hover {
-  background-color: #ddd; /* Hintergrundfarbe bei Hover */
-}	    /* Entfernen des Schließen-Symbols */
-    .close {
-      display: none; /* Versteckt das Schließen-Symbol */
-    }
-
-
-
-
-
-#editRowForm label {
-    font-weight: bold;
-    font-size: 18px;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    margin-right: 65px;
-}
-/* Größere Input-Felder */
-#editRowForm input {
-    padding: 5px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 16px;
-    margin-right: 60px;
-}
-
-
-    .saveButton {
-      background-color: #3498db;
-      color: #fff;
-    }
-    .saveButton:hover {
-      background-color: #2980b9;
-    }
-    .cancelButton {
-      background-color: #e74c3c;
-      color: #fff;
-    }
-    .cancelButton:hover {
-      background-color: #c0392b;
-    }
-
-/* Verhindert die Sichtbarkeit von <br>-Tags nur innerhalb des Formulars */
-#editRowForm br {
-  display: none;
-}
-
-/* Stil für das Modal zum Hinzufügen einer Spalte */
-#addColumnModal {
-  display: none;
-}
-
-#addColumnModal .modal-content {
-  background-color: #fff;
-  padding: 20px;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-#addColumnModal .modal-buttons {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  justify-content: center;
+  margin-top: auto;
 }
 
-#addColumnModal .modal-buttons button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
+.modal-buttons button {
+  border-radius: var(--radius-eingabe);
+  margin: 0 10px;
+  transition: background-color 0.3s;
 }
 
-#addColumnModal #confirmAddColumnButton {
-  background-color: #3498db;
+/* Gilt wegen höherer Spezifität auch für .saveButton und .cancelButton */
+.modal-buttons button:hover {
+  background-color: #ddd;
+}
+
+.saveButton {
+  background-color: var(--farbe-primaer);
   color: #fff;
 }
 
-#addColumnModal #confirmAddColumnButton:hover {
-  background-color: #2980b9;
-}
-
-#addColumnModal #cancelAddColumnButton {
-  background-color: #e74c3c;
-  color: #fff;
-}
-
-#addColumnModal #cancelAddColumnButton:hover {
-  background-color: #c0392b;
-}
-
-/* Stil für den Schließen-Button */
-#addColumnModal .close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-
-    /* Dropdown Styling */
-    select {
-      padding: 5px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      font-size: 14px;
-      background-color: #f9f9f9;
-      color: #333;
-      box-sizing: border-box;
-      transition: border-color 0.3s ease;
-    }
-	
-	
-	select:focus {
-      border-color: #00aaff;
-      outline: none;
-    }
-
-    /* Zeit-Input Styling */
-#dataTable    input[type="text"] {
-      padding: 5px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      font-size: 14px;
-      background-color: #f9f9f9;
-      color: #333;
-      width: 100%;
-      box-sizing: border-box;
-      transition: border-color 0.3s ease;
-    }
-
- #dataTable    input[type="text"]:focus {
-      border-color: #00aaff;
-      outline: none;
-    }
-
-    /* Fehlerzustand für ungültige Eingaben */
- #dataTable    input[type="text"].error {
-      border-color: red;
-      background-color: #ffe6e6;
-    }
-	
-	
-.button-container {
-  margin-bottom: 40px;
-  text-align: center;
-}
-
-.input-group {
-    display: flex;
-    flex-direction: column; /* Vertikale Anordnung der Elemente */
-    align-items: center; /* Zentriert die Elemente horizontal */
-    margin-bottom: 20px; /* Abstand nach unten */
-}
-
-
-
-input[type="checkbox"] {
-  transform: scale(1.2);
-}
-
+.cancelButton,
 .delete-button {
-      background-color: #e74c3c;
-      color: #fff;
+  background-color: var(--farbe-gefahr);
+  color: #fff;
 }
 
 .delete-button:hover {
-      background-color: #c0392b;
+  background-color: var(--farbe-gefahr-dunkel);
 }
 
+/* Dropdowns (Geschlecht, Status, Modal) und Uhrzeit-Eingabe in der Tabelle */
+select,
+#dataTable input[type="text"] {
+  padding: 5px;
+  border-radius: var(--radius-eingabe);
+  border: 1px solid #ccc;
+  font-size: 14px;
+  background-color: var(--farbe-hell);
+  color: var(--farbe-text);
+  transition: border-color 0.3s ease;
+}
 
+#dataTable input[type="text"] {
+  width: 100%;
+}
 
+select:focus,
+#dataTable input[type="text"]:focus {
+  border-color: var(--farbe-fokus);
+  outline: none;
+}
