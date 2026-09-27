@@ -18,21 +18,16 @@
          </aside>
          <!-- Main content -->
          <div class="container" id="container">
-		             <div class="toggle-btn">
+            <div class="toggle-btn">
                <button id="toggleSidebar">☰</button>
             </div>
             <div id="notification" class="notification" style="display: none;"></div>
             <!-- Excel-Datei hochladen -->
-
-
-<div class="upload-section">
-    <h2>Excel-Datei hochladen (Termine Filtern)</h2>
-    <input type="file" id="fileInput" accept=".xlsx, .xls" >
-</div>
-
-
-
-
+            <div class="upload-section">
+               <h2>Excel-Datei hochladen (Termine Filtern)</h2>
+               <input type="file" id="fileInput" accept=".xlsx, .xls">
+            </div>
+            <!-- Tabellen: Zeilen lassen sich per Drag & Drop zwischen beiden Tabellen verschieben -->
             <div class="tables-section">
                <div>
                   <h2>Gefilterte Termine (Bleiben)</h2>
@@ -76,19 +71,7 @@
          </div>
       </div>
       <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+      <script src="common.js"></script>
       <script src="termineFilternApp.js"></script>
-      <script>
-         const sidebar = document.getElementById('sidebar');
-         const container = document.getElementById('container');
-         const toggleBtn = document.getElementById('toggleSidebar');
-
-         toggleBtn.addEventListener('click', function () {
-            sidebar.classList.toggle('active');
-            container.classList.toggle('expanded');
-         });
-      </script>
-	  
-	
-    
    </body>
 </html>

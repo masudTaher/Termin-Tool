@@ -20,7 +20,6 @@
             <div class="toggle-btn">
                <button id="toggleSidebar">☰</button>
             </div>
-            <div id="notification" class="notification" style="display: none;"></div>
             <!-- Upload section -->
             <div class="upload-section">
                <h2>Excel-Datei hochladen (Termine Bearbeiten)</h2>
@@ -50,17 +49,7 @@
       <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
+      <script src="common.js"></script>
       <script src="termineBearbeitenApp.js"></script>
-      <script>
-         const sidebar = document.getElementById('sidebar');
-         const container = document.getElementById('container');
-         const toggleBtn = document.getElementById('toggleSidebar');
-
-         toggleBtn.addEventListener('click', function () {
-            sidebar.classList.toggle('active');
-            container.classList.toggle('expanded');
-         });
-      </script>
-
    </body>
 </html>

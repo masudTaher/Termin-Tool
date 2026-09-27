@@ -1,73 +1,26 @@
-// Globale Variablen für die Tabelle und die Excel-Daten
+// Globale Tabellendaten. Die Zeilenindizes in den Inline-Handlern beziehen sich auf die aktuelle Reihenfolge.
 let tableData = [];
-let currentEditingRow = null;
 
-// Funktionen zum Hochladen und Verarbeiten von Excel-Dateien
-document.getElementById('uploadButton').addEventListener('change', (event) => {
-    const file = event.target.files[0];
-    if (!file) {
-        alert('Keine Datei ausgewählt. Bitte wählen Sie eine gültige Excel-Datei aus.');
-        return;
-    }
+// Regeln für die minimale Übersetzeranzahl
+const MAX_TERMINE_PRO_UEBERSETZER = 2;
+const PHYSIO_TERMIN_GEWICHT = 0.5; // Physio-Termine zählen nur halb
+const UEBERSETZER_BLOCKIERUNG_STUNDEN = 3; // So lange ist ein Übersetzer nach Terminbeginn nicht verfügbar
 
-    const reader = new FileReader();
-    reader.onload = function (event) {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, {
-            type: 'array'
-        });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+// Künstliche Anzeigespalten, die nicht in den Daten existieren
+const LFD_NR_SPALTE = "Lfd. Nr.";
+const VOLLNAME_SPALTE = "Patienten_Vollname";
 
-        tableData = jsonData;
+// Spalten, die in der Tabelle nicht angezeigt werden (Vor- und Nachname erscheinen zusammengefasst als "Patient")
+const ausgeblendeteSpalten = [
+    "Termin_Datum",
+    "Arzt_Nr",
+    "Kostengarantie Ja Nein",
+    "Patienten Nr::Patienten_Status",
+    "Patienten Nr::Patienten_Vorname",
+    "Patienten Nr::Patienten_Name"
+];
 
-
-        // Prüfen, ob die Spalte "Übersetzer" existiert, andernfalls hinzufügen
-        addUebersetzerPropertyIfMissing(tableData);
-
-        addAnzahlTerminePropertyIfMissing(tableData);
-
-        renderTable();
-    };
-    reader.readAsArrayBuffer(file);
-});
-
-// Funktion zum Überprüfen, ob die "Dauer" Eigenschaft existiert, andernfalls hinzufügen
-function addDurationPropertyIfMissing(data) {
-    return data.map(entry => {
-        if (!entry.hasOwnProperty('Dauer')) {
-            entry['Dauer'] = '2';
-        }
-        return entry;
-    });
-}
-
-// Funktion zum Überprüfen, ob die "Übersetzer" Eigenschaft existiert, andernfalls hinzufügen
-function addUebersetzerPropertyIfMissing(data) {
-    return data.map(entry => {
-        if (!entry.hasOwnProperty('Übersetzer')) {
-            entry['Übersetzer'] = '';
-        }
-        return entry;
-    });
-}
-
-// Funktion zum Überprüfen und Hinzufügen der "Anzahl_Termine" Eigenschaft, falls sie fehlt
-function addAnzahlTerminePropertyIfMissing(data) {
-    // Zählen der Anzahl der Termine pro Patient
-    const countMap = data.reduce((acc, entry) => {
-        acc[entry.Patient_Nr] = (acc[entry.Patient_Nr] || 0) + 1;
-        return acc;
-    }, {});
-
-    // Hinzufügen der "Anzahl_Termine" Eigenschaft, falls sie nicht existiert
-    return data.map(entry => {
-        if (!entry.hasOwnProperty('Anzahl_Termine')) {
-            entry['Anzahl_Termine'] = countMap[entry.Patient_Nr];
-        }
-        return entry;
-    });
-}
+const nichtEditierbareSpalten = ["Patient_Nr", VOLLNAME_SPALTE, "Arzt Nr::Name", "Arzt Nr::Vorname", "Anzahl_Termine", "Ende"];
 
 // Mapping für Header-Namen, die anders dargestellt werden sollen
 const headerMapping = {
@@ -83,41 +36,74 @@ const headerMapping = {
     'Patienten Nr::Patienten_Vorname': 'Pat. Vorname',
     'Arzt Nr::Vorname': 'Ort',
     'Dauer': 'Dauer',
-    'Patienten_Vollname': 'Patient'
+    'Anzahl_Termine': 'Anzahl Termine',
+    [VOLLNAME_SPALTE]: 'Patient'
 };
 
 // Geschlecht Optionen für das Dropdown
-const genderOptions = ["F : Weiblich","M : Männlich"];
+const genderOptions = ["F : Weiblich", "M : Männlich"];
 
-// Globale Variable für die Farbkodierung
+// Farbzuordnung Patient_Nr -> Hintergrundfarbe für Patienten mit mehreren Terminen
 const colorMapping = {};
 
-// Funktion zum Generieren einer zufälligen, hellen und verschiedenen Farbe
+// Excel-Datei hochladen und verarbeiten
+document.getElementById('uploadButton').addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+        alert('Keine Datei ausgewählt. Bitte wählen Sie eine gültige Excel-Datei aus.');
+        return;
+    }
+
+    leseErstesTabellenblatt(file, (firstSheet) => {
+        tableData = XLSX.utils.sheet_to_json(firstSheet);
+
+        addUebersetzerPropertyIfMissing(tableData);
+        addAnzahlTerminePropertyIfMissing(tableData);
+
+        renderTable();
+    });
+});
+
+function addUebersetzerPropertyIfMissing(data) {
+    data.forEach(entry => {
+        if (!entry.hasOwnProperty('Übersetzer')) {
+            entry['Übersetzer'] = '';
+        }
+    });
+}
+
+// Eine bereits vorhandene 'Anzahl_Termine'-Spalte wird nicht überschrieben
+function addAnzahlTerminePropertyIfMissing(data) {
+    const anzahlProPatient = zaehleTermineProPatient(data);
+
+    data.forEach(entry => {
+        if (!entry.hasOwnProperty('Anzahl_Termine')) {
+            entry['Anzahl_Termine'] = anzahlProPatient[entry.Patient_Nr];
+        }
+    });
+}
+
+// Erzeugt eine zufällige, helle Farbe, die noch nicht verwendet wird
 function generateDistinctLightColor(existingColors) {
-    const goldenRatioConjugate = 0.618033988749895; // Mathematisches Verhältnis für optimale Verteilung
-    let hue = Math.random(); // Zufälliger Startpunkt auf dem Farbkreis
+    const goldenRatioConjugate = 0.618033988749895; // Sorgt für eine gleichmäßige Verteilung auf dem Farbkreis
+    let hue = Math.random();
 
     while (true) {
         hue += goldenRatioConjugate;
-        hue %= 1; // Sicherstellen, dass der Wert zwischen 0 und 1 bleibt
+        hue %= 1;
 
-        // Sättigung und Helligkeit angepasst für helle Farben
-        const saturation = 0.3 + Math.random() * 0.2; // Bereich: 0.3 bis 0.5
-        const value = 0.9 + Math.random() * 0.1; // Bereich: 0.9 bis 1
+        // Geringe Sättigung und hohe Helligkeit ergeben helle Farben
+        const saturation = 0.3 + Math.random() * 0.2; // 0.3 bis 0.5
+        const value = 0.9 + Math.random() * 0.1; // 0.9 bis 1
 
-        // HSV (Hue, Saturation, Value) in RGB umwandeln
         const rgb = hsvToRgb(hue, saturation, value);
-
-        // Farbcode erzeugen
         const color = `#${rgb.r.toString(16).padStart(2, '0')}${rgb.g.toString(16).padStart(2, '0')}${rgb.b.toString(16).padStart(2, '0')}`;
 
-        // Wenn diese Farbe bereits existiert, erneut versuchen
         if (!existingColors.includes(color))
             return color;
     }
 }
 
-// Funktion zur Umwandlung von HSV nach RGB
 function hsvToRgb(h, s, v) {
     let r,
     g,
@@ -168,7 +154,6 @@ function hsvToRgb(h, s, v) {
     };
 }
 
-// Funktion zum Erzeugen einer Farbzuordnung für Patienten mit mehr als einem Termin
 function createColorMapping(data) {
     const existingColors = [];
 
@@ -176,185 +161,102 @@ function createColorMapping(data) {
         if (entry.Anzahl_Termine > 1 && !colorMapping[entry.Patient_Nr]) {
             const color = generateDistinctLightColor(existingColors);
             colorMapping[entry.Patient_Nr] = color;
-            existingColors.push(color); // Hinzufügen zur Liste der verwendeten Farben
+            existingColors.push(color);
         }
     });
 }
 
-// Funktion zur Aktualisierung der Endzeit
-function updateEndTime(rowIndex) {
-    const row = tableData[rowIndex];
-    let endTime = '';
+// Anzuzeigende Spalten: Datenspalten ohne ausgeblendete, plus "Patient" nach Patient_Nr und "Lfd. Nr." vorne
+function ermittleAnzeigeSpalten(datenSpalten) {
+    const spalten = datenSpalten.filter(header => !ausgeblendeteSpalten.includes(header));
 
-    if (row["Termin_Uhrzeit"]) {
-        const startTime = new Date(`1970-01-01T${row["Termin_Uhrzeit"]}`);
-        const durationMinutes = (row["Dauer"] * 60) || 0;
-        endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    const patientNrIndex = spalten.indexOf("Patient_Nr");
+    if (patientNrIndex !== -1) {
+        spalten.splice(patientNrIndex + 1, 0, VOLLNAME_SPALTE);
     }
 
-    // Update the "Ende" cell
-    const formattedEndTime = endTime ? formatEndTime(endTime) : '';
-    tableData[rowIndex]["Ende"] = formattedEndTime; // Update the "Ende" property in the data array
+    spalten.unshift(LFD_NR_SPALTE);
+    return spalten;
+}
 
-    // Render the table again to reflect the updated end time
-    renderTable();
+function renderZelle(row, rowIndex, header) {
+    if (header === LFD_NR_SPALTE) {
+        return `<td>${rowIndex + 1}</td>`;
+    }
+
+    const cell = row[header];
+
+    if (header === VOLLNAME_SPALTE) {
+        const fullName = `${row["Patienten Nr::Patienten_Vorname"] || ''} ${row["Patienten Nr::Patienten_Name"] || ''}`.trim();
+        return `<td>${fullName}</td>`;
+    }
+    if (header === "Patienten Nr::Patienten_Geschlecht") {
+        return `<td>${renderDropdown(cell, rowIndex, header)}</td>`;
+    }
+    if (header === "Termin_Uhrzeit") {
+        return `<td>${renderTimeInput(cell, rowIndex, header)}</td>`;
+    }
+
+    const isEditable = !nichtEditierbareSpalten.includes(header);
+    return `<td contenteditable="${isEditable}" oninput="updateCell(${rowIndex}, '${header}', this.innerText)">${cell}</td>`;
+}
+
+function renderZeile(row, rowIndex, headers) {
+    const backgroundColor = (row.Anzahl_Termine > 1 && colorMapping[row.Patient_Nr]) || '';
+    const rowStyle = backgroundColor ? `style="background-color: ${backgroundColor};"` : '';
+
+    return `<tr ${rowStyle}>` + headers.map(header => renderZelle(row, rowIndex, header)).join('') + '</tr>';
 }
 
 function renderTable() {
     const tableBody = document.getElementById('tableBody');
     const tableHead = document.querySelector('#dataTable thead');
 
-    const tablesSection = document.querySelector('.tables-section');
-    const actionSection = document.querySelector('.action-section');
-
     tableBody.innerHTML = '';
     tableHead.innerHTML = '';
 
     if (tableData.length > 0) {
-		
-		sortTableData();
-	
-        const headers = Object.keys(tableData[0]);
-        const rows = tableData;
+        // Vor dem Rendern sortieren, damit die Zeilenindizes der Handler zur Array-Reihenfolge passen
+        sortTableData();
 
-        // Generiere die Farbkodierung für Patienten mit Anzahl_Termine > 1 nur einmal
+        // Farben nur einmal erzeugen, damit sie beim erneuten Rendern stabil bleiben
         if (Object.keys(colorMapping).length === 0) {
             createColorMapping(tableData);
         }
 
-        // Filtere die Spalten
-        const filteredHeaders = headers.filter(header =>
-            header !== "Termin_Datum" &&
-            header !== "Arzt_Nr" &&
-            header !== "Kostengarantie Ja Nein" &&
-            header !== "Patienten Nr::Patienten_Status" &&
-            header !== "Patienten Nr::Patienten_Vorname" &&
-            header !== "Patienten Nr::Patienten_Name"
-        );
+        const headers = ermittleAnzeigeSpalten(Object.keys(tableData[0]));
 
-        // Füge den neuen Header für "Patienten_Vollname" hinzu
-        const patientNrIndex = filteredHeaders.indexOf("Patient_Nr");
-        if (patientNrIndex !== -1) {
-            filteredHeaders.splice(patientNrIndex + 1, 0, "Patienten_Vollname");
-        }
-
-        // Füge "Laufende Nr." am Anfang der Kopfzeile hinzu
-        filteredHeaders.unshift("Lfd. Nr.");
-
-
-        // Header hinzufügen
-        tableHead.innerHTML = '<tr>' +
-            filteredHeaders.map(header => `<th>${header === "Anzahl_Termine" ? "Anzahl Termine" : (headerMapping[header] || header)}</th>`).join('') +
-            '</tr>';
-
-        // Datenzeilen hinzufügen
-        rows.forEach((row, rowIndex) => {
-            // Verwenden Sie die gespeicherten Farben
-            const backgroundColor = (row.Anzahl_Termine > 1 && colorMapping[row.Patient_Nr]) || '';
-            const rowStyle = backgroundColor ? `style="background-color: ${backgroundColor};"` : '';
-
-            tableBody.innerHTML += `<tr ${rowStyle}>` +
-                filteredHeaders.map(header => {
-                    if (header === "Lfd. Nr.") {
-                        // Erzeuge die laufende Nummer, beginnend mit 1
-                        return `<td>${rowIndex + 1}</td>`;
-                    }
-
-                    const cell = row[header];
-
-                    // Bestimme, ob die Zelle bearbeitbar ist
-                    const isEditable = !["Patient_Nr", "Patienten_Vollname", "Arzt Nr::Name", "Arzt Nr::Vorname", "Anzahl_Termine", "Ende"].includes(header);
-
-                    if (header === "Patienten_Vollname") {
-                        // Kombiniere Vorname und Nachname
-                        const fullName = `${row["Patienten Nr::Patienten_Vorname"] || ''} ${row["Patienten Nr::Patienten_Name"] || ''}`.trim();
-                        return `<td>${fullName}</td>`;
-                    } else if (header === "Patienten Nr::Patienten_Geschlecht") {
-                        // Dropdown verwenden
-                        return `<td>${renderDropdown(cell, rowIndex, header)}</td>`;
-                    } else if (header === "Termin_Uhrzeit") {
-                        // Text-Input für Uhrzeit
-                        return `<td>${renderTimeInput(cell, rowIndex, header)}</td>`;
-                    } else {
-                        // Alle anderen Spalten sind contenteditable
-                        return `<td contenteditable="${isEditable}" oninput="updateCell(${rowIndex}, '${header}', this.innerText)">${cell}</td>`;
-                    }
-                }).join('') +
-                '</tr>';
-        });
+        tableHead.innerHTML = '<tr>' + headers.map(header => `<th>${headerMapping[header] || header}</th>`).join('') + '</tr>';
+        tableBody.innerHTML = tableData.map((row, rowIndex) => renderZeile(row, rowIndex, headers)).join('');
     }
 
-    // Sichtbarkeit basierend auf der Anzahl der Einträge festlegen
-    if (tableData.length > 0) {
-        tablesSection.style.display = 'flex';
-        actionSection.style.display = 'block';
-    } else {
-        tablesSection.style.display = 'none';
-        actionSection.style.display = 'none';
-    }
-}
-
-
-
-function formatEndTime(date) {
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
-}
-
-// Input für Datum rendern
-function renderDateInput(selectedValue, rowIndex, header) {
-    if (!selectedValue) {
-        return `<input type="text" value="" onchange="validateAndUpdateDate(${rowIndex}, '${header}', this)" placeholder="d.m.yyyy" />`;
-    } else {
-        return `<span>${selectedValue}</span>`;
-    }
-}
-
-// Validierung des Datums im Format "d.m.yyyy"
-function validateAndUpdateDate(rowIndex, header, inputElement) {
-    const dateValue = inputElement.value;
-    const datePattern = /^([1-9]|[12]\d|3[01])\.([1-9]|1[012])\.\d{4}$/;
-
-    if (datePattern.test(dateValue)) {
-        updateCell(rowIndex, header, dateValue);
-        inputElement.classList.remove("error");
-    } else {
-        alert("Bitte geben Sie ein gültiges Datum im Format d.m.yyyy ein.");
-        inputElement.classList.add("error");
-    }
+    setzeSektionenSichtbar(tableData.length > 0);
 }
 
 // Dropdown für das Geschlecht rendern
 function renderDropdown(selectedValue, rowIndex, header) {
-    // Bereinige nur den ausgewählten Wert für den Vergleich
-    const cleanedValue = (selectedValue || "").trim().replace(/\s*:\s*/g, ":");
+    // Leerzeichen um ":" nur für den Vergleich entfernen (z. B. "F  : Weiblich" aus dem Tracking-Formular)
+    const normalisiere = value => value.trim().replace(/\s*:\s*/g, ":");
+    const cleanedValue = normalisiere(selectedValue || "");
 
-    // Generiere die Optionen (Originalwerte bleiben unverändert)
-    let options = genderOptions.map(option => {
-        // Bereinige die Option nur für den Vergleich
-        const cleanedOption = option.trim().replace(/\s*:\s*/g, ":");
-        const selected = cleanedOption === cleanedValue ? 'selected' : '';
-        return `<option value="${option}" ${selected}>${option}</option>`; // Originalwert anzeigen
+    const options = genderOptions.map(option => {
+        const selected = normalisiere(option) === cleanedValue ? 'selected' : '';
+        return `<option value="${option}" ${selected}>${option}</option>`;
     }).join('');
 
-    // Füge eine Standardoption hinzu, falls kein Wert ausgewählt ist
     const placeholder = !cleanedValue ? '<option value="" selected>Bitte wählen</option>' : '<option value="">Bitte wählen</option>';
 
     return `<select onchange="updateCell(${rowIndex}, '${header}', this.value)">${placeholder}${options}</select>`;
 }
 
-// Input für Uhrzeit (HH:mm:ss) rendern
+// Nur leere Uhrzeiten sind editierbar; vorhandene Werte werden als Text angezeigt
 function renderTimeInput(selectedValue, rowIndex, header) {
     if (!selectedValue) {
         return `<input type="text" value="" onchange="validateAndUpdateTime(${rowIndex}, '${header}', this)" placeholder="HH:mm:ss" />`;
-    } else {
-        return `<span>${selectedValue}</span>`;
     }
+    return `<span>${selectedValue}</span>`;
 }
 
-// Validierung der Uhrzeit im Format HH:mm:ss
 function validateAndUpdateTime(rowIndex, header, inputElement) {
     const timeValue = inputElement.value;
     const timePattern = /^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
@@ -368,82 +270,27 @@ function validateAndUpdateTime(rowIndex, header, inputElement) {
     }
 }
 
-// Aktualisierung der Zelle
 function updateCell(rowIndex, header, newValue) {
     tableData[rowIndex][header] = newValue;
-    console.log(`Wert in Zeile ${rowIndex + 1}, Spalte ${header} aktualisiert: ${newValue}`);
-
-    // Check if the updated header is "Termin_Uhrzeit" or "Dauer"
-//    if (header === "Termin_Uhrzeit" || header === "Dauer") {
-//        updateEndTime(rowIndex);
-//    }
 }
 
-// Funktion zur Aktualisierung der Endzeit
-function updateEndTime(rowIndex) {
-    const row = tableData[rowIndex];
-    let endTime = '';
-
-    // Überprüfen, ob Termin_Uhrzeit nicht leer ist
-    if (row["Termin_Uhrzeit"]) {
-        const startTime = new Date(`1970-01-01T${row["Termin_Uhrzeit"]}`);
-        const durationMinutes = (row["Dauer"] * 60) || 0; // Setze die Dauer in Minuten, falls nicht vorhanden
-        endTime = new Date(startTime.getTime() + durationMinutes * 60000); // Dauer in Millisekunden
-
-        // Update the "Ende" cell
-        const formattedEndTime = formatEndTime(endTime);
-        tableData[rowIndex]["Ende"] = formattedEndTime; // Update the "Ende" property in the data array
-    } 
-
-    // Render the table again to reflect the updated end time
-    renderTable();
-}
-
-
-
-
-// Funktion zum Speichern der Tabelle als Excel-Datei
+// Tabelle als Excel-Datei speichern (Export nach Uhrzeit sortiert, danach wieder Anzeige-Sortierung)
 document.getElementById('saveExcelButton').addEventListener('click', () => {
-	sortByTerminUhrzeit();
-	
-	const worksheet = XLSX.utils.json_to_sheet(tableData);
+    sortByTerminUhrzeit();
+
+    const worksheet = XLSX.utils.json_to_sheet(tableData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Tabelle');
-	
-	
-	// Find the first non-empty 'Termin_Datum'
-    let firstTerminDatum = 'unbekannt';
-    for (let i = 0; i < tableData.length; i++) {
-        if (tableData[i]['Termin_Datum']) {
-            firstTerminDatum = tableData[i]['Termin_Datum'];
-            break;
-        }
-    }
 
-    // Ensure firstTerminDatum is treated as a string
-    firstTerminDatum = firstTerminDatum ? firstTerminDatum : 'unbekannt';
+    XLSX.writeFile(workbook, `${findeErstesTerminDatum(tableData)}_Zuweisungen.xlsx`);
 
-    // Save the file with the first non-empty 'Termin_Datum' as the filename
-    XLSX.writeFile(workbook, `${firstTerminDatum}_Zuweisungen.xlsx`);	
-	
-	sortTableData();
+    sortTableData();
 });
 
-// Funktion zur Formatierung von Excel-Daten als Datum
-function formatExcelDate(serial) {
-    if (serial === null || serial === undefined)
-        return '';
-    const utcDays = Math.floor(serial) - 25569;
-    const utcValue = utcDays * 86400;
-    const date = new Date(utcValue * 1000);
-    return date.toLocaleDateString('de-DE'); // Format anpassen, falls nötig
-}
-
 document.getElementById('minUeber').addEventListener('click', () => {
-    // Berechnung der minimalen Anzahl von Übersetzern
     const result = berechneMinimaleUebersetzer(tableData);
 
-    // Nur Ergebnisse ausgeben, wenn keine ungültigen Termine gefunden wurden
+    // null bedeutet: es gibt Termine ohne Uhrzeit, der Hinweis wurde bereits angezeigt
     if (result) {
         const {
             maennlicheUebersetzer,
@@ -453,259 +300,177 @@ document.getElementById('minUeber').addEventListener('click', () => {
     }
 });
 
-function berechneMinimaleUebersetzer(termine, maxTermineProTag = 2) {
-    // Überprüfen, ob alle Termine eine gesetzte "Termin_Uhrzeit" haben
+// Greedy-Zuweisung: Termine werden nach Startzeit dem ersten freien Übersetzer gleichen Geschlechts zugeordnet,
+// sonst wird ein neuer Übersetzer angelegt.
+function berechneMinimaleUebersetzer(termine, maxTermineProTag = MAX_TERMINE_PRO_UEBERSETZER) {
     const ungültigeTermine = termine.filter(termin => !termin.Termin_Uhrzeit || termin.Termin_Uhrzeit.trim() === "");
 
     if (ungültigeTermine.length > 0) {
         alert("Es gibt Termine ohne eine gesetzte 'Uhrzeit'. Bitte überprüfen Sie alle Einträge.");
-        return null; // Rückgabe null, um anzuzeigen, dass ungültige Termine vorhanden sind
+        return null;
     }
 
-    // Sortiere die Termine nach Startzeit
     termine.sort((a, b) => new Date(`1970-01-01T${a.Termin_Uhrzeit}`) - new Date(`1970-01-01T${b.Termin_Uhrzeit}`));
 
     const uebersetzerList = [];
 
     termine.forEach(termin => {
         const start = new Date(`1970-01-01T${termin.Termin_Uhrzeit}`);
-        let zugewiesen = false;
 
-        // Extrahiere das Geschlecht des Patienten (nur den ersten Buchstaben, M oder F)
+        // Nur der erste Buchstabe (M oder F) zählt; ohne Angabe wird 'M' angenommen
         const patientenGeschlecht = termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : 'M';
 
-        // Versuche, einen vorhandenen Übersetzer mit passendem Geschlecht zu finden
-        for (const uebersetzer of uebersetzerList) {
-            if (
-                uebersetzer.geschlecht === patientenGeschlecht && // Geschlecht muss übereinstimmen
-                start >= new Date(`1970-01-01T${convertDecimalToTime(uebersetzer.verfuegbarAb)}`) &&
-                uebersetzer.maxTermine > 0) {
-                uebersetzer.addTermin(termin);
-                zugewiesen = true;
-                break;
-            }
-        }
+        const passenderUebersetzer = uebersetzerList.find(uebersetzer =>
+                uebersetzer.geschlecht === patientenGeschlecht &&
+                start >= new Date(`1970-01-01T${convertDayFractionToTime(uebersetzer.verfuegbarAb)}`) &&
+                uebersetzer.maxTermine > 0);
 
-        // Wenn kein Übersetzer verfügbar ist, erstelle einen neuen mit passendem Geschlecht
-        if (!zugewiesen) {
+        if (passenderUebersetzer) {
+            passenderUebersetzer.addTermin(termin);
+        } else {
             const neuerUebersetzer = createNewUebersetzer(uebersetzerList.length + 1, maxTermineProTag, patientenGeschlecht);
             neuerUebersetzer.addTermin(termin);
             uebersetzerList.push(neuerUebersetzer);
         }
     });
 
-    // Zähle männliche und weibliche Übersetzer
     const maennlicheUebersetzer = uebersetzerList.filter(u => u.geschlecht === 'M').length;
     const weiblicheUebersetzer = uebersetzerList.filter(u => u.geschlecht === 'F').length;
 
+    // Die Berechnung hat tableData nach Uhrzeit sortiert; Anzeige-Sortierung wiederherstellen
+    sortTableData();
 
-	sortTableData();
-    // Rückgabe als Objekt mit beiden Werten
     return {
         maennlicheUebersetzer,
         weiblicheUebersetzer
     };
 }
 
-// Hilfsfunktion zur Erstellung eines neuen Übersetzers mit Geschlecht
+function istPhysioTermin(termin) {
+    return (termin['Arzt Nr::Name'] && termin['Arzt Nr::Name'].toLowerCase().includes("physio")) ||
+    (termin['Arzt Nr::Vorname'] && termin['Arzt Nr::Vorname'].toLowerCase().includes("physio"));
+}
+
 function createNewUebersetzer(index, maxTermine, geschlecht) {
     return {
-        name: `Übersetzer_${index}`, // Eindeutiger Name
-        verfuegbarAb: 0,
-        maxTermine: maxTermine,
-        geschlecht: geschlecht, // M oder F je nach dem Geschlecht des Patienten
+        name: `Übersetzer_${index}`,
+        verfuegbarAb: 0, // Bruchteil eines Tages
+        maxTermine: maxTermine, // verbleibende Kapazität
+        geschlecht: geschlecht,
         termine: [],
         addTermin(termin) {
             this.termine.push(termin);
 
-            // Prüfen, ob der Termin mit Physio verbunden ist
-            const isPhysio = (termin['Arzt Nr::Name'] && termin['Arzt Nr::Name'].toLowerCase().includes("physio")) ||
-            (termin['Arzt Nr::Vorname'] && termin['Arzt Nr::Vorname'].toLowerCase().includes("physio"));
+            this.maxTermine -= istPhysioTermin(termin) ? PHYSIO_TERMIN_GEWICHT : 1;
 
-            // Reduziere maxTermine entsprechend
-            this.maxTermine -= isPhysio ? 0.5 : 1;
-
-            const durationMinutes = 3 * 60; // Dauer in Minuten
             const endTime = new Date(`1970-01-01T${termin.Termin_Uhrzeit}`);
-            endTime.setMinutes(endTime.getMinutes() + durationMinutes);
-            this.verfuegbarAb = convertTimeToDecimal2(convertTimeToDecimal1(endTime.toTimeString().split(' ')[0])); // Aktualisiere Verfügbarkeit
+            endTime.setMinutes(endTime.getMinutes() + UEBERSETZER_BLOCKIERUNG_STUNDEN * 60);
+            // Der Umweg über Stunden und Tagesbruchteile ist Teil der bestehenden Logik
+            // (Sekunden werden dabei verworfen) und bleibt deshalb unverändert.
+            this.verfuegbarAb = convertHoursToDayFraction(convertTimeToHours(endTime.toTimeString().split(' ')[0]));
         }
     };
 }
 
-// Helper function to convert time to decimal format
-function convertTimeToDecimal1(timeString) {
+// "HH:mm[:ss]" -> Stunden als Dezimalzahl (Sekunden werden ignoriert)
+function convertTimeToHours(timeString) {
     const [hours, minutes] = timeString.split(':').map(Number);
-    return hours + minutes / 60; // Convert to decimal
+    return hours + minutes / 60;
 }
 
-// Function to convert time in hours to decimal representation of the day
-function convertTimeToDecimal2(hours) {
-    // Ensure the input is treated as hours
-    return hours / 24; // Convert hours to a fraction of a day
+// Stunden -> Bruchteil eines Tages
+function convertHoursToDayFraction(hours) {
+    return hours / 24;
 }
 
-function convertDecimalToTime(decimal) {
-    const totalSeconds = Math.floor(decimal * 24 * 60 * 60); // Total seconds in the day
+// Bruchteil eines Tages -> "HH:mm:ss" (abgerundet auf ganze Sekunden)
+function convertDayFractionToTime(decimal) {
+    const totalSeconds = Math.floor(decimal * 24 * 60 * 60);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
 
     return [hours, minutes, seconds]
-    .map(unit => String(unit).padStart(2, '0')) // Ensure two digits
-    .join(':'); // Return formatted time string
+    .map(unit => String(unit).padStart(2, '0'))
+    .join(':');
 }
 
 document.getElementById('savePdfButton').addEventListener('click', () => {
-	sortByTerminUhrzeit();
+    sortByTerminUhrzeit();
 
-	
-	if (tableData.length === 0) {
+    if (tableData.length === 0) {
         alert("Es gibt keine zu speichernden Daten.");
         return;
     }
 
-    // Access jsPDF from the global scope
     const {
         jsPDF
     } = window.jspdf;
     const doc = new jsPDF('landscape');
 
-    // Set up the table headers
-    const headers = [["Datum", "Start", "Pat. Nr","Patient", "Geschlecht", "Bemerkung", "Arzt", "Ort", "Übersetzer", "Notiz"]];
-    const rows = tableData.map(termin => {
-        let endTimeFormatted = ''; // Initialize as empty
-        
-        if (termin.Termin_Uhrzeit) {
-            const startTime = new Date(`1970-01-01T${termin.Termin_Uhrzeit}`);
-            const durationMinutes = termin.Dauer * 60; // Assuming Dauer is in hours
-            const endTime = new Date(startTime.getTime() + durationMinutes * 60000); // Calculate end time
-            endTimeFormatted = formatTime(`${endTime.getHours()}:${endTime.getMinutes()}:${endTime.getSeconds()}`); // Format end time
-        }
-
-        // Clean up the Bemerkung field by removing extra line breaks
-        const bemerkung = termin['Bemerkung']
-            ? termin['Bemerkung'].replace(/(\r\n|\n|\r)+/g, ' ').trim()
-            : ''; // Replace line breaks with a space
-
-        return [
+    const headers = [["Datum", "Start", "Pat. Nr", "Patient", "Geschlecht", "Bemerkung", "Arzt", "Ort", "Übersetzer", "Notiz"]];
+    const rows = tableData.map(termin => [
             termin.Termin_Datum,
-			termin.Termin_Uhrzeit ? formatTime(termin.Termin_Uhrzeit) : '', // Check if Termin_Uhrzeit is empty, if not, format it
-            // endTimeFormatted, // Use the formatted end time
-			termin.Patient_Nr,
+            termin.Termin_Uhrzeit ? formatTime(termin.Termin_Uhrzeit) : '',
+            termin.Patient_Nr,
             termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'],
             termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '',
-            bemerkung,
+            bereinigeBemerkung(termin['Bemerkung']),
             termin['Arzt Nr::Name'],
             termin['Arzt Nr::Vorname'],
             termin.Übersetzer,
-            ''
-        ];
-    });
+            '' // Notiz: leere Spalte für handschriftliche Notizen
+        ]);
 
-    // Define column styles with fixed width only for "Bemerkung"
+    // Feste Breite für die Spalten "Übersetzer" (8) und "Notiz" (9)
     const columnStyles = {
         8: {
             cellWidth: 30
-        }, // Bemerkung
+        },
         9: {
             cellWidth: 30
-        } // Notiz
+        }
     };
 
-    // Generate the PDF table
     doc.autoTable({
         head: headers,
         body: rows,
-        columnStyles: columnStyles, // Apply fixed widths
+        columnStyles: columnStyles,
     });
 
-// Find the first non-empty 'Termin_Datum'
-    let firstTerminDatum = 'unbekannt';
-    for (let i = 0; i < tableData.length; i++) {
-        if (tableData[i]['Termin_Datum']) {
-            firstTerminDatum = tableData[i]['Termin_Datum'];
-            break;
-        }
-    }
+    doc.save(`${findeErstesTerminDatum(tableData)}_Zuweisungen.pdf`);
 
-    // Ensure firstTerminDatum is treated as a string
-    firstTerminDatum = firstTerminDatum ? firstTerminDatum : 'unbekannt';
-
-    // Save the PDF
-	doc.save(`${firstTerminDatum}_Zuweisungen.pdf`);
-	
-	sortTableData();
+    sortTableData();
 });
 
-function formatTime(timeString) {
-    // Check if timeString is a valid string
-    if (typeof timeString !== 'string') {
-        console.error('Invalid input to formatTime:', timeString);
-        return '00:00:00'; // Default to zero if format is invalid
-    }
-
-    // Trim whitespace
-    timeString = timeString.trim();
-
-    // Extract just the time part (hh:mm:ss)
-    const timeOnly = timeString.split(' ')[0]; // Get the first part before the timezone info
-
-    // Check if the timeOnly is in the correct format
-    const timeParts = timeOnly.split(':');
-
-    if (timeParts.length !== 3) { // Should have hours, minutes, and seconds
-        console.error('Invalid time format:', timeOnly);
-        return '00:00:00'; // Default to zero if format is invalid
-    }
-
-    // Ensure each part is two digits
-    const [hours, minutes, seconds] = timeParts.map(part => String(part).padStart(2, '0'));
-
-    return `${hours}:${minutes}:${seconds}`; // Return formatted time string
-}
-
-
-
 function sortByTerminUhrzeit() {
-    tableData.sort((a, b) => {
-        return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
-    });
+    tableData.sort((a, b) => a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit));
 }
 
+// Anzeige-Sortierung: zuerst Patienten mit genau einem Termin (nach Uhrzeit),
+// danach Patienten mit mehreren Terminen gruppiert nach Patient_Nr (innerhalb nach Uhrzeit)
 function sortTableData() {
     tableData.sort((a, b) => {
-        // Sort by Anzahl_Termine first (1 appointment first, then more than 1)
         if (a.Anzahl_Termine === 1 && b.Anzahl_Termine > 1) {
-            return -1; // a comes first
+            return -1;
         }
         if (a.Anzahl_Termine > 1 && b.Anzahl_Termine === 1) {
-            return 1; // b comes first
+            return 1;
         }
 
-        // Both have more than one appointment
         if (a.Anzahl_Termine > 1 && b.Anzahl_Termine > 1) {
-            const patientA = String(a.Patient_Nr);
-            const patientB = String(b.Patient_Nr);
-            const patientComparison = patientA.localeCompare(patientB, undefined, { numeric: true });
-
+            const patientComparison = String(a.Patient_Nr).localeCompare(String(b.Patient_Nr), undefined, { numeric: true });
             if (patientComparison === 0) {
-                // If Patient_Nr is equal, sort by Termin_Uhrzeit
                 return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
             }
-            return patientComparison; // Return the comparison of Patient_Nr
-        } 
-        
-        // Both have exactly one appointment
+            return patientComparison;
+        }
+
         if (a.Anzahl_Termine === 1 && b.Anzahl_Termine === 1) {
-            // Only sort by Termin_Uhrzeit
             return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
         }
 
-        // Fallback for any cases not explicitly handled (like zero appointments)
+        // Sonstige Fälle (z. B. Anzahl_Termine fehlt oder ist 0) bleiben in ihrer Reihenfolge
         return 0;
     });
 }
-
-
-
