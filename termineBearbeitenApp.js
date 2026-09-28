@@ -10,8 +10,17 @@ document.getElementById('uploadButton').addEventListener('change', (event) => {
         return;
     }
 
+    event.target.value = '';
+
+    if (typeof XLSX === 'undefined') {
+        showWorkflowStatus('Die Excel-Funktion konnte nicht geladen werden. Bitte prüfe die Internetverbindung und lade die Seite erneut.', 'error');
+        return;
+    }
+
+    showWorkflowStatus(`${file.name} wird geprüft …`);
     const reader = new FileReader();
     reader.onload = function (event) {
+        try {
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, {
             type: 'array'
@@ -19,7 +28,11 @@ document.getElementById('uploadButton').addEventListener('change', (event) => {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
-        tableData = jsonData;
+        tableData = normalizeTerminRecords(jsonData);
+        if (tableData.length === 0) {
+            showWorkflowStatus('Die Excel-Datei enthält keine Termine.', 'error');
+            return;
+        }
 
 
         // Prüfen, ob die Spalte "Übersetzer" existiert, andernfalls hinzufügen
@@ -28,7 +41,14 @@ document.getElementById('uploadButton').addEventListener('change', (event) => {
         addAnzahlTerminePropertyIfMissing(tableData);
 
         renderTable();
+        persistTerminRecords(tableData, 'bearbeiten', { filtered: tableData, removed: [] });
+        showWorkflowStatus(`${tableData.length} Termine geladen. Änderungen werden in diesem Browser-Tab zwischengespeichert.`);
+        } catch (error) {
+            console.error('Fehler beim Einlesen der Excel-Datei:', error);
+            showWorkflowStatus('Die Excel-Datei konnte nicht verarbeitet werden. Bitte prüfe das Tabellenblatt und die Spaltenüberschriften.', 'error');
+        }
     };
+    reader.onerror = () => showWorkflowStatus('Die Excel-Datei konnte nicht gelesen werden. Bitte wähle sie erneut aus.', 'error');
     reader.readAsArrayBuffer(file);
 });
 
@@ -222,15 +242,22 @@ function renderTable() {
             createColorMapping(tableData);
         }
 
-        // Filtere die Spalten
-        const filteredHeaders = headers.filter(header =>
-            header !== "Termin_Datum" &&
-            header !== "Arzt_Nr" &&
-            header !== "Kostengarantie Ja Nein" &&
-            header !== "Patienten Nr::Patienten_Status" &&
-            header !== "Patienten Nr::Patienten_Vorname" &&
-            header !== "Patienten Nr::Patienten_Name"
-        );
+        // Nur die bisherigen Arbeitsfelder anzeigen. Zusätzliche FileMaker-
+        // Kontaktspalten bleiben in tableData erhalten und werden später für
+        // den WhatsApp-Entwurf sowie den Excel-Export weitergereicht.
+        const visibleHeaders = new Set([
+            "Termin_Uhrzeit",
+            "Patient_Nr",
+            "Arzt Nr::Name",
+            "Bemerkung",
+            "Patienten Nr::Patienten_Geschlecht",
+            "Arzt Nr::Vorname",
+            "Übersetzer",
+            "Anzahl_Termine",
+            "Dauer",
+            "Ende"
+        ]);
+        const filteredHeaders = headers.filter(header => visibleHeaders.has(header));
 
         // Füge den neuen Header für "Patienten_Vollname" hinzu
         const patientNrIndex = filteredHeaders.indexOf("Patient_Nr");
@@ -268,7 +295,7 @@ function renderTable() {
                     if (header === "Patienten_Vollname") {
                         // Kombiniere Vorname und Nachname
                         const fullName = `${row["Patienten Nr::Patienten_Vorname"] || ''} ${row["Patienten Nr::Patienten_Name"] || ''}`.trim();
-                        return `<td>${fullName}</td>`;
+                        return `<td>${escapeHtml(fullName)}</td>`;
                     } else if (header === "Patienten Nr::Patienten_Geschlecht") {
                         // Dropdown verwenden
                         return `<td>${renderDropdown(cell, rowIndex, header)}</td>`;
@@ -277,7 +304,7 @@ function renderTable() {
                         return `<td>${renderTimeInput(cell, rowIndex, header)}</td>`;
                     } else {
                         // Alle anderen Spalten sind contenteditable
-                        return `<td contenteditable="${isEditable}" oninput="updateCell(${rowIndex}, '${header}', this.innerText)">${cell}</td>`;
+                        return `<td contenteditable="${isEditable}" oninput="updateCell(${rowIndex}, '${header}', this.innerText)">${escapeHtml(cell ?? '')}</td>`;
                     }
                 }).join('') +
                 '</tr>';
@@ -287,7 +314,7 @@ function renderTable() {
     // Sichtbarkeit basierend auf der Anzahl der Einträge festlegen
     if (tableData.length > 0) {
         tablesSection.style.display = 'flex';
-        actionSection.style.display = 'block';
+        actionSection.style.display = 'flex';
     } else {
         tablesSection.style.display = 'none';
         actionSection.style.display = 'none';
@@ -350,7 +377,7 @@ function renderTimeInput(selectedValue, rowIndex, header) {
     if (!selectedValue) {
         return `<input type="text" value="" onchange="validateAndUpdateTime(${rowIndex}, '${header}', this)" placeholder="HH:mm:ss" />`;
     } else {
-        return `<span>${selectedValue}</span>`;
+        return `<span>${escapeHtml(selectedValue)}</span>`;
     }
 }
 
@@ -371,7 +398,7 @@ function validateAndUpdateTime(rowIndex, header, inputElement) {
 // Aktualisierung der Zelle
 function updateCell(rowIndex, header, newValue) {
     tableData[rowIndex][header] = newValue;
-    console.log(`Wert in Zeile ${rowIndex + 1}, Spalte ${header} aktualisiert: ${newValue}`);
+    persistTerminRecords(tableData, 'bearbeiten', { filtered: tableData });
 
     // Check if the updated header is "Termin_Uhrzeit" or "Dauer"
 //    if (header === "Termin_Uhrzeit" || header === "Dauer") {
@@ -405,6 +432,7 @@ function updateEndTime(rowIndex) {
 // Funktion zum Speichern der Tabelle als Excel-Datei
 document.getElementById('saveExcelButton').addEventListener('click', () => {
 	sortByTerminUhrzeit();
+	persistTerminRecords(tableData, 'bearbeiten', { filtered: tableData });
 	
 	const worksheet = XLSX.utils.json_to_sheet(tableData);
     const workbook = XLSX.utils.book_new();
@@ -429,14 +457,20 @@ document.getElementById('saveExcelButton').addEventListener('click', () => {
 	sortTableData();
 });
 
+document.getElementById('continueToTracking').addEventListener('click', () => {
+    if (tableData.length === 0) {
+        showWorkflowStatus('Es sind noch keine Termine geladen. Gehe zuerst zum Schritt „Filtern“ oder wähle eine Excel-Datei.', 'error');
+        return;
+    }
+
+    if (persistTerminRecords(tableData, 'tracking', { filtered: tableData })) {
+        window.location.href = 'termineTracking.html';
+    }
+});
+
 // Funktion zur Formatierung von Excel-Daten als Datum
 function formatExcelDate(serial) {
-    if (serial === null || serial === undefined)
-        return '';
-    const utcDays = Math.floor(serial) - 25569;
-    const utcValue = utcDays * 86400;
-    const date = new Date(utcValue * 1000);
-    return date.toLocaleDateString('de-DE'); // Format anpassen, falls nötig
+    return normalizeTerminDatum(serial);
 }
 
 document.getElementById('minUeber').addEventListener('click', () => {
@@ -669,7 +703,7 @@ function formatTime(timeString) {
 
 function sortByTerminUhrzeit() {
     tableData.sort((a, b) => {
-        return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
+        return compareTerminUhrzeit(a.Termin_Uhrzeit, b.Termin_Uhrzeit);
     });
 }
 
@@ -691,7 +725,7 @@ function sortTableData() {
 
             if (patientComparison === 0) {
                 // If Patient_Nr is equal, sort by Termin_Uhrzeit
-                return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
+                return compareTerminUhrzeit(a.Termin_Uhrzeit, b.Termin_Uhrzeit);
             }
             return patientComparison; // Return the comparison of Patient_Nr
         } 
@@ -699,13 +733,26 @@ function sortTableData() {
         // Both have exactly one appointment
         if (a.Anzahl_Termine === 1 && b.Anzahl_Termine === 1) {
             // Only sort by Termin_Uhrzeit
-            return a.Termin_Uhrzeit.localeCompare(b.Termin_Uhrzeit);
+            return compareTerminUhrzeit(a.Termin_Uhrzeit, b.Termin_Uhrzeit);
         }
 
         // Fallback for any cases not explicitly handled (like zero appointments)
         return 0;
     });
 }
+
+function restoreEditorWorkflow() {
+    const savedRecords = readTerminRecords();
+    if (!savedRecords || savedRecords.length === 0) return;
+
+    tableData = normalizeTerminRecords(savedRecords);
+    addUebersetzerPropertyIfMissing(tableData);
+    addAnzahlTerminePropertyIfMissing(tableData);
+    renderTable();
+    showWorkflowStatus(`${tableData.length} Termine aus dem vorherigen Schritt geladen. Änderungen werden automatisch zwischengespeichert.`);
+}
+
+restoreEditorWorkflow();
 
 
 

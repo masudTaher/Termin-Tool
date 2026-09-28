@@ -6,7 +6,14 @@
       <title>Termine Filtern</title>
       <link rel="stylesheet" href="style.css">
    </head>
-   <body>
+   <body data-page="filtern">
+      <header class="app-header">
+         <a class="app-brand" href="termineFiltern.html" aria-label="Termin Tool – Start">
+            <span class="app-brand-mark" aria-hidden="true">TT</span>
+            <span class="app-brand-copy"><strong>Termin Tool</strong><small>Dolmetscher- und Fahrdienst</small></span>
+         </a>
+         <span class="local-session-badge"><span aria-hidden="true"></span> Nur in diesem Tab gespeichert</span>
+      </header>
       <div class="wrapper">
          <!-- Sidebar -->
          <aside id="sidebar" class="sidebar">
@@ -18,17 +25,55 @@
          </aside>
          <!-- Main content -->
          <div class="container" id="container">
+	            <div class="page-heading">
+               <div><p class="page-kicker">ARBEITSABLAUF · SCHRITT 1 VON 3</p><h1>Termine filtern</h1><p>Excel-Datei laden, Treffer prüfen und mit der Bearbeitung fortfahren.</p></div>
+            </div>
 		             <div class="toggle-btn">
                <button id="toggleSidebar">☰</button>
             </div>
-            <div id="notification" class="notification" style="display: none;"></div>
+            <nav class="workflow-steps" aria-label="Arbeitsablauf">
+               <a class="workflow-step is-current" href="termineFiltern.html" aria-current="step"><span>1</span><strong>Filtern</strong></a>
+               <a class="workflow-step" href="termineBearbeiten.html"><span>2</span><strong>Bearbeiten</strong></a>
+               <a class="workflow-step" href="termineTracking.html"><span>3</span><strong>Live-Tracking</strong></a>
+            </nav>
+            <p id="workflowStatus" class="workflow-status" role="status">Lade deine Excel-Datei, um den Ablauf zu starten.</p>
+            <div id="notification" class="notification" role="alert" aria-live="assertive" style="display: none;"></div>
             <!-- Excel-Datei hochladen -->
 
 
 <div class="upload-section">
     <h2>Excel-Datei hochladen (Termine Filtern)</h2>
-    <input type="file" id="fileInput" accept=".xlsx, .xls" >
+    <p class="upload-hint">Datei aus FileMaker auswählen. Die Kontaktspalten bleiben für WhatsApp erhalten und werden in den Tabellen nicht eingeblendet.</p>
+    <input type="file" id="fileInput" aria-label="Excel-Datei auswählen" accept=".xlsx, .xls" >
 </div>
+
+            <details class="filter-rules-panel" id="filterRulesPanel">
+               <summary><span>Erweiterte Filterregeln</span><small>Ausnahmen und Suchbegriffe auf diesem PC anpassen</small></summary>
+               <p class="rules-intro">Die Änderungen werden in diesem Browser gespeichert. Du kannst eine Regel hinzufügen oder entfernen und den aktuellen Import danach neu filtern.</p>
+               <div class="filter-rules-grid">
+                  <section class="rule-group" aria-labelledby="alwaysKeepTitle">
+                     <h3 id="alwaysKeepTitle">Immer behalten</h3><p>Diese Wörter im Bemerkungsfeld lassen einen Termin im Ablauf.</p>
+                     <div class="rule-chips" id="alwaysKeepRules"></div>
+                     <div class="rule-add"><label class="visually-hidden" for="alwaysKeepInput">Behalten-Regel</label><input id="alwaysKeepInput" type="text" maxlength="80" placeholder="Wort oder Begriff"><button type="button" data-add-rule="alwaysKeep">Hinzufügen</button></div>
+                  </section>
+                  <section class="rule-group" aria-labelledby="alwaysExcludeTitle">
+                     <h3 id="alwaysExcludeTitle">Immer herausfiltern</h3><p>Diese Wörter im Bemerkungsfeld sortieren einen Termin aus.</p>
+                     <div class="rule-chips" id="alwaysExcludeRules"></div>
+                     <div class="rule-add"><label class="visually-hidden" for="alwaysExcludeInput">Ausschluss-Regel</label><input id="alwaysExcludeInput" type="text" maxlength="80" placeholder="Wort oder Begriff"><button type="button" data-add-rule="alwaysExclude">Hinzufügen</button></div>
+                  </section>
+                  <section class="rule-group" aria-labelledby="includeContainsTitle">
+                     <h3 id="includeContainsTitle">Zusätzliche Teiltreffer</h3><p>Ein Treffer in Bemerkung oder Ort genügt.</p>
+                     <div class="rule-chips" id="includeContainsRules"></div>
+                     <div class="rule-add"><label class="visually-hidden" for="includeContainsInput">Suchbegriff für Teiltreffer</label><input id="includeContainsInput" type="text" maxlength="80" placeholder="Suchbegriff"><button type="button" data-add-rule="includeContains">Hinzufügen</button></div>
+                  </section>
+                  <section class="rule-group" aria-labelledby="includeWholeWordsTitle">
+                     <h3 id="includeWholeWordsTitle">Ganze Wörter</h3><p>Der Begriff muss als eigenes Wort vorkommen.</p>
+                     <div class="rule-chips" id="includeWholeWordsRules"></div>
+                     <div class="rule-add"><label class="visually-hidden" for="includeWholeWordsInput">Suchwort</label><input id="includeWholeWordsInput" type="text" maxlength="80" placeholder="Suchwort"><button type="button" data-add-rule="includeWholeWords">Hinzufügen</button></div>
+                  </section>
+               </div>
+               <div class="rules-footer"><p id="filterRuleStatus" role="status">Standardregeln sind voreingestellt.</p><div><button type="button" id="reapplyFilterRules" class="button-primary">Auf aktuelle Datei anwenden</button><button type="button" id="resetFilterRules" class="button-secondary">Standardregeln wiederherstellen</button></div></div>
+            </details>
 
 
 
@@ -71,11 +116,13 @@
             </div>
             <!-- Aktionen -->
             <div class="action-section">
-               <button onclick="saveToExcel()">Änderungen speichern</button>
+               <button class="button-secondary" onclick="saveToExcel()">Excel-Datei herunterladen</button>
+               <button class="button-primary" onclick="continueToBearbeiten()">Weiter zum Bearbeiten <span aria-hidden="true">→</span></button>
             </div>
          </div>
       </div>
       <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+      <script src="workflowStorage.js"></script>
       <script src="termineFilternApp.js"></script>
       <script>
          const sidebar = document.getElementById('sidebar');

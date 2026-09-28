@@ -1,5 +1,7 @@
 let trackingData = [];
 let workbook;
+let trackingRefreshInterval = null;
+let activeWhatsAppAppointmentIndex = null;
 
 // Excel-Datei hochladen und einlesen
 document.getElementById('trackingFile').addEventListener('change', handleFileUpload);
@@ -9,14 +11,27 @@ function handleFileUpload(event) {
     if (!file)
         return;
 
+    event.target.value = '';
+
+    if (typeof XLSX === 'undefined') {
+        showWorkflowStatus('Die Excel-Funktion konnte nicht geladen werden. Bitte prüfe die Internetverbindung und lade die Seite erneut.', 'error');
+        return;
+    }
+
+    showWorkflowStatus(`${file.name} wird geprüft …`);
     const reader = new FileReader();
     reader.onload = (e) => {
+        try {
         const data = new Uint8Array(e.target.result);
         workbook = XLSX.read(data, {
             type: 'array'
         });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        trackingData = XLSX.utils.sheet_to_json(worksheet);
+        trackingData = normalizeTerminRecords(XLSX.utils.sheet_to_json(worksheet));
+        if (trackingData.length === 0) {
+            showWorkflowStatus('Die Excel-Datei enthält keine Termine.', 'error');
+            return;
+        }
 
         // Überprüfen, ob die Spalte "Status" vorhanden ist
         if (!trackingData[0] || !trackingData[0].hasOwnProperty('Status')) {
@@ -27,9 +42,21 @@ function handleFileUpload(event) {
         }
 
         renderTrackingTable(trackingData);
-        setInterval(() => updateAppointmentsStartingSoon(trackingData), 10000); // Check every 10 seconds
+        persistTerminRecords(trackingData, 'tracking', { filtered: trackingData, removed: [] });
+        showWorkflowStatus(`${trackingData.length} Termine geladen. Änderungen werden in diesem Browser-Tab zwischengespeichert.`);
+        startTrackingRefresh();
+        } catch (error) {
+            console.error('Fehler beim Einlesen der Excel-Datei:', error);
+            showWorkflowStatus('Die Excel-Datei konnte nicht verarbeitet werden. Bitte prüfe das Tabellenblatt und die Spaltenüberschriften.', 'error');
+        }
     };
+    reader.onerror = () => showWorkflowStatus('Die Excel-Datei konnte nicht gelesen werden. Bitte wähle sie erneut aus.', 'error');
     reader.readAsArrayBuffer(file);
+}
+
+function startTrackingRefresh() {
+    if (trackingRefreshInterval) return;
+    trackingRefreshInterval = setInterval(() => updateAppointmentsStartingSoon(trackingData), 10000);
 }
 
 // Function to update rows with appointments that are starting soon
@@ -72,7 +99,7 @@ function renderTrackingTable(data) {
     }
 
     tablesSection.style.display = 'flex'; // Show the tables section
-    actionSection.style.display = 'block'; // Show the action section
+    actionSection.style.display = 'flex'; // Show the action section
 
     data.forEach((termin, index) => {
         const row = document.createElement('tr');
@@ -100,23 +127,23 @@ function renderTrackingTable(data) {
         row.innerHTML = `
 			            <td>${index + 1}</td> <!-- Add the Lfd. Nr. column -->
 
-			<td contenteditable="true" onblur="updateTimeCell(event, ${index})">${termin.Termin_Uhrzeit || ''}</td>
-			<td>${termin.Patient_Nr || ''}</td>
+			<td contenteditable="true" onblur="updateTimeCell(event, ${index})">${escapeHtml(termin.Termin_Uhrzeit || '')}</td>
+			<td>${escapeHtml(termin.Patient_Nr || '')}</td>
 
             <td>
 				${(termin['Patienten Nr::Patienten_Vorname'] || termin['Patienten Nr::Patienten_Name'])
-					? (termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] ? ' ' + termin['Patienten Nr::Patienten_Name'] : '')
+					? escapeHtml((termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] ? ' ' + termin['Patienten Nr::Patienten_Name'] : ''))
 						: ''}				
 			</td>
 
-			<td>${termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : ''}</td>
-			            <td>${termin.Bemerkung || ''}</td>
+			<td>${escapeHtml(termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '')}</td>
+			            <td>${escapeHtml(termin.Bemerkung || '')}</td>
 
-            <td>${termin['Arzt Nr::Name'] || ''}</td>
-			            <td>${termin['Arzt Nr::Vorname'] || ''}</td>
+            <td>${escapeHtml(termin['Arzt Nr::Name'] || '')}</td>
+			            <td>${escapeHtml(termin['Arzt Nr::Vorname'] || '')}</td>
 
-			<td contenteditable="true" oninput="updateCell(event, ${index}, 'Übersetzer')">${termin.Übersetzer || ''}</td>
-            <td>${termin.Anzahl_Termine || ''}</td>
+			<td contenteditable="true" oninput="updateCell(event, ${index}, 'Übersetzer')">${escapeHtml(termin.Übersetzer || '')}</td>
+			<td>${escapeHtml(termin.Anzahl_Termine || '')}</td>
 			<td>
                 <select data-index="${index}" class="status-select">
                     <option value="offen" ${termin.Status === "offen" ? "selected" : ""}>Offen</option>
@@ -126,7 +153,12 @@ function renderTrackingTable(data) {
                     <option value="losgefahren" ${termin.Status === "losgefahren" ? "selected" : ""}>Losgefahren</option>
                 </select>
             </td>
-			          <td><button class="delete-button" data-index="${index}">Löschen</button></td>
+		          <td>
+                <div class="tracking-row-actions">
+                  <button type="button" class="whatsapp-button" data-index="${index}" aria-label="WhatsApp-Nachricht für diesen Termin vorbereiten" title="Nachricht an den Übersetzer vorbereiten">WhatsApp</button>
+                  <button type="button" class="delete-button" data-index="${index}">Löschen</button>
+                </div>
+              </td>
 
 
         `;
@@ -137,9 +169,262 @@ function renderTrackingTable(data) {
     document.querySelectorAll('.delete-button').forEach(button =>
         button.addEventListener('click', deleteRow));
 
+    document.querySelectorAll('.whatsapp-button').forEach(button =>
+        button.addEventListener('click', event => openWhatsAppModal(Number(event.currentTarget.dataset.index))));
+
     document.querySelectorAll('.status-select').forEach(select =>
         select.addEventListener('change', updateStatusFromSelect));
 }
+
+
+function normalizeAppointmentColumnName(name) {
+    return String(name || '')
+        .toLocaleLowerCase('de-DE')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function getAppointmentContactEntries(termin, person, kind) {
+    const keys = Object.keys(termin || {});
+    const personPattern = person === 'patient' ? /patient/ : /arzt|praxis/;
+    const kindPattern = kind === 'phone'
+        ? /telefon|rufnummer|phone|handy|mobil|mobile|cell/
+        : /adresse|anschrift|strasse|street|hausnummer|plz|postleitzahl|postal|zip|ort|stadt|city|str$/;
+
+    return keys
+        .filter(key => {
+            const normalized = normalizeAppointmentColumnName(key);
+            return personPattern.test(normalized) && kindPattern.test(normalized);
+        })
+        .map(key => ({ key, value: String(termin[key] ?? '').trim() }))
+        .filter(entry => entry.value)
+        .filter((entry, index, entries) => entries.findIndex(other =>
+            other.value.toLocaleLowerCase('de-DE') === entry.value.toLocaleLowerCase('de-DE')
+        ) === index);
+}
+
+function getAppointmentContactValues(termin, person, kind) {
+    return getAppointmentContactEntries(termin, person, kind).map(entry => entry.value);
+}
+
+function getPatientAddressFields(termin) {
+    return getAppointmentContactEntries(termin, 'patient', 'address').map(({ key, value }) => {
+        const normalized = normalizeAppointmentColumnName(key);
+        let label = 'Patientenadresse';
+        if (normalized.includes('deutschland')) label += ' (Deutschland)';
+        else if (normalized.includes('qatar') || normalized.includes('katar')) label += ' (Katar)';
+        return [label, value];
+    });
+}
+
+function getDoctorAddress(termin) {
+    const entries = getAppointmentContactEntries(termin, 'doctor', 'address');
+    const findValue = pattern => entries.find(entry => pattern.test(normalizeAppointmentColumnName(entry.key)))?.value || '';
+    const street = findValue(/strasse|street|hausnummer|adresse|anschrift/);
+    const postalCode = findValue(/plz|postleitzahl|postal|zip/);
+    const city = findValue(/ort$|stadt$|city$/);
+    const locality = [postalCode, city].filter(Boolean).join(' ');
+    const formattedAddress = [street, locality].filter(Boolean).join(', ');
+    return formattedAddress || entries.map(entry => entry.value).join(', ');
+}
+
+function getWhatsAppDataHint(termin) {
+    const missing = [];
+    if (getPatientAddressFields(termin).length === 0) missing.push('Patientenadresse');
+    if (getAppointmentContactValues(termin, 'patient', 'phone').length === 0) missing.push('Patiententelefonnummer');
+    if (!getDoctorAddress(termin)) missing.push('Arztadresse');
+    if (getAppointmentContactValues(termin, 'doctor', 'phone').length === 0) missing.push('Arzttelefonnummer');
+
+    if (missing.length) {
+        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Die Dolmetscherin/der Dolmetscher wird aus der Spalte „Übersetzer“ übernommen. „Patienten Nr“ wird nicht als Telefonnummer verwendet.`;
+    }
+    return 'Adressen und Telefonnummern aus den Excel-Spalten sowie der Name aus „Übersetzer“ werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden.';
+}
+
+function formatWhatsAppDate(value) {
+    if (value === null || value === undefined || value === '') return '';
+
+    const numericValue = typeof value === 'number'
+        ? value
+        : (/^\d+(?:\.\d+)?$/.test(String(value).trim()) ? Number(value) : NaN);
+    if (Number.isFinite(numericValue) && numericValue >= 1 && numericValue < 100000) {
+        const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(numericValue) * 86400000);
+        return `${String(date.getUTCDate()).padStart(2, '0')}.${String(date.getUTCMonth() + 1).padStart(2, '0')}.${date.getUTCFullYear()}`;
+    }
+
+    const text = String(value).trim();
+    const germanDate = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+    if (germanDate) {
+        const year = germanDate[3].length === 2 ? `20${germanDate[3]}` : germanDate[3];
+        return `${germanDate[1].padStart(2, '0')}.${germanDate[2].padStart(2, '0')}.${year}`;
+    }
+
+    const isoDate = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoDate) return `${isoDate[3].padStart(2, '0')}.${isoDate[2].padStart(2, '0')}.${isoDate[1]}`;
+    return text;
+}
+
+function formatWhatsAppTime(value) {
+    if (value === null || value === undefined || value === '') return '';
+
+    const numericValue = typeof value === 'number'
+        ? value
+        : (/^\d*\.\d+$/.test(String(value).trim()) ? Number(value) : NaN);
+    if (Number.isFinite(numericValue) && numericValue >= 0 && numericValue < 1) {
+        const totalMinutes = Math.round(numericValue * 24 * 60) % (24 * 60);
+        return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+    }
+
+    const text = String(value).trim();
+    const time = text.match(/^(\d{1,2})[:.](\d{2})/);
+    return time ? `${time[1].padStart(2, '0')}:${time[2]}` : text;
+}
+
+function createWhatsAppAppointmentMessage(termin, includeNote) {
+    const interpreter = String(termin.Übersetzer || '').trim().replace(/[\r\n]+/g, ' ');
+    const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    const doctorName = String(termin['Arzt Nr::Name'] || '').trim();
+    const appointmentLocation = String(termin['Arzt Nr::Vorname'] || '').trim();
+    const patientAddressFields = getPatientAddressFields(termin);
+    const patientPhone = getAppointmentContactValues(termin, 'patient', 'phone').join(' / ');
+    const doctorAddress = getDoctorAddress(termin);
+    const doctorPhone = getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
+    const sections = [
+        {
+            title: 'TERMIN',
+            fields: [
+                ['Datum', formatWhatsAppDate(termin.Termin_Datum)],
+                ['Uhrzeit', formatWhatsAppTime(termin.Termin_Uhrzeit)]
+            ]
+        },
+        {
+            title: 'PATIENT',
+            fields: [
+                ['Name', patientName],
+                ...patientAddressFields,
+                ['Telefon', patientPhone]
+            ]
+        },
+        {
+            title: 'ARZT / PRAXIS',
+            fields: [
+                ['Name', doctorName],
+                ['Ort', appointmentLocation],
+                ['Adresse', doctorAddress],
+                ['Telefon', doctorPhone]
+            ]
+        },
+        ...(includeNote && termin.Bemerkung
+            ? [{ title: 'BEMERKUNG', fields: [['', String(termin.Bemerkung).trim()]] }]
+            : [])
+    ].map(section => ({
+        ...section,
+        fields: section.fields.filter(([, value]) => value)
+    })).filter(section => section.fields.length > 0);
+
+    const details = sections.flatMap(section => [
+        `*${section.title}*`,
+        ...section.fields.map(([label, value]) => label ? `${label}: ${value}` : String(value)),
+        ''
+    ]);
+
+    return [
+        '*TERMININFORMATIONEN*',
+        '',
+        interpreter ? `Hallo ${interpreter},` : 'Hallo,',
+        '',
+        'hier findest du die Informationen zu deinem Dolmetschtermin:',
+        '',
+        ...details,
+        'Bitte bestätige kurz den Erhalt des Auftrags. Vielen Dank.'
+    ].join('\n').trim();
+}
+
+function updateWhatsAppMessagePreview() {
+    const index = activeWhatsAppAppointmentIndex;
+    const termin = Number.isInteger(index) ? trackingData[index] : null;
+    if (!termin) return;
+
+    document.getElementById('whatsappMessage').value = createWhatsAppAppointmentMessage(
+        termin,
+        document.getElementById('includeWhatsAppNote').checked
+    );
+    document.getElementById('whatsappDataHint').textContent = getWhatsAppDataHint(termin);
+    document.getElementById('whatsappCopyStatus').textContent = '';
+}
+
+function openWhatsAppModal(index) {
+    const termin = trackingData[index];
+    if (!termin) return;
+
+    const interpreter = String(termin.Übersetzer || '').trim();
+    if (!interpreter) {
+        alert('Bitte trage zuerst in der Spalte „Übersetzer“ den Namen ein.');
+        return;
+    }
+
+    activeWhatsAppAppointmentIndex = index;
+    document.getElementById('whatsappRecipient').textContent = `Empfänger laut Terminplan: ${interpreter}. Wähle in WhatsApp Web denselben Namen aus.`;
+    document.getElementById('includeWhatsAppNote').checked = true;
+    updateWhatsAppMessagePreview();
+
+    const modal = document.getElementById('whatsappModal');
+    modal.style.display = 'block';
+    modal.setAttribute('aria-hidden', 'false');
+    document.getElementById('whatsappMessage').focus();
+}
+
+function closeWhatsAppModal() {
+    const modal = document.getElementById('whatsappModal');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    activeWhatsAppAppointmentIndex = null;
+}
+
+document.getElementById('includeWhatsAppNote').addEventListener('change', updateWhatsAppMessagePreview);
+document.getElementById('closeWhatsAppModal').addEventListener('click', closeWhatsAppModal);
+document.getElementById('cancelWhatsAppButton').addEventListener('click', closeWhatsAppModal);
+document.getElementById('copyWhatsAppMessageButton').addEventListener('click', async () => {
+    const textarea = document.getElementById('whatsappMessage');
+    const status = document.getElementById('whatsappCopyStatus');
+    try {
+        await navigator.clipboard.writeText(textarea.value);
+        status.textContent = 'Nachricht kopiert. Füge sie in WhatsApp mit Strg+V ein.';
+    } catch (error) {
+        textarea.focus();
+        textarea.select();
+        const copied = document.execCommand('copy');
+        status.textContent = copied
+            ? 'Nachricht kopiert. Füge sie in WhatsApp mit Strg+V ein.'
+            : 'Kopieren nicht möglich. Markiere den Text und drücke Strg+C.';
+    }
+});
+document.getElementById('whatsappModal').addEventListener('click', event => {
+    if (event.target.id === 'whatsappModal') closeWhatsAppModal();
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.getElementById('whatsappModal').style.display === 'block') {
+        closeWhatsAppModal();
+    }
+});
+document.getElementById('openWhatsAppButton').addEventListener('click', () => {
+    const message = document.getElementById('whatsappMessage').value.trim();
+    if (!message) {
+        alert('Bitte gib einen Nachrichtentext ein.');
+        document.getElementById('whatsappMessage').focus();
+        return;
+    }
+
+    // WhatsApps Click-to-Chat erwartet URL-kodierten UTF-8-Text. encodeURIComponent
+    // kodiert auch Leerzeichen explizit als %20 und erhält Sonderzeichen/Umlaute.
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    closeWhatsAppModal();
+});
 
 
 function updateTimeCell(event, index) {
@@ -153,7 +438,7 @@ function updateTimeCell(event, index) {
 
     // Update der Daten im Array
     if (trackingData && trackingData[index]) {
-        trackingData[index].Termin_Uhrzeit = newValue; // Update the time in the data array
+        trackingData[index].Termin_Uhrzeit = normalizeTerminUhrzeit(newValue); // Normalize edited time
     } else {
         console.error('trackingData array is not defined or index is out of bounds');
     }
@@ -163,6 +448,7 @@ function updateTimeCell(event, index) {
 
     // Tabelle neu rendern
     renderTrackingTable(trackingData);
+    persistTerminRecords(trackingData, 'tracking');
 }
 
 
@@ -181,6 +467,7 @@ function deleteRow(event) {
 	
         // Tabelle neu rendern
         renderTrackingTable(trackingData);
+        persistTerminRecords(trackingData, 'tracking');
     }
 }
 
@@ -197,6 +484,7 @@ function updateCell(event, index, fieldName) {
     // Check if the data array is valid
     if (trackingData && trackingData[index]) {
         trackingData[index][fieldName] = newValue; // Update the entry in the data array
+        persistTerminRecords(trackingData, 'tracking');
     } else {
         console.error('trackingData array is not defined or index is out of bounds');
     }
@@ -225,6 +513,7 @@ function updateStatusFromSelect(event) {
     } else {
         row.style.backgroundColor = ''; // Reset to default
     }
+    persistTerminRecords(trackingData, 'tracking');
 }
 
 // Funktion zur Überprüfung, ob ein Termin in Kürze beginnt oder an diesem Tag noch stattfindet
@@ -232,10 +521,14 @@ function isAppointmentStartingSoonOrOngoing(termin) {
     const now = new Date();
 
     // Datumsformat anpassen (TT.MM.JJJJ -> JJJJ-MM-TT)
-    const [day, month, year] = termin.Termin_Datum.split('.');
+    const dateMatch = normalizeTerminDatum(termin?.Termin_Datum).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!dateMatch) return false;
+    const [, day, month, year] = dateMatch;
+    const time = normalizeTerminUhrzeit(termin?.Termin_Uhrzeit);
+    if (!time) return false;
 
     // Füge führende Nullen hinzu, falls erforderlich
-    const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${termin.Termin_Uhrzeit}`;
+    const formattedDate = `${year}-${month}-${day}T${time}`;
 
     // Startzeit berechnen
     const startDateTime = new Date(formattedDate);
@@ -261,6 +554,7 @@ function updateWorkbook() {
 // Funktion zum Speichern und Herunterladen der aktualisierten Excel-Datei
 function saveAndDownloadExcel() {
     updateWorkbook();
+    persistTerminRecords(trackingData, 'tracking');
 
     const excelData = XLSX.write(workbook, {
         bookType: 'xlsx',
@@ -398,29 +692,27 @@ function toggleAddRowModal() {
 
 // Event-Listener für den "Hinzufügen"-Button
 document.getElementById('confirmAddRowButton').addEventListener('click', () => {
-    
-// Pflichtfelder definieren
-const requiredFields = {
-    'terminUhrzeit': 'Termin Uhrzeit',
-    'patientNr': 'Patienten Nr',
-    'patientName': 'Patienten Name',
-    'patientVorname': 'Patienten Vorname'
-};
-
-// Überprüfen, ob alle Pflichtfelder ausgefüllt sind
-for (let field in requiredFields) {
-    if (!document.getElementById(field).value) {
-        alert(`Bitte füllen Sie das Feld "${requiredFields[field]}" aus.`); // Fehlermeldung anzeigen
-        return; // Abbrechen, wenn ein Feld leer ist
+    if (trackingData.length === 0) {
+        alert('Bitte lade zuerst eine Terminliste hoch oder gehe über die vorherigen Schritte hierher.');
+        return;
     }
-}
-	
-	
-	// Dynamische Spalten aus der ersten Zeile holen (wenn vorhanden)
-    const headers = Object.keys(trackingData[0]);
 
+    const requiredFields = {
+        'terminUhrzeit': 'Startzeit',
+        'patientNr': 'Patienten-Nr.',
+        'patientGeschlecht': 'Geschlecht',
+        'patientName': 'Nachname',
+        'patientVorname': 'Vorname'
+    };
 
- // Find the first non-empty 'Termin_Datum'
+    for (const [field, label] of Object.entries(requiredFields)) {
+        if (!document.getElementById(field).value) {
+            alert(`Bitte fülle das Pflichtfeld „${label}“ aus.`);
+            return;
+        }
+    }
+
+    // Datum des aktuellen Tagesplans übernehmen.
     let firstTerminDatum = 'unbekannt';
     for (let i = 0; i < trackingData.length; i++) {
         if (trackingData[i]['Termin_Datum']) {
@@ -432,23 +724,26 @@ for (let field in requiredFields) {
     // Ensure firstTerminDatum is treated as a string
     firstTerminDatum = firstTerminDatum ? firstTerminDatum : 'unbekannt';
 
-    // Erstelle eine neue Zeile basierend auf diesen Spalten
-    let newRow = {
+    // Die bestehende Excel-Spaltenstruktur erhalten, ohne Daten eines anderen
+    // Patienten in die neue Zeile zu kopieren.
+    const newRow = Object.fromEntries(Object.keys(trackingData[0]).map(header => [header, '']));
+    Object.assign(newRow, {
         "Termin_Datum": firstTerminDatum,
         "Termin_Uhrzeit": formatTimeToHHMMSS(document.getElementById('terminUhrzeit').value),
         "Patient_Nr": parseInt(document.getElementById('patientNr').value,10),
         "Patienten Nr::Patienten_Name": document.getElementById('patientName').value,
-        "Arzt_Nr": document.getElementById('arztNr').value,
+        "Arzt_Nr": '',
         "Arzt Nr::Name": document.getElementById('arztName').value,
         "Bemerkung": document.getElementById('bemerkung').value,
-        "Kostengarantie Ja Nein": document.getElementById('kostengarantie').value,
+        "Kostengarantie Ja Nein": '',
         "Patienten Nr::Patienten_Geschlecht": document.getElementById('patientGeschlecht').value,
-        "Patienten Nr::Patienten_Status": document.getElementById('patientStatus').value,
+        "Patienten Nr::Patienten_Status": '',
         "Patienten Nr::Patienten_Vorname": document.getElementById('patientVorname').value,
         "Arzt Nr::Vorname": document.getElementById('arztVorname').value,
         "Übersetzer": document.getElementById('uebersetzer').value,
 		"Status": 'offen'
-    };
+    });
+    if (Object.prototype.hasOwnProperty.call(trackingData[0], 'Dauer')) newRow.Dauer = '2';
 
     // Füge die neue Zeile zu trackingData hinzu
     trackingData.push(newRow);
@@ -462,6 +757,8 @@ for (let field in requiredFields) {
 
     // Tabelle neu rendern
     renderTrackingTable(trackingData);
+
+    persistTerminRecords(trackingData, 'tracking');
 	
 	// Leere die Eingabefelder im Modal
     document.getElementById('addRowForm').reset();
@@ -496,12 +793,22 @@ function formatTimeToHHMMSS(timeString) {
     return `${timeString}:00`; // Anhängen von ":00" für die Sekunden
 }
 
+function restoreTrackingWorkflow() {
+    const savedRecords = readTerminRecords();
+    if (!savedRecords || savedRecords.length === 0) return;
+
+    trackingData = normalizeTerminRecords(savedRecords.map(row => ({ Status: 'offen', ...row })));
+    renderTrackingTable(trackingData);
+    showWorkflowStatus(`${trackingData.length} Termine aus dem vorherigen Schritt geladen. Änderungen werden automatisch zwischengespeichert.`);
+    startTrackingRefresh();
+}
+
+restoreTrackingWorkflow();
+
 
 function sortTrackingDataByTime(data) {
     return data.sort((a, b) => {
-        const timeA = new Date(`1970-01-01T${a.Termin_Uhrzeit || '00:00:00'}`);
-        const timeB = new Date(`1970-01-01T${b.Termin_Uhrzeit || '00:00:00'}`);
-        return timeA - timeB; // Sortiere aufsteigend
+        return compareTerminUhrzeit(a.Termin_Uhrzeit, b.Termin_Uhrzeit);
     });
 }
 
