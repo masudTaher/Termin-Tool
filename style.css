@@ -851,7 +851,7 @@ tbody tr:hover {
 /* Eine einheitliche Statusfarbe für jede Zelle der Live-Tracking-Zeile,
    einschließlich Startzeit, Übersetzer und Statusauswahl. */
 #dataTable tbody tr.tracking-status-open > td {
-  background: #fff4bf !important;
+  background: #fff !important;
 }
 
 #dataTable tbody tr.tracking-status-departed > td {
