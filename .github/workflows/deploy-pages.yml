@@ -1,9 +1,9 @@
-name: Publish Termin Tool preview
+name: Publish Termin Tool
 
 on:
   push:
     branches:
-      - codex/whatsapp-interpreter-send
+      - main
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - name: Check out preview branch
+      - name: Check out published branch
         uses: actions/checkout@v6
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
