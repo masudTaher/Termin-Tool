@@ -1,0 +1,41 @@
+name: Publish Termin Tool preview
+
+on:
+  push:
+    branches:
+      - codex/whatsapp-interpreter-send
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Check out preview branch
+        uses: actions/checkout@v6
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Prepare website files
+        run: |
+          mkdir _site
+          cp index.html termineFiltern.html termineBearbeiten.html termineTracking.html style.css workflowStorage.js termineFilternApp.js termineBearbeitenApp.js termineTrackingApp.js _site/
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Publish website
+        id: deployment
+        uses: actions/deploy-pages@v4
