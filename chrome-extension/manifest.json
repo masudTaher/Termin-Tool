@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Termin-Tool – WhatsApp-Tab wiederverwenden",
+  "version": "1.0.0",
+  "description": "Öffnet den vorbereiteten Auftrag im bereits geöffneten WhatsApp-Web-Tab.",
+  "permissions": ["windows"],
+  "host_permissions": [
+    "https://masudtaher.github.io/Termin-Tool/*",
+    "https://web.whatsapp.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://masudtaher.github.io/Termin-Tool/*"],
+      "js": ["termin-tool-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

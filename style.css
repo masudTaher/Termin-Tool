@@ -848,6 +848,37 @@ tbody tr:hover {
   background: #eef6fc !important;
 }
 
+/* Eine einheitliche Statusfarbe für jede Zelle der Live-Tracking-Zeile,
+   einschließlich Startzeit, Übersetzer und Statusauswahl. */
+#dataTable tbody tr.tracking-status-open > td {
+  background: #fff4bf !important;
+}
+
+#dataTable tbody tr.tracking-status-departed > td {
+  background: #ffe5a8 !important;
+}
+
+#dataTable tbody tr.tracking-status-completed > td {
+  background: #dff1e3 !important;
+}
+
+#dataTable tbody tr.tracking-status-cancelled > td {
+  background: #f8dddd !important;
+}
+
+#dataTable tbody tr > td select {
+  background: transparent;
+}
+
+#dataTable tbody td {
+  font-weight: 700;
+}
+
+#dataTable thead th,
+#dataTable tbody td select {
+  font-weight: 750;
+}
+
 .action-section {
   align-items: center;
   justify-content: flex-end;

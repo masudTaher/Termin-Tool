@@ -1,7 +1,21 @@
 let trackingData = [];
 let workbook;
-let trackingRefreshInterval = null;
 let activeWhatsAppAppointmentIndex = null;
+
+window.addEventListener('message', event => {
+    if (event.source !== window || event.origin !== window.location.origin) return;
+    if (event.data?.source !== 'termin-tool-whatsapp-extension') return;
+
+    const status = document.getElementById('whatsappCopyStatus');
+    if (event.data.type === 'opened') {
+        status.textContent = event.data.reused
+            ? 'WhatsApp Web wurde im bereits geöffneten Tab aufgerufen. Bitte Empfänger und Nachricht prüfen.'
+            : 'WhatsApp Web wurde geöffnet. Bitte Empfänger und Nachricht prüfen.';
+    } else if (event.data.type === 'error') {
+        status.textContent = 'Die Erweiterung konnte WhatsApp nicht öffnen. Klicke noch einmal, um den normalen Browserweg zu verwenden.';
+        updateWhatsAppBrowserHint();
+    }
+});
 
 // Excel-Datei hochladen und einlesen
 document.getElementById('trackingFile').addEventListener('change', handleFileUpload);
@@ -44,7 +58,6 @@ function handleFileUpload(event) {
         renderTrackingTable(trackingData);
         persistTerminRecords(trackingData, 'tracking', { filtered: trackingData, removed: [] });
         showWorkflowStatus(`${trackingData.length} Termine geladen. Änderungen werden in diesem Browser-Tab zwischengespeichert.`);
-        startTrackingRefresh();
         } catch (error) {
             console.error('Fehler beim Einlesen der Excel-Datei:', error);
             showWorkflowStatus('Die Excel-Datei konnte nicht verarbeitet werden. Bitte prüfe das Tabellenblatt und die Spaltenüberschriften.', 'error');
@@ -54,34 +67,22 @@ function handleFileUpload(event) {
     reader.readAsArrayBuffer(file);
 }
 
-function startTrackingRefresh() {
-    if (trackingRefreshInterval) return;
-    trackingRefreshInterval = setInterval(() => updateAppointmentsStartingSoon(trackingData), 10000);
+function getTrackingStatusClass(termin) {
+    const status = String(termin?.Status || 'offen').trim().toLocaleLowerCase('de-DE');
+    if (status === 'beendet' || status === 'alleine') return 'tracking-status-completed';
+    if (status === 'storniert') return 'tracking-status-cancelled';
+    if (status === 'losgefahren') return 'tracking-status-departed';
+    return 'tracking-status-open';
 }
 
-// Function to update rows with appointments that are starting soon
-function updateAppointmentsStartingSoon(data) {
-    const tableBody = document.getElementById('tableBody');
-    const rows = tableBody.querySelectorAll('tr');
-
-    rows.forEach((row, index) => {
-        const termin = data[index];
-
-        // Check if the appointment is starting soon
-        if (isAppointmentStartingSoonOrOngoing(termin) && termin.Status === "offen") {
-            row.style.backgroundColor = '#cce5ff'; // Highlight rows that are starting soon with a light blue color
-        } else if (termin.Status === "beendet" || termin.Status === "alleine") {
-            row.style.backgroundColor = '#ddffdd'; // Green for completed appointments
-        } else if (termin.Status === "storniert") {
-            row.style.backgroundColor = '#ffdddd'; // Red for canceled appointments
-        } else if (termin.Status === "losgefahren") {
-            row.style.backgroundColor = '#ffffcc'; // Yellow for departed appointments
-        } else {
-            row.style.backgroundColor = ''; // Reset to default
-        }
-    });
-
-    console.log("Appointments updated for those starting soon."); // Optional logging for debugging
+function applyTrackingStatusColor(row, termin) {
+    row.classList.remove(
+        'tracking-status-open',
+        'tracking-status-departed',
+        'tracking-status-completed',
+        'tracking-status-cancelled'
+    );
+    row.classList.add(getTrackingStatusClass(termin));
 }
 
 // Render the tracking table
@@ -90,6 +91,7 @@ function renderTrackingTable(data) {
     const tablesSection = document.querySelector('.tables-section');
     const actionSection = document.querySelector('.action-section');
 
+    sortTrackingDataByTime(data);
     tableBody.innerHTML = ''; // Clear previous content
 
     if (data.length === 0) {
@@ -104,20 +106,13 @@ function renderTrackingTable(data) {
     const columnLabels = ['Lfd. Nr.', 'Start', 'Patienten-Nr.', 'Patient', 'Geschlecht', 'Bemerkung', 'Arzt', 'Ort', 'Übersetzer', 'Anzahl Termine', 'Status', 'Aktion'];
 
     data.forEach((termin, index) => {
+        if (!String(termin.Übersetzer || '').trim()) {
+            const interpreterFromRemark = parseAppointmentRemark(termin.Bemerkung).interpreterName;
+            if (interpreterFromRemark) termin.Übersetzer = interpreterFromRemark;
+        }
         const row = document.createElement('tr');
 
-        // Check if the appointment is starting soon
-        if (isAppointmentStartingSoonOrOngoing(termin) && termin.Status === "offen") {
-            row.style.backgroundColor = '#cce5ff'; // Highlight rows that are starting soon with a light blue color
-        } else if (termin.Status === "beendet" || termin.Status === "alleine") {
-            row.style.backgroundColor = '#ddffdd'; // Green for completed appointments
-        } else if (termin.Status === "storniert") {
-            row.style.backgroundColor = '#ffdddd'; // Red for canceled appointments
-        } else if (termin.Status === "losgefahren") {
-            row.style.backgroundColor = '#ffffcc'; // Yellow for departed appointments
-        } else {
-            row.style.backgroundColor = ''; // Reset to default
-        }
+        applyTrackingStatusColor(row, termin);
 
         let endTime = '';
         if (termin.Termin_Uhrzeit) {
@@ -144,7 +139,7 @@ function renderTrackingTable(data) {
             <td>${escapeHtml(termin['Arzt Nr::Name'] || '')}</td>
 			            <td>${escapeHtml(termin['Arzt Nr::Vorname'] || '')}</td>
 
-			<td contenteditable="true" oninput="updateCell(event, ${index}, 'Übersetzer')">${escapeHtml(termin.Übersetzer || '')}</td>
+			<td contenteditable="true" oninput="updateCell(event, ${index}, 'Übersetzer')" title="${escapeHtml(termin.Übersetzer ? '' : 'Aus der Bemerkung übernommen, falls erkennbar')}">${escapeHtml(getAppointmentInterpreterName(termin))}</td>
 			<td>${escapeHtml(termin.Anzahl_Termine || '')}</td>
 			<td>
                 <select data-index="${index}" class="status-select">
@@ -241,15 +236,17 @@ function getWhatsAppDataHint(termin) {
     if (!getDoctorAddress(termin)) missing.push('Arztadresse');
     if (getAppointmentContactValues(termin, 'doctor', 'phone').length === 0) missing.push('Arzttelefonnummer');
     const remark = parseAppointmentRemark(termin.Bemerkung);
+    const interpreter = getAppointmentInterpreterName(termin);
     const remarkHint = [
-        remark.companionName ? `Mögliche Begleitperson erkannt: ${remark.companionName}.` : '',
-        remark.enteredBy ? 'Die letzte Bemerkungszeile wird als „Eingetragen von“ übernommen.' : ''
+        remark.interpreterName ? `Erster Name aus der Bemerkung als Dolmetscher/in erkannt: ${remark.interpreterName}.` : '',
+        remark.companionNames.length ? `Weitere Namen als Begleitperson(en) erkannt: ${remark.companionNames.join(', ')}.` : '',
+        remark.enteredBy ? `Letzte Bemerkungszeile: Eingetragen durch ${remark.enteredBy}.` : ''
     ].filter(Boolean).join(' ');
 
     if (missing.length) {
-        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Die Dolmetscherin/der Dolmetscher wird aus der Spalte „Übersetzer“ übernommen. „Patienten Nr“ wird nicht als Telefonnummer verwendet. ${remarkHint}`.trim();
+        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Dolmetscher/in: ${interpreter || 'nicht erkannt'}. „Patienten Nr“ wird nicht als Telefonnummer verwendet. ${remarkHint}`.trim();
     }
-    return `Adressen und Telefonnummern aus den Excel-Spalten sowie der Name aus „Übersetzer“ werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden. ${remarkHint}`.trim();
+    return `Adressen und Telefonnummern aus den Excel-Spalten sowie Dolmetscher/in ${interpreter || 'aus der Bemerkung'} werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden. ${remarkHint}`.trim();
 }
 
 function formatWhatsAppDate(value) {
@@ -319,11 +316,18 @@ function parseAppointmentRemark(value) {
         'optag', 'patient', 'patientin', 'praxis', 'station', 'tag', 'termin', 'vorbereitung'
     ]);
 
-    let companionName = '';
-    let companionLineIndex = -1;
+    let explicitInterpreter = '';
+    const nameLines = [];
+    const explicitCompanions = [];
+    const noteLineIndexes = new Set();
     for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index];
-        const explicitCompanion = line.match(/^(?:begleitperson|begleitung)\s*:\s*(.+)$/iu);
+        const explicitInterpreterMatch = line.match(/^(?:dolmetscher(?:\/in)?|uebersetzer(?:\/in)?|übersetzer(?:\/in)?)\s*:\s*(.+)$/iu);
+        if (explicitInterpreterMatch) {
+            explicitInterpreter = explicitInterpreterMatch[1].trim();
+            continue;
+        }
+        const explicitCompanion = line.match(/^(?:begleitperson(?:en)?|begleitung)\s*:\s*(.+)$/iu);
         const candidate = (explicitCompanion?.[1] || line).trim();
         const words = candidate.split(/\s+/);
         const normalizedWords = words.map(normalizeAppointmentColumnName).filter(Boolean);
@@ -334,29 +338,39 @@ function parseAppointmentRemark(value) {
             && words.every(word => nameWordPattern.test(word))
             && !hasOperationalTerm;
 
-        if (explicitCompanion || looksLikeName) {
-            companionName = candidate;
-            companionLineIndex = index;
-            break;
-        }
+        if (explicitCompanion) explicitCompanions.push({ name: candidate, index });
+        else if (looksLikeName) nameLines.push({ name: candidate, index });
+        else noteLineIndexes.add(index);
     }
 
+    const interpreterEntry = nameLines.shift();
+    const interpreterName = explicitInterpreter || interpreterEntry?.name || '';
+    const companions = [...nameLines, ...explicitCompanions]
+        .sort((left, right) => left.index - right.index);
+
     return {
-        companionName,
+        interpreterName,
+        companionNames: companions.map(entry => entry.name),
+        companionName: companions[0]?.name || '',
         enteredBy,
-        noteLines: lines.filter((_, index) => index !== companionLineIndex)
+        noteLines: lines.filter((_, index) => noteLineIndexes.has(index))
     };
 }
 
+function getAppointmentInterpreterName(termin) {
+    return String(termin?.Übersetzer || '').trim()
+        || parseAppointmentRemark(termin?.Bemerkung).interpreterName;
+}
+
 function createWhatsAppAppointmentMessage(termin, includeNote) {
-    const interpreter = String(termin.Übersetzer || '').trim().replace(/[\r\n]+/g, ' ');
+    const interpreter = getAppointmentInterpreterName(termin).replace(/[\r\n]+/g, ' ');
     const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
         .map(value => String(value || '').trim())
         .filter(Boolean)
         .join(' ');
     const patientRecordNumber = getPatientRecordNumber(termin);
     const remark = parseAppointmentRemark(termin.Bemerkung);
-    const isCompanionAppointment = Boolean(remark.companionName);
+    const isCompanionAppointment = remark.companionNames.length > 0;
     const doctorName = String(termin['Arzt Nr::Name'] || '').trim();
     const appointmentLocation = String(termin['Arzt Nr::Vorname'] || '').trim();
     const patientAddressFields = getPatientAddressFields(termin).map(([label, value]) => [
@@ -366,18 +380,12 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
     const patientPhone = getAppointmentContactValues(termin, 'patient', 'phone').join(' / ');
     const doctorAddress = getDoctorAddress(termin);
     const doctorPhone = getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
+    const patientHeader = [
+        isCompanionAppointment ? `Hauptpatient/in: ${patientName}` : `Patient/in: ${patientName}`,
+        patientRecordNumber ? `Aktennummer: ${patientRecordNumber}` : '',
+        ...(isCompanionAppointment ? [`Begleitperson(en): ${remark.companionNames.join(', ')}`] : [])
+    ].filter(line => !line.endsWith(': '));
     const sections = [
-        {
-            title: 'PATIENTENAKTE',
-            fields: [
-                [isCompanionAppointment ? 'Hauptpatient/in' : 'Patient/in', patientName],
-                ['Aktennummer', patientRecordNumber],
-                ...(isCompanionAppointment ? [['Begleitperson', remark.companionName]] : [])
-            ]
-        },
-        ...(isCompanionAppointment
-            ? [{ title: 'BITTE BEACHTEN', fields: [['', `Der Termin ist für die Begleitperson ${remark.companionName} des oben genannten Hauptpatienten. Die Aktennummer gehört zum Hauptpatienten.`]] }]
-            : []),
         {
             title: 'TERMIN',
             fields: [
@@ -405,7 +413,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             ? [{ title: 'WEITERE HINWEISE', fields: remark.noteLines.map(line => ['', line]) }]
             : []),
         ...(includeNote && remark.enteredBy
-            ? [{ title: 'TERMIN ERFASST VON', fields: [['Mitarbeiter/in', remark.enteredBy]] }]
+            ? [{ title: 'TERMINERFASSUNG', fields: [['Eingetragen durch', remark.enteredBy]] }]
             : [])
     ].map(section => ({
         ...section,
@@ -420,6 +428,10 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
 
     return [
         '*TERMININFORMATIONEN*',
+        ...patientHeader,
+        ...(isCompanionAppointment
+            ? ['', `*Hinweis:* Dieser Termin ist für die genannte Begleitperson. Die Aktennummer gehört zum Hauptpatienten.`]
+            : []),
         '',
         interpreter ? `Guten Tag ${interpreter},` : 'Guten Tag,',
         '',
@@ -447,21 +459,32 @@ function openWhatsAppModal(index) {
     const termin = trackingData[index];
     if (!termin) return;
 
-    const interpreter = String(termin.Übersetzer || '').trim();
+    const interpreter = getAppointmentInterpreterName(termin);
     if (!interpreter) {
-        alert('Bitte trage zuerst in der Spalte „Übersetzer“ den Namen ein.');
+        alert('Bitte trage den Namen des Dolmetschers/der Dolmetscherin in die Spalte „Übersetzer“ ein oder achte darauf, dass er als erster Name in der Bemerkung steht.');
         return;
     }
 
     activeWhatsAppAppointmentIndex = index;
     document.getElementById('whatsappRecipient').textContent = `Empfänger laut Terminplan: ${interpreter}. Wähle in WhatsApp Web denselben Namen aus.`;
     document.getElementById('includeWhatsAppNote').checked = true;
+    updateWhatsAppBrowserHint();
     updateWhatsAppMessagePreview();
 
     const modal = document.getElementById('whatsappModal');
     modal.style.display = 'block';
     modal.setAttribute('aria-hidden', 'false');
     document.getElementById('whatsappMessage').focus();
+}
+
+function updateWhatsAppBrowserHint() {
+    const hint = document.getElementById('whatsappBrowserHint');
+    const button = document.getElementById('openWhatsAppButton');
+    const extensionAvailable = document.documentElement.dataset.terminToolExtensionReady === 'true';
+    hint.textContent = extensionAvailable
+        ? 'Die Chrome-Erweiterung verwendet deinen bereits geöffneten WhatsApp-Web-Tab. Ohne Erweiterung kann ein neuer Tab aufgehen.'
+        : 'Ohne die optionale Chrome-Erweiterung kann WhatsApp Web bei jedem Klick einen neuen Tab öffnen. Du kannst die Nachricht stattdessen kopieren und im bereits offenen WhatsApp-Tab einfügen.';
+    button.textContent = extensionAvailable ? 'Im WhatsApp-Web-Tab öffnen' : 'WhatsApp Web öffnen';
 }
 
 function closeWhatsAppModal() {
@@ -505,10 +528,9 @@ document.getElementById('openWhatsAppButton').addEventListener('click', () => {
         return;
     }
 
-    // WhatsApps Click-to-Chat erwartet URL-kodierten UTF-8-Text. encodeURIComponent
-    // kodiert auch Leerzeichen explizit als %20 und erhält Sonderzeichen/Umlaute.
+    // Ohne Chrome-Erweiterung bleibt dies der Browser-Fallback. encodeURIComponent
+    // kodiert den Nachrichtentext als UTF-8 für WhatsApps Click-to-Chat.
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    // Reuse the WhatsApp tab opened from this app on later messages.
     const whatsappWindow = window.open(whatsappUrl, 'terminToolWhatsApp');
     if (whatsappWindow) whatsappWindow.focus();
     closeWhatsAppModal();
@@ -588,47 +610,8 @@ function updateStatusFromSelect(event) {
     const tableBody = document.getElementById('tableBody');
     const row = tableBody.querySelectorAll('tr')[index];
 
-    // Update row background color based on the new status
-
-    if (isAppointmentStartingSoonOrOngoing(trackingData[index]) && trackingData[index].Status === "offen") {
-        row.style.backgroundColor = '#cce5ff'; // Highlight rows that are starting soon with a light blue color
-    } else if (trackingData[index].Status === "beendet" || trackingData[index].Status === "alleine") {
-        row.style.backgroundColor = '#ddffdd'; // Green for completed
-    } else if (trackingData[index].Status === "storniert") {
-        row.style.backgroundColor = '#ffdddd'; // Red for canceled
-    } else if (trackingData[index].Status === "losgefahren") {
-        row.style.backgroundColor = '#ffffcc'; // Yellow for departed
-    } else {
-        row.style.backgroundColor = ''; // Reset to default
-    }
+    applyTrackingStatusColor(row, trackingData[index]);
     persistTerminRecords(trackingData, 'tracking');
-}
-
-// Funktion zur Überprüfung, ob ein Termin in Kürze beginnt oder an diesem Tag noch stattfindet
-function isAppointmentStartingSoonOrOngoing(termin) {
-    const now = new Date();
-
-    // Datumsformat anpassen (TT.MM.JJJJ -> JJJJ-MM-TT)
-    const dateMatch = normalizeTerminDatum(termin?.Termin_Datum).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-    if (!dateMatch) return false;
-    const [, day, month, year] = dateMatch;
-    const time = normalizeTerminUhrzeit(termin?.Termin_Uhrzeit);
-    if (!time) return false;
-
-    // Füge führende Nullen hinzu, falls erforderlich
-    const formattedDate = `${year}-${month}-${day}T${time}`;
-
-    // Startzeit berechnen
-    const startDateTime = new Date(formattedDate);
-
-    // Ende des Tages berechnen (23:59:59 des gleichen Datums)
-    const endOfDay = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:59:59`);
-
-    // Eine Stunde vor Beginn des Termins berechnen
-    const oneHourBeforeStart = new Date(startDateTime.getTime() - 60 * 60 * 1000); // Eine Stunde vorher
-
-    // Überprüfen, ob 'now' zwischen einer Stunde vor 'startDateTime' und 'endOfDay' liegt
-    return now >= oneHourBeforeStart;
 }
 
 // Workbook mit aktualisierten Daten aktualisieren
@@ -888,7 +871,6 @@ function restoreTrackingWorkflow() {
     trackingData = normalizeTerminRecords(savedRecords.map(row => ({ Status: 'offen', ...row })));
     renderTrackingTable(trackingData);
     showWorkflowStatus(`${trackingData.length} Termine aus dem vorherigen Schritt geladen. Änderungen werden automatisch zwischengespeichert.`);
-    startTrackingRefresh();
 }
 
 restoreTrackingWorkflow();
