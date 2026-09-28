@@ -1345,4 +1345,108 @@ body[data-page="filtern"] tbody tr:active { cursor: grabbing; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 
+/* Nutzt auf großen Monitoren fast die gesamte verfügbare Breite. */
+@media (min-width: 861px) {
+  .app-header { padding-left: 18px; padding-right: 18px; }
+  .container, .container.expanded { width: calc(100% - 32px); max-width: none; }
+}
+
+/* Kompakte Live-Tracking-Tabelle ohne seitliches Scrollen. */
+body[data-page="tracking"] .tables-section { display: block; width: 100%; }
+body[data-page="tracking"] #dataContainer {
+  width: 100%;
+  max-height: none;
+  padding: 10px;
+  overflow: visible;
+}
+body[data-page="tracking"] #dataTable {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: .76rem;
+}
+body[data-page="tracking"] #dataTable th,
+body[data-page="tracking"] #dataTable td {
+  max-width: none;
+  padding: 7px 5px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+body[data-page="tracking"] #dataTable th:nth-child(1) { width: 3.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(2) { width: 6%; }
+body[data-page="tracking"] #dataTable th:nth-child(3) { width: 5.2%; }
+body[data-page="tracking"] #dataTable th:nth-child(4) { width: 11.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(5) { width: 3.2%; }
+body[data-page="tracking"] #dataTable th:nth-child(6) { width: 16.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(7) { width: 11.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(8) { width: 9.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(9) { width: 10%; }
+body[data-page="tracking"] #dataTable th:nth-child(10) { width: 5%; }
+body[data-page="tracking"] #dataTable th:nth-child(11) { width: 8.5%; }
+body[data-page="tracking"] #dataTable th:nth-child(12) { width: 9.6%; }
+body[data-page="tracking"] #dataTable input,
+body[data-page="tracking"] #dataTable select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 4px;
+  font-size: .74rem;
+}
+body[data-page="tracking"] #dataTable td[contenteditable="true"] { min-width: 0; }
+body[data-page="tracking"] .tracking-row-actions { gap: 5px; }
+body[data-page="tracking"] .tracking-row-actions button {
+  min-height: 31px;
+  padding: 5px 4px;
+  font-size: .69rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+/* Auf schmaleren Fenstern werden Termine zu Karten statt einer zu breiten Tabelle. */
+@media (max-width: 1100px) {
+  body[data-page="tracking"] #dataContainer { padding: 12px; }
+  body[data-page="tracking"] #dataTable,
+  body[data-page="tracking"] #dataTable tbody { display: block; }
+  body[data-page="tracking"] #dataTable thead { display: none; }
+  body[data-page="tracking"] #dataTable tbody {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  body[data-page="tracking"] #dataTable tr {
+    display: block;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(28, 52, 79, .06);
+  }
+  body[data-page="tracking"] #dataTable td {
+    display: grid;
+    grid-template-columns: minmax(92px, 32%) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    width: 100%;
+    padding: 6px 2px;
+    border-bottom: 1px solid #e9eef3;
+  }
+  body[data-page="tracking"] #dataTable td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 680;
+  }
+  body[data-page="tracking"] .tracking-row-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  body[data-page="tracking"] .tracking-row-actions button { width: auto; flex: 1 1 80px; }
+}
+
+@media (max-width: 620px) {
+  body[data-page="tracking"] #dataTable tbody { grid-template-columns: 1fr; }
+  body[data-page="tracking"] #dataTable td { grid-template-columns: minmax(84px, 30%) minmax(0, 1fr); }
+}
+
 

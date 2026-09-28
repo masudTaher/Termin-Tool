@@ -98,8 +98,10 @@ function renderTrackingTable(data) {
         return; // No data, exit the function
     }
 
-    tablesSection.style.display = 'flex'; // Show the tables section
+    tablesSection.style.display = 'block'; // The tracking table uses the full page width
     actionSection.style.display = 'flex'; // Show the action section
+
+    const columnLabels = ['Lfd. Nr.', 'Start', 'Patienten-Nr.', 'Patient', 'Geschlecht', 'Bemerkung', 'Arzt', 'Ort', 'Übersetzer', 'Anzahl Termine', 'Status', 'Aktion'];
 
     data.forEach((termin, index) => {
         const row = document.createElement('tr');
@@ -162,6 +164,9 @@ function renderTrackingTable(data) {
 
 
         `;
+        row.querySelectorAll('td').forEach((cell, columnIndex) => {
+            cell.dataset.label = columnLabels[columnIndex] || '';
+        });
         tableBody.appendChild(row);
     });
 	
@@ -235,11 +240,16 @@ function getWhatsAppDataHint(termin) {
     if (getAppointmentContactValues(termin, 'patient', 'phone').length === 0) missing.push('Patiententelefonnummer');
     if (!getDoctorAddress(termin)) missing.push('Arztadresse');
     if (getAppointmentContactValues(termin, 'doctor', 'phone').length === 0) missing.push('Arzttelefonnummer');
+    const remark = parseAppointmentRemark(termin.Bemerkung);
+    const remarkHint = [
+        remark.companionName ? `Mögliche Begleitperson erkannt: ${remark.companionName}.` : '',
+        remark.enteredBy ? 'Die letzte Bemerkungszeile wird als „Eingetragen von“ übernommen.' : ''
+    ].filter(Boolean).join(' ');
 
     if (missing.length) {
-        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Die Dolmetscherin/der Dolmetscher wird aus der Spalte „Übersetzer“ übernommen. „Patienten Nr“ wird nicht als Telefonnummer verwendet.`;
+        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Die Dolmetscherin/der Dolmetscher wird aus der Spalte „Übersetzer“ übernommen. „Patienten Nr“ wird nicht als Telefonnummer verwendet. ${remarkHint}`.trim();
     }
-    return 'Adressen und Telefonnummern aus den Excel-Spalten sowie der Name aus „Übersetzer“ werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden.';
+    return `Adressen und Telefonnummern aus den Excel-Spalten sowie der Name aus „Übersetzer“ werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden. ${remarkHint}`.trim();
 }
 
 function formatWhatsAppDate(value) {
@@ -281,19 +291,93 @@ function formatWhatsAppTime(value) {
     return time ? `${time[1].padStart(2, '0')}:${time[2]}` : text;
 }
 
+function getPatientRecordNumber(termin) {
+    const preferredKeys = [
+        'Aktennummer', 'Patienten_Aktennummer', 'Patient_Aktennummer',
+        'Patient_Nr', 'Patienten Nr', 'Pat. Nr'
+    ];
+    for (const key of preferredKeys) {
+        const value = termin?.[key];
+        if (value !== null && value !== undefined && String(value).trim()) return String(value).trim();
+    }
+
+    const matchingKey = Object.keys(termin || {}).find(key => {
+        const normalized = normalizeAppointmentColumnName(key);
+        return /patient|pat/.test(normalized)
+            && /aktennummer|aktenzeichen|patientennr|patientnr|patnr/.test(normalized)
+            && !/name|vorname|geschlecht|status/.test(normalized);
+    });
+    return matchingKey ? String(termin[matchingKey] ?? '').trim() : '';
+}
+
+function parseAppointmentRemark(value) {
+    const lines = String(value || '').split(/\r\n|\n|\r/).map(line => line.trim()).filter(Boolean);
+    const enteredBy = lines.length ? lines.pop() : '';
+    const nonNameTerms = new Set([
+        'abholung', 'apotheke', 'arzt', 'bericht', 'fahrt', 'fahrdienst', 'kontrolle',
+        'krankenhaus', 'lieferung', 'medikament', 'medikamente', 'op', 'operation',
+        'optag', 'patient', 'patientin', 'praxis', 'station', 'tag', 'termin', 'vorbereitung'
+    ]);
+
+    let companionName = '';
+    let companionLineIndex = -1;
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const explicitCompanion = line.match(/^(?:begleitperson|begleitung)\s*:\s*(.+)$/iu);
+        const candidate = (explicitCompanion?.[1] || line).trim();
+        const words = candidate.split(/\s+/);
+        const normalizedWords = words.map(normalizeAppointmentColumnName).filter(Boolean);
+        const hasOperationalTerm = normalizedWords.some(word => nonNameTerms.has(word));
+        const nameWordPattern = /^(?:\p{Lu}[\p{L}\p{M}'’.-]*|\p{Lo}[\p{L}\p{M}'’.-]*)$/u;
+        const looksLikeName = words.length > 0
+            && words.length <= 4
+            && words.every(word => nameWordPattern.test(word))
+            && !hasOperationalTerm;
+
+        if (explicitCompanion || looksLikeName) {
+            companionName = candidate;
+            companionLineIndex = index;
+            break;
+        }
+    }
+
+    return {
+        companionName,
+        enteredBy,
+        noteLines: lines.filter((_, index) => index !== companionLineIndex)
+    };
+}
+
 function createWhatsAppAppointmentMessage(termin, includeNote) {
     const interpreter = String(termin.Übersetzer || '').trim().replace(/[\r\n]+/g, ' ');
     const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
         .map(value => String(value || '').trim())
         .filter(Boolean)
         .join(' ');
+    const patientRecordNumber = getPatientRecordNumber(termin);
+    const remark = parseAppointmentRemark(termin.Bemerkung);
+    const isCompanionAppointment = Boolean(remark.companionName);
     const doctorName = String(termin['Arzt Nr::Name'] || '').trim();
     const appointmentLocation = String(termin['Arzt Nr::Vorname'] || '').trim();
-    const patientAddressFields = getPatientAddressFields(termin);
+    const patientAddressFields = getPatientAddressFields(termin).map(([label, value]) => [
+        isCompanionAppointment ? `${label} (Hauptpatient)` : label,
+        value
+    ]);
     const patientPhone = getAppointmentContactValues(termin, 'patient', 'phone').join(' / ');
     const doctorAddress = getDoctorAddress(termin);
     const doctorPhone = getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
     const sections = [
+        {
+            title: 'PATIENTENAKTE',
+            fields: [
+                [isCompanionAppointment ? 'Hauptpatient/in' : 'Patient/in', patientName],
+                ['Aktennummer', patientRecordNumber],
+                ...(isCompanionAppointment ? [['Begleitperson', remark.companionName]] : [])
+            ]
+        },
+        ...(isCompanionAppointment
+            ? [{ title: 'BITTE BEACHTEN', fields: [['', `Der Termin ist für die Begleitperson ${remark.companionName} des oben genannten Hauptpatienten. Die Aktennummer gehört zum Hauptpatienten.`]] }]
+            : []),
         {
             title: 'TERMIN',
             fields: [
@@ -302,11 +386,10 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             ]
         },
         {
-            title: 'PATIENT',
+            title: 'PATIENTENKONTAKT',
             fields: [
-                ['Name', patientName],
                 ...patientAddressFields,
-                ['Telefon', patientPhone]
+                [isCompanionAppointment ? 'Telefon Hauptpatient' : 'Telefon', patientPhone]
             ]
         },
         {
@@ -318,8 +401,11 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
                 ['Telefon', doctorPhone]
             ]
         },
-        ...(includeNote && termin.Bemerkung
-            ? [{ title: 'BEMERKUNG', fields: [['', String(termin.Bemerkung).trim()]] }]
+        ...(includeNote && remark.noteLines.length
+            ? [{ title: 'WEITERE HINWEISE', fields: remark.noteLines.map(line => ['', line]) }]
+            : []),
+        ...(includeNote && remark.enteredBy
+            ? [{ title: 'TERMIN ERFASST VON', fields: [['Mitarbeiter/in', remark.enteredBy]] }]
             : [])
     ].map(section => ({
         ...section,
@@ -335,9 +421,9 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
     return [
         '*TERMININFORMATIONEN*',
         '',
-        interpreter ? `Hallo ${interpreter},` : 'Hallo,',
+        interpreter ? `Guten Tag ${interpreter},` : 'Guten Tag,',
         '',
-        'hier findest du die Informationen zu deinem Dolmetschtermin:',
+        'bitte übernimm folgenden Dolmetschauftrag:',
         '',
         ...details,
         'Bitte bestätige kurz den Erhalt des Auftrags. Vielen Dank.'
@@ -422,7 +508,9 @@ document.getElementById('openWhatsAppButton').addEventListener('click', () => {
     // WhatsApps Click-to-Chat erwartet URL-kodierten UTF-8-Text. encodeURIComponent
     // kodiert auch Leerzeichen explizit als %20 und erhält Sonderzeichen/Umlaute.
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    // Reuse the WhatsApp tab opened from this app on later messages.
+    const whatsappWindow = window.open(whatsappUrl, 'terminToolWhatsApp');
+    if (whatsappWindow) whatsappWindow.focus();
     closeWhatsAppModal();
 });
 
