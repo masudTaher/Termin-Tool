@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Team · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="team">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · DOLMETSCHER-PORTAL</p><h1>Team und Arbeitstage</h1><p>Konten freischalten, feste und temporäre Dolmetscher kennzeichnen und sehen, wer wann arbeiten kann.</p></div>
+            <div class="fleet-heading-actions"><button type="button" id="teamReload" class="button-secondary">Aktualisieren</button><span id="teamUser" class="tracking-filter-info"></span><button type="button" id="teamSignOut" class="button-secondary" hidden>Abmelden</button></div>
+         </div>
+         <p id="teamStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <section id="teamAuth" class="directory-card team-auth" hidden>
+            <div class="directory-card-heading"><span class="directory-step">01</span><div><h2>Einsatzleitung und Sekretariat</h2><p id="teamAuthHint">Melde dich an. Ein neues Konto (z. B. fürs Sekretariat) muss der Admin erst freischalten.</p></div></div>
+            <form id="teamSignInForm" class="fleet-form">
+               <label for="teamEmail">E-Mail</label>
+               <input id="teamEmail" type="email" autocomplete="email" required>
+               <label for="teamPassword">Passwort (mindestens 8 Zeichen)</label>
+               <input id="teamPassword" type="password" autocomplete="current-password" minlength="8" required>
+               <label for="teamName" id="teamNameLabel" hidden>Dein Name</label>
+               <input id="teamName" type="text" autocomplete="name" maxlength="100" hidden>
+               <div class="fleet-form-actions"><button type="submit" class="button-primary" id="teamSubmit">Anmelden</button><button type="button" class="button-secondary" id="teamToggleRegister">Neues Konto anlegen</button></div>
+            </form>
+         </section>
+
+         <div id="teamApp" hidden>
+            <section class="directory-card team-link-card">
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">↗</span><div><h2>Link für die Dolmetscher</h2><p>Diesen Link einmal per WhatsApp schicken. Jede Person registriert sich selbst, du schaltest sie hier frei.</p></div></div>
+               <div class="directory-input-row"><input id="portalLink" type="text" readonly aria-label="Portal-Link"><button type="button" id="copyPortalLink" class="button-secondary">Link kopieren</button></div>
+            </section>
+
+            <div class="fleet-layout">
+               <section class="directory-card" aria-labelledby="accountsTitle">
+                  <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="accountsTitle">Dolmetscher-Konten</h2><p id="accountsSummary">Wird geladen …</p></div></div>
+                  <ul id="accountList" class="directory-list"></ul>
+               </section>
+               <section class="directory-card" aria-labelledby="workdaysTitle">
+                  <div class="directory-card-heading"><span class="directory-step directory-step-dark">02</span><div><h2 id="workdaysTitle">Arbeitstage</h2><p>Wer hat sich für die nächsten 7 Tage eingetragen?</p></div></div>
+                  <div class="fleet-table-wrap"><table class="fleet-table team-workdays"><thead id="teamWorkdayHead"></thead><tbody id="teamWorkdayBody"></tbody></table></div>
+                  <p id="teamWorkdayEmpty" class="directory-empty" hidden>Noch niemand hat Arbeitstage eingetragen.</p>
+               </section>
+            </div>
+
+         </div>
+      </main>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="workflowStorage.js"></script>
+      <script src="teamDirectory.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudFleetSync.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="teamApp.js"></script>
+   </body>
+</html>

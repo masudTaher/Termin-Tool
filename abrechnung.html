@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Abrechnung · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="abrechnung">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · BUCHHALTUNG</p><h1>Monatsabrechnung</h1><p>Arbeitstage, Sondertage und Belege der temporären Dolmetscher – mit Endliste für die Buchhaltung.</p></div>
+            <div class="fleet-heading-actions">
+               <label class="button-secondary import-name-button" for="payrollImportFile">Excel importieren</label>
+               <input id="payrollImportFile" class="visually-hidden" type="file" accept=".xlsx,.xls">
+               <button type="button" id="payrollExport" class="button-secondary">Excel exportieren</button>
+               <button type="button" id="payrollPrint" class="button-secondary">Übersicht drucken</button>
+               <button type="button" id="releaseAll" class="button-primary" title="Abrechnungen für die Dolmetscher im Portal sichtbar machen">Im Portal freigeben</button>
+            </div>
+         </div>
+         <p id="payrollStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="payrollApp" hidden>
+            <section class="directory-card payroll-settings">
+               <div class="fleet-field"><label for="payrollMonth">Abrechnungsmonat</label><input id="payrollMonth" type="month"></div>
+               <div class="fleet-field"><label for="payrollRate">Tagessatz (€)</label><input id="payrollRate" type="number" min="0" step="1"></div>
+               <div class="fleet-field"><label for="payrollCheckDate">Prüfdatum</label><input id="payrollCheckDate" type="date"></div>
+               <p id="payrollCheck" class="payroll-check" role="status"></p>
+            </section>
+
+            <div class="fleet-summary payroll-summary">
+               <article class="overview-card"><span class="overview-label">Belege</span><strong id="sumReceipts">0 €</strong><small id="sumReceiptCount"></small></article>
+               <article class="overview-card overview-card-open"><span class="overview-label">Salary</span><strong id="sumSalary">0 €</strong><small id="sumPersons"></small></article>
+               <article class="overview-card overview-card-done"><span class="overview-label">Gesamt</span><strong id="sumTotal">0 €</strong><small>Salary + Belege</small></article>
+            </div>
+
+            <section class="directory-card">
+               <div class="fleet-log-heading">
+                  <div class="portal-tabs payroll-tabs"><button type="button" data-payroll-tab="list" class="is-active">Endliste</button><button type="button" data-payroll-tab="special">Sondertage</button><button type="button" data-payroll-tab="receipts">Belege</button></div>
+               </div>
+
+               <div data-payroll-panel="list">
+                  <p class="fleet-footnote payroll-note">Salary = (Arbeitstage − Sondertage) × Tagessatz + Beträge der Sondertage. Arbeitstage werden aus dem Online-Archiv gezählt (Tage mit beendetem Termin); eine eingetragene Zahl hat Vorrang. Ein „Sonder €“-Betrag im Live-Tracking wird automatisch zum Sondertag. Grün = Person mit Sondertagen.</p>
+                  <div class="fleet-table-wrap"><table class="fleet-table payroll-table"><thead><tr><th>Name</th><th>Arbeitstage</th><th>Sondertage</th><th>Belege</th><th>Salary</th><th>Total</th><th>Bemerkung</th><th>Portal</th><th>Aktion</th></tr></thead><tbody id="payrollBody"></tbody><tfoot id="payrollFoot"></tfoot></table></div>
+                  <form id="addPersonForm" class="directory-input-row payroll-add"><input id="addPersonName" type="text" list="payrollNames" maxlength="100" placeholder="Person hinzufügen (Name wie auf dem Tagesblatt)" required><button type="submit" class="button-secondary">Hinzufügen</button><button type="button" id="copyNames" class="button-secondary" title="Alle Namen dieser Liste als Vorschläge für das Zuweisen im Live-Tracking speichern">Namen in Dolmetscherliste übernehmen</button></form>
+               </div>
+
+               <div data-payroll-panel="special" hidden>
+                  <form id="specialForm" class="fleet-form fleet-form-grid payroll-form">
+                     <div class="fleet-field"><label for="specialName">Name</label><input id="specialName" type="text" list="payrollNames" required></div>
+                     <div class="fleet-field"><label for="specialDate">Datum</label><input id="specialDate" type="date" required></div>
+                     <div class="fleet-field fleet-field-wide"><label for="specialJob">Einsatz</label><input id="specialJob" type="text" maxlength="200" placeholder="Zum Beispiel: Abflug Frankfurt 17:15"></div>
+                     <div class="fleet-field"><label for="specialAmount">Betrag für den Tag (€)</label><input id="specialAmount" type="number" min="0" step="0.01" required></div>
+                     <div class="fleet-field"><label for="specialCounts">Zählt</label><select id="specialCounts"><option>Ja</option><option>Nein</option><option>prüfen</option></select></div>
+                     <div class="fleet-field fleet-field-wide"><label for="specialHint">Vermerk / Hinweis <span class="optional-label">optional</span></label><input id="specialHint" type="text" maxlength="300"></div>
+                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary">Sondertag speichern</button></div>
+                  </form>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Einsatz</th><th>Betrag</th><th>Zählt</th><th>Vermerk / Hinweis</th><th>Aktion</th></tr></thead><tbody id="specialBody"></tbody></table></div>
+               </div>
+
+               <div data-payroll-panel="receipts" hidden>
+                  <form id="receiptForm" class="fleet-form fleet-form-grid payroll-form">
+                     <div class="fleet-field"><label for="receiptName">Name</label><input id="receiptName" type="text" list="payrollNames" required></div>
+                     <div class="fleet-field"><label for="receiptDate">Datum</label><input id="receiptDate" type="date" required></div>
+                     <div class="fleet-field"><label for="receiptPlace">Ort / Parkplatz</label><input id="receiptPlace" type="text" list="payrollPlaces" maxlength="120"></div>
+                     <div class="fleet-field"><label for="receiptAmount">Betrag (€)</label><input id="receiptAmount" type="number" min="0" step="0.01" required></div>
+                     <div class="fleet-field"><label for="receiptKind">Art</label><select id="receiptKind"><option>Parken</option><option>Tanken</option><option>Sonstiges</option></select></div>
+                     <div class="fleet-field"><label for="receiptProof">Nachweis</label><select id="receiptProof"><option>Parkbeleg</option><option>Parkschein</option><option>Kartenbeleg</option><option>Digitaler Beleg</option><option>Kontoumsatz (App)</option><option>Quittung</option><option>Sonstiges</option></select></div>
+                     <div class="fleet-field fleet-field-wide"><label for="receiptNote">Bemerkung <span class="optional-label">optional</span></label><input id="receiptNote" type="text" maxlength="200"></div>
+                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary">Beleg speichern</button></div>
+                  </form>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Ort</th><th>Betrag</th><th>Art · Nachweis</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
+               </div>
+            </section>
+         </div>
+      </main>
+      <datalist id="payrollNames"></datalist>
+      <datalist id="payrollPlaces"></datalist>
+      <div id="printArea" class="print-area"></div>
+      <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto des Belegs"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
+      <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="workflowStorage.js"></script>
+      <script src="teamDirectory.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="abrechnungLogic.js"></script>
+      <script src="abrechnungApp.js"></script>
+   </body>
+</html>

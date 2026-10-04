@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Fahrzeugakten · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="fahrzeugakte">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fahrzeugakten</h1><p>Zustand, Schäden mit Skizze, Meldungen und Verlauf – für jedes Auto einzeln, mit Archiv.</p></div>
+            <div class="fleet-heading-actions"><button type="button" id="enableNotifications" class="button-secondary" hidden>Benachrichtigungen einschalten</button><button type="button" id="fileReload" class="button-secondary">Aktualisieren</button></div>
+         </div>
+         <p id="fileStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="fileApp" hidden>
+            <section class="directory-card" aria-labelledby="inboxTitle">
+               <div class="directory-card-heading"><span class="directory-step">!</span><div><h2 id="inboxTitle">Darum musst du dich kümmern</h2><p id="inboxSummary">Wird geladen …</p></div></div>
+               <ul id="inboxList" class="directory-list inbox-list"></ul>
+            </section>
+
+            <h2 class="section-title">Fahrzeuge</h2>
+            <div id="vehicleGrid" class="vehicle-grid"></div>
+
+            <section id="vehicleFile" class="directory-card vehicle-file" aria-live="polite" hidden>
+               <div class="fleet-log-heading">
+                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">Akte</span><div><h2 id="fileTitle"></h2><p id="fileSubtitle"></p></div></div>
+                  <div class="portal-tabs file-tabs"><button type="button" data-file-tab="current" class="is-active">Aktuell</button><button type="button" data-file-tab="archive">Archiv</button></div>
+               </div>
+
+               <div class="file-layout">
+                  <div class="file-side">
+                     <div class="sketch-wrap">
+                        <div id="fileSketch"></div>
+                        <ul class="sketch-legend">
+                           <li><i data-status="offen"></i>Neu gemeldet</li>
+                           <li><i data-status="bekannt"></i>Altschaden</li>
+                           <li><i data-status="in Arbeit"></i>In Reparatur</li>
+                           <li><i data-status="erledigt"></i>Behoben (Archiv)</li>
+                        </ul>
+                     </div>
+                     <dl id="fileState" class="vehicle-state"></dl>
+                     <form id="fileSettings" class="fleet-form">
+                        <label for="fileAssigned">Fester Fahrer</label>
+                        <select id="fileAssigned"></select>
+                        <label for="fileMileage">Kilometerstand korrigieren</label>
+                        <div class="directory-input-row"><input id="fileMileage" type="number" min="0" step="1" placeholder="km"><button type="submit" class="button-secondary">Speichern</button></div>
+                     </form>
+                  </div>
+                  <div class="file-main">
+                     <div data-file-panel="current">
+                        <h3 class="file-heading">Schäden am Fahrzeug</h3>
+                        <ul id="fileDamages" class="directory-list file-list"></ul>
+                        <h3 class="file-heading">Offene Meldungen</h3>
+                        <ul id="fileAlerts" class="directory-list file-list"></ul>
+                     </div>
+                     <div data-file-panel="archive" hidden>
+                        <h3 class="file-heading">Behobene Schäden</h3>
+                        <ul id="fileDamagesArchive" class="directory-list file-list"></ul>
+                        <h3 class="file-heading">Erledigte Meldungen</h3>
+                        <ul id="fileAlertsArchive" class="directory-list file-list"></ul>
+                        <h3 class="file-heading">Fahrten und Übergaben</h3>
+                        <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Fahrer/in</th><th>Zeit</th><th>Kilometer</th><th>Tank</th><th>Parkort</th><th>Innen</th><th>Außen</th><th>Hinweis</th></tr></thead><tbody id="fileHandovers"></tbody></table></div>
+                     </div>
+                  </div>
+               </div>
+            </section>
+         </div>
+      </main>
+      <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto zur Meldung"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="workflowStorage.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudFleetSync.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="carSketch.js"></script>
+      <script src="fahrzeugakteApp.js"></script>
+   </body>
+</html>

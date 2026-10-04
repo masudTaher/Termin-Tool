@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Online-Archiv · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="archiv">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · ARCHIV</p><h1>Online-Archiv</h1><p>Alle gespeicherten Tage und der Verlauf jedes Dolmetschers: was angenommen und was gearbeitet wurde.</p></div>
+            <div class="fleet-heading-actions"><button type="button" id="archiveReload" class="button-secondary">Aktualisieren</button></div>
+         </div>
+         <p id="archiveStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="archiveApp" class="archive-layout" hidden>
+            <section class="directory-card" aria-labelledby="daysTitle">
+               <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="daysTitle">Gespeicherte Tage</h2><p id="daysSummary">Wird geladen …</p></div></div>
+               <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Termine</th><th>Erledigt</th><th>Storniert</th><th>Stand</th><th>Aktion</th></tr></thead><tbody id="dayBody"></tbody></table></div>
+               <p id="dayEmpty" class="directory-empty" hidden>Noch kein Tag online gespeichert. Sobald du im Live-Tracking angemeldet arbeitest, erscheint der Tag hier.</p>
+            </section>
+
+            <section class="directory-card" aria-labelledby="historyTitle">
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">02</span><div><h2 id="historyTitle">Verlauf pro Dolmetscher</h2><p id="historySummary">Wähle eine Person.</p></div></div>
+               <div class="fleet-form"><label for="historyPerson">Dolmetscher/in</label><select id="historyPerson"></select></div>
+               <ul id="historyList" class="directory-list file-list"></ul>
+            </section>
+         </div>
+      </main>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="workflowStorage.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="archivApp.js"></script>
+   </body>
+</html>

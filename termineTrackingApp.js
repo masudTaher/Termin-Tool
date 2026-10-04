@@ -1,6 +1,63 @@
 let trackingData = [];
 let workbook;
 let activeWhatsAppAppointmentIndex = null;
+let trackingStatusFilter = 'alle';
+let trackingSearchTerm = '';
+const TRACKING_UNDO_KEY = 'terminTool.trackingUndo.v1';
+const TRACKING_UNDO_LIMIT = 3;
+
+function ensureTrackingFields(records) {
+    const interpreterHeaderPattern = /^(?:uebersetzer|dolmetscher|dolmetschername|uebersetzername|interpreter|interpretername)$/;
+    return normalizeTerminRecords(records).map(record => {
+        const interpreterAlias = Object.keys(record).find(key => interpreterHeaderPattern.test(normalizeAppointmentColumnName(key)));
+        return {
+            ...record,
+            Übersetzer: String(record.Übersetzer || (interpreterAlias ? record[interpreterAlias] : '') || '').trim(),
+            Status: String(record.Status || 'offen').trim() || 'offen'
+        };
+    });
+}
+
+function readTrackingUndoHistory() {
+    try {
+        const value = JSON.parse(sessionStorage.getItem(TRACKING_UNDO_KEY) || '[]');
+        return Array.isArray(value) ? value.slice(-TRACKING_UNDO_LIMIT) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function updateUndoButton() {
+    const button = document.getElementById('undoChangesButton');
+    if (!button) return;
+    const history = readTrackingUndoHistory();
+    button.disabled = history.length === 0;
+    button.textContent = history.length ? `Rückgängig (${history.length})` : 'Rückgängig';
+}
+
+function recordTrackingUndo(label) {
+    const history = readTrackingUndoHistory();
+    history.push({ label, records: JSON.parse(JSON.stringify(trackingData)) });
+    try {
+        sessionStorage.setItem(TRACKING_UNDO_KEY, JSON.stringify(history.slice(-TRACKING_UNDO_LIMIT)));
+    } catch (error) {
+        showWorkflowStatus('Die letzten Änderungen konnten nicht für „Rückgängig“ gesichert werden.', 'error');
+    }
+    updateUndoButton();
+}
+
+function undoLastTrackingChange() {
+    const history = readTrackingUndoHistory();
+    const snapshot = history.pop();
+    if (!snapshot) return;
+    trackingData = ensureTrackingFields(snapshot.records);
+    sessionStorage.setItem(TRACKING_UNDO_KEY, JSON.stringify(history));
+    renderTrackingTable(trackingData);
+    persistTerminRecords(trackingData, 'tracking', { filtered: trackingData });
+    showWorkflowStatus(`Rückgängig gemacht: ${snapshot.label}.`, 'info');
+}
+
+document.getElementById('undoChangesButton')?.addEventListener('click', undoLastTrackingChange);
 
 window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== window.location.origin) return;
@@ -41,23 +98,19 @@ function handleFileUpload(event) {
             type: 'array'
         });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        trackingData = normalizeTerminRecords(XLSX.utils.sheet_to_json(worksheet));
+        const importedRows = XLSX.utils.sheet_to_json(worksheet);
+        const hasInterpreterColumn = importedRows.some(row => Object.keys(row).some(key => /^(?:uebersetzer|dolmetscher|dolmetschername|uebersetzername|interpreter|interpretername)$/.test(normalizeAppointmentColumnName(key))));
+        trackingData = ensureTrackingFields(importedRows);
         if (trackingData.length === 0) {
             showWorkflowStatus('Die Excel-Datei enthält keine Termine.', 'error');
             return;
         }
 
-        // Überprüfen, ob die Spalte "Status" vorhanden ist
-        if (!trackingData[0] || !trackingData[0].hasOwnProperty('Status')) {
-            trackingData = trackingData.map(row => ({
-                        ...row,
-                        Status: "offen"
-                    }));
-        }
+        sessionStorage.removeItem(TRACKING_UNDO_KEY);
 
         renderTrackingTable(trackingData);
         persistTerminRecords(trackingData, 'tracking', { filtered: trackingData, removed: [] });
-        showWorkflowStatus(`${trackingData.length} Termine geladen. Änderungen werden in diesem Browser-Tab zwischengespeichert.`);
+        showWorkflowStatus(`${trackingData.length} Termine geladen. ${hasInterpreterColumn ? 'Dolmetscher-Spalte gefunden.' : 'Keine Dolmetscher-Spalte in der Datei: Namen werden nicht mehr aus beliebigem Bemerkungstext geraten.'} Änderungen werden in diesem Browser-Tab zwischengespeichert.`);
         } catch (error) {
             console.error('Fehler beim Einlesen der Excel-Datei:', error);
             showWorkflowStatus('Die Excel-Datei konnte nicht verarbeitet werden. Bitte prüfe das Tabellenblatt und die Spaltenüberschriften.', 'error');
@@ -85,101 +138,265 @@ function applyTrackingStatusColor(row, termin) {
     row.classList.add(getTrackingStatusClass(termin));
 }
 
-// Render the tracking table
+function getTrackingStatusGroup(termin) {
+    const status = String(termin?.Status || 'offen').trim().toLocaleLowerCase('de-DE');
+    if (status === 'beendet' || status === 'alleine') return 'erledigt';
+    if (status === 'storniert') return 'storniert';
+    if (status === 'losgefahren') return 'unterwegs';
+    return 'offen';
+}
+
+function getAppointmentLocation(termin) {
+    return String(termin?.['Arzt Nr::Ort'] || termin?.Ort || termin?.Termin_Ort || termin?.Stadt || '').trim();
+}
+
+function isTrackingDayToday() {
+    const date = trackingData.map(termin => termin.Termin_Datum).find(Boolean);
+    if (!date || typeof normalizeFleetDate !== 'function') return false;
+    return normalizeFleetDate(String(date)) === getLocalDateInputValue();
+}
+
+// Mehrere Termine desselben Patienten am selben Tag: Schlüssel und Hinweistext.
+function getPatientDayKey(termin) {
+    const number = String(termin?.Patient_Nr ?? '').trim();
+    if (number) return `nr:${number}`;
+    const name = [termin?.['Patienten Nr::Patienten_Vorname'], termin?.['Patienten Nr::Patienten_Name']]
+        .map(value => String(value || '').trim().toLocaleLowerCase('de-DE')).filter(Boolean).join(' ');
+    return name ? `name:${name}` : '';
+}
+
+function getPatientSiblings(termin, data = trackingData) {
+    const key = getPatientDayKey(termin);
+    if (!key) return [];
+    return data.filter(other => other !== termin && getPatientDayKey(other) === key && getTrackingStatusGroup(other) !== 'storniert');
+}
+
+function renderPatientMore(termin, data = trackingData) {
+    if (getTrackingStatusGroup(termin) === 'storniert') return '';
+    const siblings = getPatientSiblings(termin, data);
+    if (!siblings.length) return '';
+    const parts = siblings.map(other => {
+        const time = String(other.Termin_Uhrzeit || '').slice(0, 5) || 'ohne Zeit';
+        const interpreter = String(other.Übersetzer || '').trim();
+        return interpreter ? `${time} (${interpreter})` : time;
+    });
+    return `<span class="patient-tag patient-tag-count" title="Dieser Patient hat heute ${siblings.length + 1} Termine">${siblings.length + 1} Termine</span>`
+        + `<span class="patient-more-times">auch ${escapeHtml(parts.join(', '))}</span>`;
+}
+
+// Aktualisiert nur die Hinweise, ohne die Tabelle neu aufzubauen (Eingabefelder behalten den Fokus).
+function refreshPatientHints() {
+    document.querySelectorAll('#tableBody .patient-more').forEach(element => {
+        const termin = trackingData[Number(element.dataset.index)];
+        if (termin) element.innerHTML = renderPatientMore(termin);
+    });
+}
+
+function renderVehicleOptions(termin) {
+    if (typeof readActiveFleetVehicles !== 'function') return '';
+    const selectedKey = normalizeFleetPlateKey(termin.Fahrzeug);
+    const openToday = new Map(getTodaysOpenFleetHandovers().map(item => [item.vehicleId, item.driver]));
+    const interpreter = getAppointmentInterpreterName(termin);
+    const vehicles = readActiveFleetVehicles();
+    let hasSelected = !selectedKey;
+    const options = vehicles.map(vehicle => {
+        const selected = normalizeFleetPlateKey(vehicle.plate) === selectedKey;
+        if (selected) hasSelected = true;
+        const driver = openToday.get(vehicle.id);
+        const busy = driver && !sameFleetDriver(driver, interpreter) ? ` (${driver})` : '';
+        return `<option value="${escapeHtml(vehicle.plate)}" ${selected ? 'selected' : ''}>${escapeHtml(getFleetVehicleLabel(vehicle) + busy)}</option>`;
+    }).join('');
+    // Ein Kennzeichen aus einer importierten Datei bleibt erhalten, auch wenn es nicht im Fuhrpark steht.
+    const unknown = hasSelected ? '' : `<option value="${escapeHtml(termin.Fahrzeug)}" selected>${escapeHtml(termin.Fahrzeug)}</option>`;
+    return `<option value="">${vehicles.length ? 'Auto' : 'Kein Auto'}</option>${unknown}${options}`;
+}
+
 function renderTrackingTable(data) {
     const tableBody = document.getElementById('tableBody');
     const tablesSection = document.querySelector('.tables-section');
     const actionSection = document.querySelector('.action-section');
 
     sortTrackingDataByTime(data);
-    tableBody.innerHTML = ''; // Clear previous content
+    updateAnzahlTermine(data);
+    tableBody.innerHTML = '';
 
     if (data.length === 0) {
         tablesSection.style.display = 'none';
-        actionSection.style.display = 'none';
-        return; // No data, exit the function
+        actionSection.style.display = readTrackingUndoHistory().length ? 'flex' : 'none';
+        document.getElementById('addRowButton').disabled = true;
+        document.getElementById('saveChanges').disabled = true;
+        document.getElementById('savePdfButton').disabled = true;
+        updateUndoButton();
+        updateTrackingOverview(data);
+        return;
     }
 
-    tablesSection.style.display = 'block'; // The tracking table uses the full page width
-    actionSection.style.display = 'flex'; // Show the action section
+    tablesSection.style.display = 'block';
+    actionSection.style.display = 'flex';
+    // Mit geladenen Terminen bleibt der Datei-Bereich eingeklappt, damit die Tabelle oben steht.
+    const uploadPanel = document.getElementById('uploadPanel');
+    if (uploadPanel && !uploadPanel.dataset.collapsed) { uploadPanel.open = false; uploadPanel.dataset.collapsed = 'true'; }
+    document.getElementById('addRowButton').disabled = false;
+    document.getElementById('saveChanges').disabled = false;
+    document.getElementById('savePdfButton').disabled = false;
 
-    const columnLabels = ['Lfd. Nr.', 'Start', 'Patienten-Nr.', 'Patient', 'Geschlecht', 'Bemerkung', 'Arzt', 'Ort', 'Übersetzer', 'Anzahl Termine', 'Status', 'Aktion'];
+    const columnLabels = ['Nr.', 'Start', 'Pat.-Nr.', 'Patient', 'Bemerkung', 'Arzt', 'Ort', 'Dolmetscher / Auto', 'Status', 'Aktion'];
+    const cloudReady = typeof window.sendTrackingAssignment === 'function';
+    const statusOptions = [['offen', 'Offen'], ['losgefahren', 'Losgefahren'], ['beendet', 'Beendet'], ['alleine', 'Alleine'], ['storniert', 'Storniert']];
 
-    data.forEach((termin, index) => {
-        if (!String(termin.Übersetzer || '').trim()) {
-            const interpreterFromRemark = parseAppointmentRemark(termin.Bemerkung).interpreterName;
-            if (interpreterFromRemark) termin.Übersetzer = interpreterFromRemark;
-        }
-        const row = document.createElement('tr');
+    tableBody.innerHTML = data.map((termin, index) => {
+        const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
+            .map(value => String(value || '').trim()).filter(Boolean).join(' ');
+        const gender = String(termin['Patienten Nr::Patienten_Geschlecht'] || '').trim().charAt(0).toLocaleUpperCase('de-DE');
+        const status = String(termin.Status || 'offen').trim().toLocaleLowerCase('de-DE');
+        const group = getTrackingStatusGroup(termin);
+        const special = Number(termin.Sonderbetrag) > 0 ? Number(termin.Sonderbetrag) : 0;
+        const quickStatus = group === 'offen'
+            ? `<button type="button" class="quick-status quick-status-go" data-index="${index}" data-status="losgefahren" title="Status auf „Losgefahren“ setzen">Los</button>`
+            : group === 'unterwegs'
+                ? `<button type="button" class="quick-status quick-status-done" data-index="${index}" data-status="beendet" title="Status auf „Beendet“ setzen">Fertig</button>`
+                : '';
+        const cells = [
+            `${index + 1}`,
+            `<input class="time-input" type="time" data-index="${index}" value="${escapeHtml(String(termin.Termin_Uhrzeit || '').slice(0, 5))}" aria-label="Startzeit für Termin ${index + 1}">`,
+            escapeHtml(termin.Patient_Nr ?? ''),
+            `<span class="patient-name">${escapeHtml(patientName)}</span>${gender ? ` <span class="patient-tag" title="Geschlecht">${escapeHtml(gender)}</span>` : ''}<span class="patient-more" data-index="${index}">${renderPatientMore(termin, data)}</span>`,
+            escapeHtml(termin.Bemerkung || ''),
+            escapeHtml(termin['Arzt Nr::Name'] || ''),
+            escapeHtml(getAppointmentLocation(termin)),
+            `<input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben">`
+                + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
+                + `<input class="special-input${special ? ' has-value' : ''}" type="number" min="0" step="1" inputmode="numeric" data-index="${index}" value="${special || ''}" placeholder="Sonder" title="Sondertag: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt" aria-label="Sonderbetrag für Termin ${index + 1}"></div>`
+                + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>` : ''),
+            `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`,
+            `<div class="tracking-row-actions">`
+                + `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">WhatsApp</button>`
+                + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="Auftrag ins Dolmetscher-Portal senden">${termin['Rückmeldung'] ? 'Neu senden' : 'Auftrag'}</button>` : '')
+                + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">Löschen</button>`
+                + `</div>`
+        ];
+        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
+    }).join('');
 
-        applyTrackingStatusColor(row, termin);
-
-        let endTime = '';
-        if (termin.Termin_Uhrzeit) {
-            const startTime = new Date(`1970-01-01T${termin.Termin_Uhrzeit}`);
-            const durationMinutes = termin.Dauer * 60;
-            endTime = new Date(startTime.getTime() + durationMinutes * 60000);
-        }
-
-        row.innerHTML = `
-			            <td>${index + 1}</td> <!-- Add the Lfd. Nr. column -->
-
-			<td contenteditable="true" onblur="updateTimeCell(event, ${index})">${escapeHtml(termin.Termin_Uhrzeit || '')}</td>
-			<td>${escapeHtml(termin.Patient_Nr || '')}</td>
-
-            <td>
-				${(termin['Patienten Nr::Patienten_Vorname'] || termin['Patienten Nr::Patienten_Name'])
-					? escapeHtml((termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] ? ' ' + termin['Patienten Nr::Patienten_Name'] : ''))
-						: ''}				
-			</td>
-
-			<td>${escapeHtml(termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '')}</td>
-			            <td>${escapeHtml(termin.Bemerkung || '')}</td>
-
-            <td>${escapeHtml(termin['Arzt Nr::Name'] || '')}</td>
-			            <td>${escapeHtml(termin['Arzt Nr::Vorname'] || '')}</td>
-
-			<td contenteditable="true" oninput="updateCell(event, ${index}, 'Übersetzer')" title="${escapeHtml(termin.Übersetzer ? '' : 'Aus der Bemerkung übernommen, falls erkennbar')}">${escapeHtml(getAppointmentInterpreterName(termin))}</td>
-			<td>${escapeHtml(termin.Anzahl_Termine || '')}</td>
-			<td>
-                <select data-index="${index}" class="status-select">
-                    <option value="offen" ${termin.Status === "offen" ? "selected" : ""}>Offen</option>
-                    <option value="beendet" ${termin.Status === "beendet" ? "selected" : ""}>Beendet</option>
-					<option value="alleine" ${termin.Status === "alleine" ? "selected" : ""}>Alleine</option>
-                    <option value="storniert" ${termin.Status === "storniert" ? "selected" : ""}>Storniert</option>
-                    <option value="losgefahren" ${termin.Status === "losgefahren" ? "selected" : ""}>Losgefahren</option>
-                </select>
-            </td>
-		          <td>
-                <div class="tracking-row-actions">
-                  <button type="button" class="whatsapp-button" data-index="${index}" aria-label="WhatsApp-Nachricht für diesen Termin vorbereiten" title="Nachricht an den Übersetzer vorbereiten">WhatsApp</button>
-                  <button type="button" class="delete-button" data-index="${index}">Löschen</button>
-                </div>
-              </td>
-
-
-        `;
-        row.querySelectorAll('td').forEach((cell, columnIndex) => {
-            cell.dataset.label = columnLabels[columnIndex] || '';
-        });
-        tableBody.appendChild(row);
-    });
-	
-	    // Event-Listener für den Löschen-Button hinzufügen
-    document.querySelectorAll('.delete-button').forEach(button =>
-        button.addEventListener('click', deleteRow));
-
-    document.querySelectorAll('.whatsapp-button').forEach(button =>
-        button.addEventListener('click', event => openWhatsAppModal(Number(event.currentTarget.dataset.index))));
-
-    document.querySelectorAll('.status-select').forEach(select =>
-        select.addEventListener('change', updateStatusFromSelect));
+    updateTrackingOverview(data);
+    applyTrackingFilter();
+    updateUndoButton();
+    if (typeof refreshTrackingReminders === 'function') refreshTrackingReminders();
 }
+
+// Schnittstelle für den Online-Abgleich des Tagesstands (cloudDaySync.js).
+window.getTrackingRecords = () => trackingData;
+window.applyRemoteTrackingRecords = records => {
+    trackingData.splice(0, trackingData.length, ...ensureTrackingFields(records));
+    saveTerminRecords(trackingData, 'tracking', { filtered: trackingData });
+    renderTrackingTable(trackingData);
+};
+window.refreshTrackingRows = () => {
+    saveTerminRecords(trackingData, 'tracking');
+    if (!document.activeElement?.matches?.('#tableBody input')) renderTrackingTable(trackingData);
+};
+document.getElementById('archiveDayButton')?.addEventListener('click', () => window.archiveTrackingDay?.());
+
+// Nach einem Online-Abgleich (z. B. Übernahme im Dolmetscher-Portal) die Fahrzeuglisten auffrischen,
+// ohne ein Feld zu stören, in dem gerade getippt wird.
+document.addEventListener('fleet-synced', () => {
+    document.querySelectorAll('#tableBody .vehicle-select').forEach(select => {
+        const termin = trackingData[Number(select.dataset.index)];
+        if (termin && document.activeElement !== select) select.innerHTML = renderVehicleOptions(termin);
+    });
+});
+
+// Ein Satz Listener für die ganze Tabelle statt pro Zeile – bleibt auch bei vielen Terminen schnell.
+(function bindTrackingTableEvents() {
+    const tableBody = document.getElementById('tableBody');
+    tableBody.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const index = Number(button.dataset.index);
+        if (button.classList.contains('whatsapp-button')) openWhatsAppModal(index);
+        else if (button.classList.contains('delete-button')) deleteRow(index);
+        else if (button.classList.contains('assign-button')) window.sendTrackingAssignment?.(index);
+        else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
+    });
+    tableBody.addEventListener('change', event => {
+        const target = event.target;
+        if (target.classList.contains('status-select')) setTrackingStatus(Number(target.dataset.index), target.value);
+        else if (target.classList.contains('interpreter-input')) updateInterpreterFromInput(target);
+        else if (target.classList.contains('vehicle-select')) updateVehicleFromSelect(target);
+        else if (target.classList.contains('time-input')) updateTimeFromInput(target);
+        else if (target.classList.contains('special-input')) updateSpecialFromInput(target);
+    });
+    // Enter im Namensfeld springt zum nächsten sichtbaren Termin.
+    tableBody.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || !event.target.classList.contains('interpreter-input')) return;
+        event.preventDefault();
+        const inputs = [...tableBody.querySelectorAll('tr:not([hidden]) .interpreter-input')];
+        const next = inputs[inputs.indexOf(event.target) + 1];
+        if (next) { next.focus(); next.select(); } else event.target.blur();
+    });
+})();
+
+function updateTrackingOverview(data) {
+    const counts = { offen: 0, unterwegs: 0, erledigt: 0, storniert: 0 };
+    data.forEach(item => { counts[getTrackingStatusGroup(item)] += 1; });
+    const set = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = String(value); };
+    set('overviewTotal', data.length);
+    set('overviewOpen', counts.offen);
+    set('overviewDeparted', counts.unterwegs);
+    set('overviewDone', counts.erledigt);
+    set('overviewCancelled', counts.storniert);
+}
+
+function applyTrackingFilter() {
+    const term = trackingSearchTerm.trim().toLocaleLowerCase('de-DE');
+    let visible = 0;
+    document.querySelectorAll('#tableBody tr').forEach(row => {
+        const termin = trackingData[Number(row.dataset.index)];
+        if (!termin) return;
+        const matchesStatus = trackingStatusFilter === 'alle' || getTrackingStatusGroup(termin) === trackingStatusFilter;
+        const haystack = [
+            termin.Termin_Uhrzeit, termin.Patient_Nr, termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name'],
+            termin.Bemerkung, termin['Arzt Nr::Name'], getAppointmentLocation(termin), termin.Übersetzer, termin.Fahrzeug, termin['Rückmeldung']
+        ].map(value => String(value ?? '')).join(' ').toLocaleLowerCase('de-DE');
+        const show = matchesStatus && (!term || haystack.includes(term));
+        row.hidden = !show;
+        if (show) visible += 1;
+    });
+    const filtered = trackingStatusFilter !== 'alle' || Boolean(term);
+    const info = document.getElementById('trackingFilterInfo');
+    if (info) info.textContent = filtered ? `${visible} von ${trackingData.length} Terminen` : '';
+    const empty = document.getElementById('trackingEmptyFilter');
+    if (empty) empty.hidden = !(filtered && visible === 0 && trackingData.length > 0);
+    document.querySelectorAll('[data-status-filter]').forEach(button => {
+        const active = button.dataset.statusFilter === trackingStatusFilter;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+}
+
+document.querySelectorAll('[data-status-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+        trackingStatusFilter = button.dataset.statusFilter;
+        applyTrackingFilter();
+    });
+});
+document.getElementById('trackingSearch')?.addEventListener('input', event => {
+    trackingSearchTerm = event.target.value;
+    applyTrackingFilter();
+});
+// „/“ springt von überall ins Suchfeld.
+document.addEventListener('keydown', event => {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    event.preventDefault();
+    document.getElementById('trackingSearch')?.focus();
+});
 
 
 function normalizeAppointmentColumnName(name) {
     return String(name || '')
         .toLocaleLowerCase('de-DE')
+        .replace(/ß/g, 'ss')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]/g, '');
@@ -211,11 +428,53 @@ function getAppointmentContactValues(termin, person, kind) {
 function getPatientAddressFields(termin) {
     return getAppointmentContactEntries(termin, 'patient', 'address').map(({ key, value }) => {
         const normalized = normalizeAppointmentColumnName(key);
-        let label = 'Patientenadresse';
-        if (normalized.includes('deutschland')) label += ' (Deutschland)';
-        else if (normalized.includes('qatar') || normalized.includes('katar')) label += ' (Katar)';
-        return [label, value];
+        const label = normalized.includes('qatar') || normalized.includes('katar')
+            ? 'Patientenadresse (Katar)'
+            : 'Patientenadresse';
+        return [label, formatWhatsAppAddress(value)];
     });
+}
+
+function formatWhatsAppAddress(value) {
+    return String(value || '')
+        .replace(/\s*,?\s*(?:Deutschland|Germany)\s*$/iu, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s*,\s*,/g, ',')
+        .trim()
+        .replace(/[,;\s]+$/g, '');
+}
+
+function getAppointmentPatientName(termin) {
+    const firstNameKeys = [
+        'Patienten Nr::Patienten_Vorname', 'Patienten_Vorname', 'Patient_Vorname',
+        'Patienten Vorname', 'Patient Vorname', 'Vorname Patient', 'Patient First Name'
+    ];
+    const familyNameKeys = [
+        'Patienten Nr::Patienten_Name', 'Patienten_Name', 'Patient_Name',
+        'Patienten Nachname', 'Patient Nachname', 'Nachname Patient', 'Patient Last Name'
+    ];
+    const findValue = keys => {
+        for (const key of keys) {
+            const value = String(termin?.[key] || '').trim();
+            if (value) return value;
+        }
+        return '';
+    };
+
+    const firstName = findValue(firstNameKeys);
+    const familyName = findValue(familyNameKeys);
+    if (firstName || familyName) return [firstName, familyName].filter(Boolean).join(' ');
+
+    const normalizedKeys = Object.keys(termin || {}).map(key => ({
+        key,
+        normalized: normalizeAppointmentColumnName(key)
+    }));
+    const patientNameEntry = normalizedKeys.find(({ normalized }) =>
+        /patient|pat/.test(normalized)
+        && /patientenname|patientname|namepatient/.test(normalized)
+        && !/vorname|nachname|status|geschlecht|nummer|nr/.test(normalized)
+    );
+    return patientNameEntry ? String(termin[patientNameEntry.key] || '').trim() : '';
 }
 
 function getDoctorAddress(termin) {
@@ -226,27 +485,41 @@ function getDoctorAddress(termin) {
     const city = findValue(/ort$|stadt$|city$/);
     const locality = [postalCode, city].filter(Boolean).join(' ');
     const formattedAddress = [street, locality].filter(Boolean).join(', ');
-    return formattedAddress || entries.map(entry => entry.value).join(', ');
+    return formatWhatsAppAddress(formattedAddress || entries.map(entry => entry.value).join(', '));
 }
 
 function getWhatsAppDataHint(termin) {
     const missing = [];
+    const remark = parseAppointmentRemark(termin.Bemerkung, termin.Übersetzer);
+    const patientName = getAppointmentPatientName(termin) || remark.patientName;
+    if (!patientName) missing.push('Patientenname');
+    if (!getPatientRecordNumber(termin)) missing.push('Aktennummer');
+    if (!termin.Termin_Datum) missing.push('Termindatum');
+    if (!termin.Termin_Uhrzeit) missing.push('Uhrzeit');
     if (getPatientAddressFields(termin).length === 0) missing.push('Patientenadresse');
     if (getAppointmentContactValues(termin, 'patient', 'phone').length === 0) missing.push('Patiententelefonnummer');
     if (!getDoctorAddress(termin)) missing.push('Arztadresse');
     if (getAppointmentContactValues(termin, 'doctor', 'phone').length === 0) missing.push('Arzttelefonnummer');
-    const remark = parseAppointmentRemark(termin.Bemerkung);
     const interpreter = getAppointmentInterpreterName(termin);
+    const guaranteeColumnKey = Object.keys(termin || {}).find(key =>
+        normalizeAppointmentColumnName(key) === 'kostengarantiejanein'
+    );
+    const guaranteeColumnStatus = normalizeAppointmentColumnName(guaranteeColumnKey ? termin[guaranteeColumnKey] : '');
     const remarkHint = [
-        remark.interpreterName ? `Erster Name aus der Bemerkung als Dolmetscher/in erkannt: ${remark.interpreterName}.` : '',
+        remark.interpreterName && !String(termin.Übersetzer || '').trim() ? `Dolmetscher/in steht ausdrücklich in der Bemerkung: ${remark.interpreterName}.` : '',
         remark.companionNames.length ? `Weitere Namen als Begleitperson(en) erkannt: ${remark.companionNames.join(', ')}.` : '',
-        remark.enteredBy ? `Letzte Bemerkungszeile: Eingetragen durch ${remark.enteredBy}.` : ''
+        remark.enteredBy ? `Eingetragen durch ${remark.enteredBy}.` : '',
+        remark.doctorName || remark.doctorAddress || remark.doctorPhone ? 'Arztangaben aus der Bemerkung wurden zusätzlich ausgewertet.' : '',
+        (remark.hasCostCoverage && ['nein', 'no', 'false', '0'].includes(guaranteeColumnStatus))
+            || (remark.hasSelfPayer && ['ja', 'yes', 'true', '1'].includes(guaranteeColumnStatus))
+            ? 'Achtung: Der Kostenmarker in der Bemerkung widerspricht der Kostengarantie-Spalte. Die Nachricht folgt dem Marker in der Bemerkung.'
+            : ''
     ].filter(Boolean).join(' ');
 
     if (missing.length) {
-        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Dolmetscher/in: ${interpreter || 'nicht erkannt'}. „Patienten Nr“ wird nicht als Telefonnummer verwendet. ${remarkHint}`.trim();
+        return `In der Datei fehlen eigene Spalten für: ${missing.join(', ')}. Dolmetscher/in: ${interpreter || 'nicht erkannt'}. „Patienten Nr“ wird nicht als Telefonnummer verwendet. Der Dolmetscher wird nie aus der Bemerkung geraten. ${remarkHint}`.trim();
     }
-    return `Adressen und Telefonnummern aus den Excel-Spalten sowie Dolmetscher/in ${interpreter || 'aus der Bemerkung'} werden übernommen. Bitte prüfe Empfänger und Text vor dem Senden. ${remarkHint}`.trim();
+    return `Adressen und Telefonnummern kommen aus den Excel-Spalten. Dolmetscher/in: ${interpreter || 'bitte auswählen'}. Prüfe Empfänger und Text vor dem Senden. ${remarkHint}`.trim();
 }
 
 function formatWhatsAppDate(value) {
@@ -307,92 +580,275 @@ function getPatientRecordNumber(termin) {
     return matchingKey ? String(termin[matchingKey] ?? '').trim() : '';
 }
 
-function parseAppointmentRemark(value) {
+function parseAppointmentRemark(value, assignedInterpreterName = '') {
     const lines = String(value || '').split(/\r\n|\n|\r/).map(line => line.trim()).filter(Boolean);
-    const enteredBy = lines.length ? lines.pop() : '';
     const nonNameTerms = new Set([
-        'abholung', 'apotheke', 'arzt', 'bericht', 'fahrt', 'fahrdienst', 'kontrolle',
-        'krankenhaus', 'lieferung', 'medikament', 'medikamente', 'op', 'operation',
-        'optag', 'patient', 'patientin', 'praxis', 'station', 'tag', 'termin', 'vorbereitung'
+        'abholung', 'ankunft', 'apotheke', 'arzt', 'bericht', 'bus', 'fahrt', 'fahrdienst',
+        'flughafen', 'kontrolle', 'krankenhaus', 'lieferung', 'medikament', 'medikamente',
+        'op', 'operation', 'optag', 'patient', 'patientin', 'praxis', 'station', 'tag',
+        'termin', 'vorbereitung', 'abflug', 'ankunft', 'rueckfahrt'
     ]);
 
     let explicitInterpreter = '';
+    let explicitEnteredBy = '';
+    let explicitPatientName = '';
+    let hasSelfPayer = false;
+    let hasCostCoverage = false;
+    let doctorName = '';
+    let doctorAddress = '';
+    let doctorPhone = '';
+    let doctorLocation = '';
+    let inDoctorBlock = false;
     const nameLines = [];
     const explicitCompanions = [];
-    const noteLineIndexes = new Set();
+    const noteLines = [];
+    const doctorAddressParts = [];
+    const doctorLocationParts = [];
+    const knownNames = [
+        ...(typeof readInterpreterDirectory === 'function' ? readInterpreterDirectory() : []),
+        String(assignedInterpreterName || '').trim()
+    ].filter(Boolean);
+    const normalizedName = name => String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+
     for (let index = 0; index < lines.length; index += 1) {
-        const line = lines[index];
+        let line = lines[index];
         const explicitInterpreterMatch = line.match(/^(?:dolmetscher(?:\/in)?|uebersetzer(?:\/in)?|übersetzer(?:\/in)?)\s*:\s*(.+)$/iu);
         if (explicitInterpreterMatch) {
             explicitInterpreter = explicitInterpreterMatch[1].trim();
             continue;
         }
+        const explicitEnteredByMatch = line.match(/^(?:eingetragen\s+durch|erfasst\s+durch)\s*:\s*(.+)$/iu);
+        if (explicitEnteredByMatch) {
+            const enteredByValue = explicitEnteredByMatch[1].trim();
+            explicitEnteredBy = /\bBSL\b/iu.test(enteredByValue) ? 'Kollege Bartzell' : enteredByValue;
+            continue;
+        }
+        const explicitPatientMatch = line.match(/^(?:patient(?:\/in)?|patientenname|name\s+patient)\s*[:\-]\s*(.+)$/iu);
+        if (explicitPatientMatch) {
+            explicitPatientName = explicitPatientMatch[1].trim();
+            continue;
+        }
         const explicitCompanion = line.match(/^(?:begleitperson(?:en)?|begleitung)\s*:\s*(.+)$/iu);
-        const candidate = (explicitCompanion?.[1] || line).trim();
-        const words = candidate.split(/\s+/);
+        if (explicitCompanion) {
+            explicitCompanion[1].split(/[,;]+/).map(name => name.trim()).filter(Boolean)
+                .forEach(name => explicitCompanions.push({ name, index }));
+            continue;
+        }
+
+        const hasSelfPayerMarker = /\bSZ\b/iu.test(line);
+        const hasCostCoverageMarker = /\bKG(?:\s+kontrolliert)?\b/iu.test(line)
+            || /\bkostenübernahme\b/iu.test(line);
+        hasSelfPayer ||= hasSelfPayerMarker;
+        hasCostCoverage ||= hasCostCoverageMarker;
+        line = line
+            .replace(/\bKG\s+kontrolliert\b/giu, ' ')
+            .replace(/\bSZ\b/giu, ' ')
+            .replace(/\bKG\b/giu, ' ')
+            .replace(/\bKostenübernahme\b/giu, ' ')
+            .replace(/^[\s:;,|\-]+|[\s:;,|\-]+$/g, '')
+            .trim();
+
+        if (/\bBSL\b/iu.test(line)) {
+            explicitEnteredBy ||= 'Kollege Bartzell';
+            line = line.replace(/\bBSL\b/giu, ' ').replace(/^[\s:;,|\-]+|[\s:;,|\-]+$/g, '').trim();
+        }
+        if (!line) continue;
+
+        const labelSeparator = line.match(/^([^:]{1,40})\s*:\s*(.+)$/u);
+        const label = labelSeparator ? normalizeAppointmentColumnName(labelSeparator[1]) : '';
+        const labelledValue = labelSeparator?.[2]?.trim() || '';
+        const doctorNameLabel = /^(?:arzt|arztname|praxis|praxisname|klinik|klinikname|krankenhaus|krankenhausname|hospital|hospitalname)$/.test(label);
+        const doctorSectionLabel = /^(?:arztdaten|arztpraxis|praxisdaten|arztpraxisdaten|klinikdaten|krankenhausdaten|hospital)$/.test(label)
+            || /^(?:arzt|arztpraxis|praxis|klinik|krankenhaus|hospital)(?:\s*\/\s*(?:praxis|arzt))?$/.test(line.toLocaleLowerCase('de-DE'));
+        const doctorAddressLabel = /^(?:(?:arzt|praxis|hospital|klinik|krankenhaus)?(?:adresse|anschrift|address|strasse|street|hausnummer)|(?:adresse|anschrift|address|strasse|street|hausnummer)(?:arzt|praxis|hospital|klinik|krankenhaus))$/.test(label);
+        const doctorPhoneLabel = /^(?:(?:arzt|praxis|hospital|klinik|krankenhaus)?(?:telefon|telefonnummer|telephone|phone|tel|rufnummer|handy|mobil|mobile)|(?:telefon|telefonnummer|telephone|phone|tel|rufnummer|handy|mobil|mobile)(?:arzt|praxis|hospital|klinik|krankenhaus))$/.test(label);
+        const doctorPostalLabel = /^(?:(?:arzt|praxis|hospital|klinik|krankenhaus)?(?:plz|postleitzahl|postalcode|postcode|zipcode|ort|stadt|city|town)|(?:plz|postleitzahl|postalcode|postcode|zipcode|ort|stadt|city|town)(?:arzt|praxis|hospital|klinik|krankenhaus))$/.test(label);
+
+        if (doctorSectionLabel) {
+            inDoctorBlock = true;
+            if (labelledValue && !doctorName) doctorName = labelledValue;
+            continue;
+        }
+        if (doctorNameLabel) {
+            inDoctorBlock = true;
+            doctorName ||= labelledValue;
+            continue;
+        }
+        if (doctorAddressLabel && (inDoctorBlock || /arzt|praxis|hospital|klinik|krankenhaus/.test(label))) {
+            inDoctorBlock = true;
+            doctorAddressParts.push(labelledValue);
+            continue;
+        }
+        if (doctorPhoneLabel && (inDoctorBlock || /arzt|praxis|hospital|klinik|krankenhaus/.test(label))) {
+            inDoctorBlock = true;
+            doctorPhone ||= labelledValue;
+            continue;
+        }
+        if (doctorPostalLabel && (inDoctorBlock || /arzt|praxis|hospital|klinik|krankenhaus/.test(label))) {
+            inDoctorBlock = true;
+            if (/^(?:(?:arzt|praxis|hospital|klinik|krankenhaus)?(?:ort|stadt|city|town))$/.test(label)) {
+                doctorLocationParts.push(labelledValue);
+            } else {
+                doctorAddressParts.push(labelledValue);
+            }
+            continue;
+        }
+
+        const genericDoctorAddressLabel = /^(?:adresse|anschrift|address|strasse|street|hausnummer)$/.test(label);
+        const genericDoctorPhoneLabel = /^(?:telefon|telefonnummer|telephone|tel|rufnummer|handy|mobil|mobile|phone)$/.test(label);
+        const genericDoctorPostalLabel = /^(?:plz|postleitzahl|postalcode|postcode|zipcode|ort|stadt|city|town)$/.test(label);
+        if (inDoctorBlock && genericDoctorAddressLabel) {
+            doctorAddressParts.push(labelledValue);
+            continue;
+        }
+        if (inDoctorBlock && genericDoctorPhoneLabel) {
+            doctorPhone ||= labelledValue;
+            continue;
+        }
+        if (inDoctorBlock && genericDoctorPostalLabel) {
+            if (/^(?:ort|stadt|city)$/.test(label)) doctorLocationParts.push(labelledValue);
+            else doctorAddressParts.push(labelledValue);
+            continue;
+        }
+
+        const explicitInterpreterValue = line.match(/^(?:dolmetscher(?:\/in)?|uebersetzer(?:\/in)?|übersetzer(?:\/in)?)\s*:\s*(.+)$/iu);
+        if (explicitInterpreterValue) {
+            explicitInterpreter = explicitInterpreterValue[1].trim();
+            continue;
+        }
+        const explicitEnteredByValue = line.match(/^(?:eingetragen\s+durch|erfasst\s+durch)\s*:\s*(.+)$/iu);
+        if (explicitEnteredByValue) {
+            explicitEnteredBy = /\bBSL\b/iu.test(explicitEnteredByValue[1])
+                ? 'Kollege Bartzell'
+                : explicitEnteredByValue[1].trim();
+            continue;
+        }
+
+        const directoryMatch = knownNames.find(name => normalizedName(name) === normalizedName(line));
+        if (directoryMatch) {
+            nameLines.push({ name: directoryMatch, index, knownInterpreter: true });
+            continue;
+        }
+
+        if (inDoctorBlock && /^(?:dr|prof)\.?\s+/iu.test(line)) {
+            doctorName ||= line;
+            continue;
+        }
+
+        const words = line.split(/\s+/);
         const normalizedWords = words.map(normalizeAppointmentColumnName).filter(Boolean);
         const hasOperationalTerm = normalizedWords.some(word => nonNameTerms.has(word));
         const nameWordPattern = /^(?:\p{Lu}[\p{L}\p{M}'’.-]*|\p{Lo}[\p{L}\p{M}'’.-]*)$/u;
         const looksLikeName = words.length > 0
             && words.length <= 4
+            && words.length >= 2
             && words.every(word => nameWordPattern.test(word))
             && !hasOperationalTerm;
 
-        if (explicitCompanion) explicitCompanions.push({ name: candidate, index });
-        else if (looksLikeName) nameLines.push({ name: candidate, index });
-        else noteLineIndexes.add(index);
+        if (looksLikeName) nameLines.push({ name: line, index, knownInterpreter: false });
+        else noteLines.push(line);
     }
 
-    const interpreterEntry = nameLines.shift();
+    const uniqueDoctorAddressParts = doctorAddressParts.filter(Boolean).filter((part, index, parts) => parts.findIndex(value =>
+        value.toLocaleLowerCase('de-DE') === part.toLocaleLowerCase('de-DE')
+    ) === index);
+    const doctorLocality = doctorLocationParts.filter(Boolean).join(' ');
+    if (doctorLocality) {
+        if (uniqueDoctorAddressParts.length) uniqueDoctorAddressParts[uniqueDoctorAddressParts.length - 1] += ` ${doctorLocality}`;
+        else uniqueDoctorAddressParts.push(doctorLocality);
+    }
+    doctorAddress = doctorAddress || uniqueDoctorAddressParts.join(', ');
+    doctorAddress = formatWhatsAppAddress(doctorAddress);
+    doctorLocation = doctorLocationParts.join(' ');
+
+    const lastNameLine = nameLines.at(-1);
+    const lastLineIndex = lines.length - 1;
+    const enteredByEntry = nameLines.length > 1 && lastNameLine?.index === lastLineIndex
+        ? nameLines.pop()
+        : null;
+    const enteredBy = explicitEnteredBy || enteredByEntry?.name || '';
+    const assignedName = String(assignedInterpreterName || '').trim();
+    // Der Dolmetscher wird nie aus der Bemerkung geraten: Er kommt nur aus der Spalte
+    // „Übersetzer“ oder aus einer ausdrücklichen Zeile „Dolmetscher: Name“.
+    const interpreterEntry = nameLines.find(entry => assignedName && normalizedName(entry.name) === normalizedName(assignedName)) || null;
     const interpreterName = explicitInterpreter || interpreterEntry?.name || '';
-    const companions = [...nameLines, ...explicitCompanions]
+    // Die erste namensähnliche Zeile ohne Zuordnung bleibt eine normale Notiz.
+    const unassignedLead = !interpreterEntry && !explicitInterpreter ? nameLines[0] : null;
+    const companions = [
+        ...nameLines.filter(entry => entry !== interpreterEntry && entry !== unassignedLead
+            && (!interpreterEntry || entry.index > interpreterEntry.index)),
+        ...explicitCompanions
+    ]
         .sort((left, right) => left.index - right.index);
+
+    const recognizedIndexes = new Set([
+        ...(interpreterEntry ? [interpreterEntry.index] : []),
+        ...companions.map(entry => entry.index),
+        ...(enteredByEntry ? [enteredByEntry.index] : [])
+    ]);
+    const retainedNotes = [
+        ...noteLines,
+        ...nameLines.filter(entry => !recognizedIndexes.has(entry.index)).map(entry => entry.name)
+    ];
 
     return {
         interpreterName,
         companionNames: companions.map(entry => entry.name),
         companionName: companions[0]?.name || '',
+        patientName: explicitPatientName,
         enteredBy,
-        noteLines: lines.filter((_, index) => noteLineIndexes.has(index))
+        noteLines: retainedNotes,
+        hasSelfPayer,
+        hasCostCoverage,
+        doctorName,
+        doctorAddress,
+        doctorPhone,
+        doctorLocation
     };
 }
 
 function getAppointmentInterpreterName(termin) {
-    return String(termin?.Übersetzer || '').trim()
-        || parseAppointmentRemark(termin?.Bemerkung).interpreterName;
+    return String(termin?.Übersetzer || '').trim() || parseAppointmentRemark(termin?.Bemerkung, termin?.Übersetzer).interpreterName;
 }
 
 function createWhatsAppAppointmentMessage(termin, includeNote) {
     const interpreter = getAppointmentInterpreterName(termin).replace(/[\r\n]+/g, ' ');
-    const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-        .join(' ');
+    const remark = parseAppointmentRemark(termin.Bemerkung, termin.Übersetzer);
+    const patientName = getAppointmentPatientName(termin) || remark.patientName;
     const patientRecordNumber = getPatientRecordNumber(termin);
-    const remark = parseAppointmentRemark(termin.Bemerkung);
     const isCompanionAppointment = remark.companionNames.length > 0;
-    const doctorName = String(termin['Arzt Nr::Name'] || '').trim();
-    const appointmentLocation = String(termin['Arzt Nr::Vorname'] || '').trim();
+    const doctorName = remark.doctorName || String(termin['Arzt Nr::Name'] || '').trim();
+    const appointmentLocation = formatWhatsAppAddress(remark.doctorLocation || termin['Arzt Nr::Ort'] || termin.Ort || termin.Termin_Ort || termin.Stadt || '');
     const patientAddressFields = getPatientAddressFields(termin).map(([label, value]) => [
         isCompanionAppointment ? `${label} (Hauptpatient)` : label,
         value
     ]);
     const patientPhone = getAppointmentContactValues(termin, 'patient', 'phone').join(' / ');
-    const doctorAddress = getDoctorAddress(termin);
-    const doctorPhone = getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
-    const patientHeader = [
-        isCompanionAppointment ? `Hauptpatient/in: ${patientName}` : `Patient/in: ${patientName}`,
-        patientRecordNumber ? `Aktennummer: ${patientRecordNumber}` : '',
-        ...(isCompanionAppointment ? [`Begleitperson(en): ${remark.companionNames.join(', ')}`] : [])
-    ].filter(line => !line.endsWith(': '));
+    const doctorAddress = formatWhatsAppAddress(remark.doctorAddress || getDoctorAddress(termin));
+    const doctorPhone = remark.doctorPhone || getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
+    const appointmentDate = formatWhatsAppDate(termin.Termin_Datum);
+    const appointmentTime = formatWhatsAppTime(termin.Termin_Uhrzeit);
+    // In the supplied FileMaker export the separate yes/no column conflicts
+    // with SZ/KG written in Bemerkung. Follow the user's explicit note markers.
+    const hasSelfPayer = remark.hasSelfPayer;
+    const hasCostCoverage = remark.hasCostCoverage;
+    const costStatus = hasSelfPayer && hasCostCoverage
+        ? 'Bitte Kostenstatus vor dem Termin prüfen: In der Bemerkung stehen sowohl SZ als auch KG.'
+        : hasSelfPayer
+            ? 'Kostenstatus: Selbstzahler (keine Kostengarantie).'
+            : hasCostCoverage
+                ? 'Kostenübernahme: Bitte die Kostenübernahme/Kostengarantie zum Termin mitbringen.'
+                : '';
+    const keyFacts = [
+        patientName ? `*${isCompanionAppointment ? 'Hauptpatient/in' : 'Patient/in'}: ${patientName}*` : '',
+        patientRecordNumber ? `*Aktennummer: ${patientRecordNumber}*` : '',
+        appointmentDate || appointmentTime ? `*Termin: ${[appointmentDate, appointmentTime].filter(Boolean).join(' · ')}*` : '',
+        appointmentLocation ? `*Ort: ${appointmentLocation}*` : '',
+        interpreter ? `*Dolmetscher/in: ${interpreter}*` : '',
+        ...(isCompanionAppointment ? [`*Termin für Begleitperson: ${remark.companionNames.join(', ')}*`] : []),
+        ...(costStatus ? [`*${costStatus}*`] : [])
+    ].filter(Boolean);
     const sections = [
-        {
-            title: 'TERMIN',
-            fields: [
-                ['Datum', formatWhatsAppDate(termin.Termin_Datum)],
-                ['Uhrzeit', formatWhatsAppTime(termin.Termin_Uhrzeit)]
-            ]
-        },
         {
             title: 'PATIENTENKONTAKT',
             fields: [
@@ -404,7 +860,6 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             title: 'ARZT / PRAXIS',
             fields: [
                 ['Name', doctorName],
-                ['Ort', appointmentLocation],
                 ['Adresse', doctorAddress],
                 ['Telefon', doctorPhone]
             ]
@@ -413,7 +868,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             ? [{ title: 'WEITERE HINWEISE', fields: remark.noteLines.map(line => ['', line]) }]
             : []),
         ...(includeNote && remark.enteredBy
-            ? [{ title: 'TERMINERFASSUNG', fields: [['Eingetragen durch', remark.enteredBy]] }]
+            ? [{ title: 'EINGETRAGEN DURCH', fields: [[ '', remark.enteredBy === 'Kollege Bartzell' ? 'Kollege Bartzell' : remark.enteredBy]] }]
             : [])
     ].map(section => ({
         ...section,
@@ -427,15 +882,18 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
     ]);
 
     return [
-        '*TERMININFORMATIONEN*',
-        ...patientHeader,
+        '*DOLMETSCHAUFTRAG*',
+        ...keyFacts,
         ...(isCompanionAppointment
-            ? ['', `*Hinweis:* Dieser Termin ist für die genannte Begleitperson. Die Aktennummer gehört zum Hauptpatienten.`]
+            ? ['', patientName
+                ? 'Hinweis: Der Termin ist für die oben genannte Begleitperson. Die Aktennummer gehört zum Hauptpatienten.'
+                : 'Hinweis: Der Termin ist für die in der Bemerkung genannte Begleitperson.'
+            ]
             : []),
         '',
-        interpreter ? `Guten Tag ${interpreter},` : 'Guten Tag,',
+        'Guten Tag,',
         '',
-        'bitte übernimm folgenden Dolmetschauftrag:',
+        'bitte übernimm den folgenden Dolmetschauftrag:',
         '',
         ...details,
         'Bitte bestätige kurz den Erhalt des Auftrags. Vielen Dank.'
@@ -461,7 +919,8 @@ function openWhatsAppModal(index) {
 
     const interpreter = getAppointmentInterpreterName(termin);
     if (!interpreter) {
-        alert('Bitte trage den Namen des Dolmetschers/der Dolmetscherin in die Spalte „Übersetzer“ ein oder achte darauf, dass er als erster Name in der Bemerkung steht.');
+        showToast('Bitte trage zuerst den Dolmetscher oder die Dolmetscherin in dieser Zeile ein.', 'error');
+        document.querySelector(`#tableBody .interpreter-input[data-index="${index}"]`)?.focus();
         return;
     }
 
@@ -516,14 +975,14 @@ document.getElementById('whatsappModal').addEventListener('click', event => {
     if (event.target.id === 'whatsappModal') closeWhatsAppModal();
 });
 document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && document.getElementById('whatsappModal').style.display === 'block') {
-        closeWhatsAppModal();
-    }
+    if (event.key !== 'Escape') return;
+    if (document.getElementById('whatsappModal').style.display === 'block') closeWhatsAppModal();
+    else if (document.getElementById('addRowModal').style.display === 'block') toggleAddRowModal();
 });
 document.getElementById('openWhatsAppButton').addEventListener('click', () => {
     const message = document.getElementById('whatsappMessage').value.trim();
     if (!message) {
-        alert('Bitte gib einen Nachrichtentext ein.');
+        showToast('Bitte gib einen Nachrichtentext ein.', 'error');
         document.getElementById('whatsappMessage').focus();
         return;
     }
@@ -537,48 +996,32 @@ document.getElementById('openWhatsAppButton').addEventListener('click', () => {
 });
 
 
-function updateTimeCell(event, index) {
-    const newValue = event.target.innerText; // Get the new value from the cell
-
-    // Validierung des neuen Wertes im Format HH:MM:SS
-    if (!/^\d{2}:\d{2}:\d{2}$/.test(newValue)) {
-        alert("Bitte eine gültige Uhrzeit im Format HH:MM:SS eingeben.");
-        return;
-    }
-
-    // Update der Daten im Array
-    if (trackingData && trackingData[index]) {
-        trackingData[index].Termin_Uhrzeit = normalizeTerminUhrzeit(newValue); // Normalize edited time
-    } else {
-        console.error('trackingData array is not defined or index is out of bounds');
-    }
-
-    // Sortieren der Daten
-    sortTrackingDataByTime(trackingData);
-
-    // Tabelle neu rendern
+function updateTimeFromInput(input) {
+    const index = Number(input.dataset.index);
+    const termin = trackingData[index];
+    if (!termin) return;
+    const newValue = input.value ? `${input.value}:00` : '';
+    if (normalizeTerminUhrzeit(termin.Termin_Uhrzeit) === newValue) return;
+    recordTrackingUndo('Startzeit geändert');
+    termin.Termin_Uhrzeit = newValue;
     renderTrackingTable(trackingData);
     persistTerminRecords(trackingData, 'tracking');
+    // Der Termin kann durch die neue Zeit an eine andere Stelle gerutscht sein.
+    const newIndex = trackingData.indexOf(termin);
+    document.querySelector(`#tableBody .time-input[data-index="${newIndex}"]`)?.focus();
 }
 
-
-
-// Funktion zum Löschen einer Zeile
-function deleteRow(event) {
-    const index = event.target.dataset.index;
-
-    // Bestätigungsdialog
-    if (confirm('Sind Sie sicher, dass Sie diese Zeile löschen möchten?')) {
-        // Zeile aus der Datenstruktur entfernen
-        trackingData.splice(index, 1);
-
-    // Zähle die Anzahl der Termine und aktualisiere die Anzahl_Termine-Spalte
+// Löschen ohne Rückfrage: Die Einblendung bietet „Rückgängig“ an.
+function deleteRow(index) {
+    const termin = trackingData[index];
+    if (!termin) return;
+    recordTrackingUndo('Termin gelöscht');
+    trackingData.splice(index, 1);
     updateAnzahlTermine(trackingData);
-	
-        // Tabelle neu rendern
-        renderTrackingTable(trackingData);
-        persistTerminRecords(trackingData, 'tracking');
-    }
+    renderTrackingTable(trackingData);
+    persistTerminRecords(trackingData, 'tracking');
+    const name = getAppointmentPatientName(termin) || `Termin ${index + 1}`;
+    showToast(`Gelöscht: ${name}`, 'info', { actionLabel: 'Rückgängig', onAction: undoLastTrackingChange, duration: 8000 });
 }
 
 function formatTime(date) {
@@ -588,36 +1031,134 @@ function formatTime(date) {
     return `${hours}:${minutes}:${seconds}`;
 }
 
-function updateCell(event, index, fieldName) {
-    const newValue = event.target.innerText; // Get the new value from the cell
-
-    // Check if the data array is valid
-    if (trackingData && trackingData[index]) {
-        trackingData[index][fieldName] = newValue; // Update the entry in the data array
-        persistTerminRecords(trackingData, 'tracking');
-    } else {
-        console.error('trackingData array is not defined or index is out of bounds');
-    }
-
-    // Optionally save changes to backend
+function findVehiclePlateForInterpreter(name, exceptTermin) {
+    if (!name) return '';
+    const other = trackingData.find(termin => termin !== exceptTermin && termin.Fahrzeug
+        && getAppointmentInterpreterName(termin).toLocaleLowerCase('de') === name.toLocaleLowerCase('de'));
+    if (other) return other.Fahrzeug;
+    if (typeof getCurrentFleetVehicleForDriver !== 'function') return '';
+    const current = getCurrentFleetVehicleForDriver(name)?.plate;
+    if (current) return current;
+    // Fest angestellte Dolmetscher: ihr festes Fahrzeug aus der Online-Datenbank.
+    return readActiveFleetVehicles().find(vehicle => sameFleetDriver(vehicle.assignedName, name))?.plate || '';
 }
 
-// Update status from select dropdown
-function updateStatusFromSelect(event) {
-    const index = event.target.dataset.index;
-    trackingData[index].Status = event.target.value;
+function ensureVehicleColumn() {
+    // Die Spalte soll auch im Excel-Export in jeder Zeile vorhanden sein.
+    trackingData.forEach(item => { if (!Object.prototype.hasOwnProperty.call(item, 'Fahrzeug')) item.Fahrzeug = ''; });
+}
 
-    const tableBody = document.getElementById('tableBody');
-    const row = tableBody.querySelectorAll('tr')[index];
+function updateInterpreterFromInput(input) {
+    const index = Number(input.dataset.index);
+    const termin = trackingData[index];
+    const value = String(input.value || '').trim().replace(/\s+/g, ' ');
+    if (!termin || termin.Übersetzer === value) return;
+    recordTrackingUndo('Dolmetscher-Zuweisung geändert');
+    termin.Übersetzer = value;
+    if (value && typeof addInterpreterName === 'function') addInterpreterName(value);
+    input.value = value;
 
-    applyTrackingStatusColor(row, trackingData[index]);
+    // Hat die Person heute schon ein Fahrzeug, wird es direkt vorgeschlagen.
+    const vehicleSelect = input.closest('td').querySelector('.vehicle-select');
+    if (value && !termin.Fahrzeug) {
+        const plate = findVehiclePlateForInterpreter(value, termin);
+        if (plate) {
+            ensureVehicleColumn();
+            termin.Fahrzeug = plate;
+        }
+    }
+    if (vehicleSelect) vehicleSelect.innerHTML = renderVehicleOptions(termin);
+
     persistTerminRecords(trackingData, 'tracking');
+    refreshPatientHints();
+    applyTrackingFilter();
+    if (typeof refreshTrackingReminders === 'function') refreshTrackingReminders();
+    offerInterpreterForSiblings(termin, value);
+}
+
+// Hat derselbe Patient heute weitere Termine ohne Dolmetscher, lässt sich der Name mit einem Klick übernehmen.
+function offerInterpreterForSiblings(termin, interpreter) {
+    if (!interpreter || typeof showToast !== 'function') return;
+    const open = getPatientSiblings(termin).filter(other => !String(other.Übersetzer || '').trim());
+    if (!open.length) return;
+    const times = open.map(other => String(other.Termin_Uhrzeit || '').slice(0, 5) || 'ohne Zeit').join(', ');
+    showToast(`${getAppointmentPatientName(termin) || 'Der Patient'} hat heute noch ${open.length === 1 ? 'einen Termin' : `${open.length} Termine`} ohne Dolmetscher (${times}).`, 'info', {
+        duration: 12000,
+        actionLabel: `Auch ${interpreter} eintragen`,
+        onAction: () => {
+            recordTrackingUndo('Dolmetscher für weitere Termine übernommen');
+            open.forEach(other => { other.Übersetzer = interpreter; });
+            persistTerminRecords(trackingData, 'tracking');
+            renderTrackingTable(trackingData);
+        }
+    });
+}
+
+// Sondertag: Betrag, der für diesen Tag statt des normalen Tagessatzes gezahlt wird.
+// Er erscheint in der Monatsabrechnung automatisch als Sondertag der eingetragenen Person.
+function updateSpecialFromInput(input) {
+    const termin = trackingData[Number(input.dataset.index)];
+    if (!termin) return;
+    const amount = Math.max(0, Math.round(Number(input.value) || 0));
+    if ((Number(termin.Sonderbetrag) || 0) === amount) return;
+    recordTrackingUndo('Sonderbetrag geändert');
+    trackingData.forEach(item => { if (!Object.prototype.hasOwnProperty.call(item, 'Sonderbetrag')) item.Sonderbetrag = ''; });
+    termin.Sonderbetrag = amount || '';
+    input.value = amount || '';
+    input.classList.toggle('has-value', amount > 0);
+    input.closest('tr').classList.toggle('has-special', amount > 0);
+    persistTerminRecords(trackingData, 'tracking');
+    if (amount && !getAppointmentInterpreterName(termin)) showToast('Sonderbetrag gespeichert. Trage noch den Dolmetscher ein, damit der Tag in der Abrechnung landet.', 'info');
+}
+
+function updateVehicleFromSelect(select) {
+    const index = Number(select.dataset.index);
+    const termin = trackingData[index];
+    const plate = select.value;
+    if (!termin || String(termin.Fahrzeug || '') === plate) return;
+    recordTrackingUndo('Fahrzeug-Zuweisung geändert');
+    ensureVehicleColumn();
+    termin.Fahrzeug = plate;
+
+    const interpreter = getAppointmentInterpreterName(termin);
+    const vehicle = plate && typeof findFleetVehicleByPlate === 'function' ? findFleetVehicleByPlate(plate) : null;
+    if (vehicle && interpreter && isTrackingDayToday()) {
+        const result = assignFleetVehicleToDriver(vehicle.id, interpreter);
+        if (result.changed) {
+            showToast(result.previousDriver
+                ? `${vehicle.plate}: von ${result.previousDriver} an ${interpreter} übergeben`
+                : `${vehicle.plate} → ${interpreter} (im Fahrzeugprotokoll eingetragen)`, 'success');
+        }
+    }
+    // Dieselbe Person fährt bei ihren weiteren offenen Terminen mit demselben Fahrzeug.
+    if (plate && interpreter) {
+        trackingData.forEach(item => {
+            if (item !== termin && !item.Fahrzeug && getTrackingStatusGroup(item) === 'offen'
+                && getAppointmentInterpreterName(item).toLocaleLowerCase('de') === interpreter.toLocaleLowerCase('de')) {
+                item.Fahrzeug = plate;
+            }
+        });
+    }
+    persistTerminRecords(trackingData, 'tracking');
+    renderTrackingTable(trackingData);
+    document.querySelector(`#tableBody .vehicle-select[data-index="${index}"]`)?.focus();
+}
+
+function setTrackingStatus(index, status) {
+    const termin = trackingData[index];
+    if (!termin || termin.Status === status) return;
+    recordTrackingUndo('Terminstatus geändert');
+    termin.Status = status;
+    persistTerminRecords(trackingData, 'tracking');
+    renderTrackingTable(trackingData);
+    const row = document.querySelector(`#tableBody tr[data-index="${index}"]`);
+    if (row && !row.hidden) row.querySelector('.quick-status, .status-select')?.focus();
 }
 
 // Workbook mit aktualisierten Daten aktualisieren
 function updateWorkbook() {
     const newWorkbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(trackingData);
+    const worksheet = XLSX.utils.json_to_sheet(stripInternalFields(trackingData));
     XLSX.utils.book_append_sheet(newWorkbook, worksheet, 'Tracking');
     workbook = newWorkbook;
 }
@@ -668,7 +1209,7 @@ document.getElementById('savePdfButton').addEventListener('click', () => {
     const doc = new jsPDF('landscape');
 
     // Set up the table headers
-    const headers = [["Datum", "Start", "Pat. Nr", "Patient", "Geschlecht", "Bemerkung", "Arzt", "Ort", "Übersetzer", "Anzahl Termine", "Status"]];
+    const headers = [["Datum", "Start", "Pat. Nr", "Patient", "Geschlecht", "Bemerkung", "Arzt", "Ort", "Übersetzer", "Fahrzeug", "Sonder €", "Anzahl Termine", "Status"]];
     const rows = trackingData.map(termin => {
         let endTimeFormatted = ''; // Initialize as empty
 
@@ -681,28 +1222,33 @@ document.getElementById('savePdfButton').addEventListener('click', () => {
 
         // Clean up the Bemerkung field by removing extra line breaks
         const bemerkung = termin['Bemerkung']
-             ? termin['Bemerkung'].replace(/(\r\n|\n|\r)+/g, ' ').trim()
+             ? String(termin['Bemerkung']).replace(/(\r\n|\n|\r)+/g, ' ').trim()
              : ''; // Replace line breaks with a space
 
         return [
-            termin.Termin_Datum,
-            termin.Termin_Uhrzeit ? formatTimePdf(termin.Termin_Uhrzeit) : '', // Check if Termin_Uhrzeit is empty, if not, format it
-			termin.Patient_Nr,
-            termin['Patienten Nr::Patienten_Vorname'] + ' ' + termin['Patienten Nr::Patienten_Name'],
-			termin['Patienten Nr::Patienten_Geschlecht'] ? termin['Patienten Nr::Patienten_Geschlecht'].charAt(0) : '',
+            termin.Termin_Datum || '',
+            String(termin.Termin_Uhrzeit || '').slice(0, 5),
+            termin.Patient_Nr ?? '',
+            getAppointmentPatientName(termin),
+            String(termin['Patienten Nr::Patienten_Geschlecht'] || '').charAt(0),
             bemerkung,
-            termin['Arzt Nr::Name']? termin['Arzt Nr::Name'] : '',
-            termin['Arzt Nr::Vorname'],
-            termin.Übersetzer,
-            termin.Anzahl_Termine,
-            termin.Status
+            termin['Arzt Nr::Name'] || '',
+            getAppointmentLocation(termin),
+            getAppointmentInterpreterName(termin),
+            termin.Fahrzeug || '',
+            termin.Sonderbetrag || '',
+            termin.Anzahl_Termine ?? '',
+            termin.Status || 'offen'
         ];
     });
 
     // Generate the PDF table
     doc.autoTable({
         head: headers,
-        body: rows
+        body: rows,
+        styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
+        headStyles: { fillColor: [23, 107, 159] },
+        margin: { top: 10, right: 8, bottom: 10, left: 8 }
     });
 
     // Find the first non-empty 'Termin_Datum'
@@ -753,8 +1299,15 @@ function formatTimePdf(timeString) {
 // Funktion zum Öffnen/Schließen des Modals
 function toggleAddRowModal() {
     const modal = document.getElementById('addRowModal');
-    modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+    const open = modal.style.display !== 'block';
+    modal.style.display = open ? 'block' : 'none';
+    modal.setAttribute('aria-hidden', String(!open));
+    if (open) document.getElementById('terminUhrzeit').focus();
 }
+
+document.getElementById('addRowModal').addEventListener('click', event => {
+    if (event.target.id === 'addRowModal') toggleAddRowModal();
+});
 
   // Event-Listener für den Hinzufügen-Button
   document.getElementById('addRowButton').addEventListener('click', () => {
@@ -762,9 +1315,10 @@ function toggleAddRowModal() {
   });
 
 // Event-Listener für den "Hinzufügen"-Button
-document.getElementById('confirmAddRowButton').addEventListener('click', () => {
+document.getElementById('addRowForm').addEventListener('submit', event => {
+    event.preventDefault();
     if (trackingData.length === 0) {
-        alert('Bitte lade zuerst eine Terminliste hoch oder gehe über die vorherigen Schritte hierher.');
+        showToast('Bitte lade zuerst eine Terminliste oder komm über die vorherigen Schritte hierher.', 'error');
         return;
     }
 
@@ -778,7 +1332,8 @@ document.getElementById('confirmAddRowButton').addEventListener('click', () => {
 
     for (const [field, label] of Object.entries(requiredFields)) {
         if (!document.getElementById(field).value) {
-            alert(`Bitte fülle das Pflichtfeld „${label}“ aus.`);
+            showToast(`Bitte fülle das Pflichtfeld „${label}“ aus.`, 'error');
+            document.getElementById(field).focus();
             return;
         }
     }
@@ -794,14 +1349,15 @@ document.getElementById('confirmAddRowButton').addEventListener('click', () => {
 
     // Ensure firstTerminDatum is treated as a string
     firstTerminDatum = firstTerminDatum ? firstTerminDatum : 'unbekannt';
+    const patientRecordNumber = String(document.getElementById('patientNr').value || '').trim();
 
     // Die bestehende Excel-Spaltenstruktur erhalten, ohne Daten eines anderen
     // Patienten in die neue Zeile zu kopieren.
-    const newRow = Object.fromEntries(Object.keys(trackingData[0]).map(header => [header, '']));
+    const newRow = Object.fromEntries(Object.keys(trackingData[0]).filter(header => !header.startsWith('_')).map(header => [header, '']));
     Object.assign(newRow, {
         "Termin_Datum": firstTerminDatum,
         "Termin_Uhrzeit": formatTimeToHHMMSS(document.getElementById('terminUhrzeit').value),
-        "Patient_Nr": parseInt(document.getElementById('patientNr').value,10),
+        "Patient_Nr": patientRecordNumber,
         "Patienten Nr::Patienten_Name": document.getElementById('patientName').value,
         "Arzt_Nr": '',
         "Arzt Nr::Name": document.getElementById('arztName').value,
@@ -810,13 +1366,17 @@ document.getElementById('confirmAddRowButton').addEventListener('click', () => {
         "Patienten Nr::Patienten_Geschlecht": document.getElementById('patientGeschlecht').value,
         "Patienten Nr::Patienten_Status": '',
         "Patienten Nr::Patienten_Vorname": document.getElementById('patientVorname').value,
-        "Arzt Nr::Vorname": document.getElementById('arztVorname').value,
-        "Übersetzer": document.getElementById('uebersetzer').value,
+        "Arzt Nr::Ort": document.getElementById('arztVorname').value,
+        "Übersetzer": document.getElementById('uebersetzer').value.trim().replace(/\s+/g, ' '),
 		"Status": 'offen'
     });
+    if (Object.prototype.hasOwnProperty.call(newRow, 'Patienten Nr::Patienten_Nr')) {
+        newRow['Patienten Nr::Patienten_Nr'] = patientRecordNumber;
+    }
     if (Object.prototype.hasOwnProperty.call(trackingData[0], 'Dauer')) newRow.Dauer = '2';
 
     // Füge die neue Zeile zu trackingData hinzu
+    recordTrackingUndo('Termin hinzugefügt');
     trackingData.push(newRow);
 
     // Zähle die Anzahl der Termine und aktualisiere die Anzahl_Termine-Spalte
@@ -836,6 +1396,7 @@ document.getElementById('confirmAddRowButton').addEventListener('click', () => {
 
     // Schließe das Modal nach dem Hinzufügen
     toggleAddRowModal();
+    showToast('Termin hinzugefügt', 'success', { actionLabel: 'Rückgängig', onAction: undoLastTrackingChange });
 });
 
 
@@ -868,7 +1429,7 @@ function restoreTrackingWorkflow() {
     const savedRecords = readTerminRecords();
     if (!savedRecords || savedRecords.length === 0) return;
 
-    trackingData = normalizeTerminRecords(savedRecords.map(row => ({ Status: 'offen', ...row })));
+    trackingData = ensureTrackingFields(savedRecords.map(row => ({ Status: 'offen', ...row })));
     renderTrackingTable(trackingData);
     showWorkflowStatus(`${trackingData.length} Termine aus dem vorherigen Schritt geladen. Änderungen werden automatisch zwischengespeichert.`);
 }
@@ -886,12 +1447,14 @@ function sortTrackingDataByTime(data) {
 
 function updateAnzahlTermine(data) {
     const countMap = data.reduce((acc, entry) => {
-        acc[entry.Patient_Nr] = (acc[entry.Patient_Nr] || 0) + 1;
+        const key = getPatientDayKey(entry);
+        if (key) acc[key] = (acc[key] || 0) + 1;
         return acc;
     }, {});
 
-    // Aktualisieren der Anzahl der Termine für jeden Eintrag in trackingData
+    // Anzahl der Termine je Patient am Tag (für die Excel- und PDF-Liste)
     data.forEach(entry => {
-        entry.Anzahl_Termine = countMap[entry.Patient_Nr] || 0;
+        const count = countMap[getPatientDayKey(entry)] || 1;
+        if (entry.Anzahl_Termine !== count) entry.Anzahl_Termine = count;
     });
 }

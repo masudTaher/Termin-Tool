@@ -154,3 +154,8 @@ function escapeHtml(value) {
         "'": '&#39;'
     })[character]);
 }
+
+// Interne Felder des Online-Abgleichs (beginnen mit "_") gehören nicht in Excel-Dateien.
+function stripInternalFields(records) {
+    return (records || []).map(record => Object.fromEntries(Object.entries(record).filter(([key]) => !key.startsWith('_'))));
+}

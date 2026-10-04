@@ -9,7 +9,7 @@ try {
     exit 1
 }
 
-Write-Host 'Termin-Tool läuft nur auf diesem Computer: http://127.0.0.1:8765/' -ForegroundColor Cyan
+Write-Host 'Botschaft Dolmetscher und Transport-App läuft nur auf diesem Computer: http://127.0.0.1:8765/' -ForegroundColor Cyan
 Write-Host 'Zum Beenden hier Strg+C drücken.'
 try {
     Start-Process 'http://127.0.0.1:8765/'
@@ -26,17 +26,9 @@ $contentTypes = @{
     '.png'  = 'image/png'
     '.ico'  = 'image/x-icon'
 }
-$allowedFiles = @(
-    'index.html',
-    'style.css',
-    'workflowStorage.js',
-    'termineFiltern.html',
-    'termineFilternApp.js',
-    'termineBearbeiten.html',
-    'termineBearbeitenApp.js',
-    'termineTracking.html',
-    'termineTrackingApp.js'
-)
+# Ausgeliefert werden nur Dateien direkt im Programmordner mit diesen Endungen -
+# keine Unterordner und keine anderen Dateitypen. Neue Seiten brauchen so keinen Eintrag mehr.
+$allowedFilePattern = '^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.(html|css|js|json|svg|png|ico)$'
 
 try {
     while ($true) {
@@ -64,7 +56,7 @@ try {
                     $requestedPath = 'index.html'
                 }
 
-                if ($requestedPath -notin $allowedFiles) {
+                if ($requestedPath -notmatch $allowedFilePattern) {
                     $statusCode = 403
                     $statusText = 'Forbidden'
                 } else {

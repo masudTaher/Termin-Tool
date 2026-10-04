@@ -14,7 +14,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 });
 
 async function openWhatsAppInExistingTab(message) {
-    const targetUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    const targetUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     const activeWhatsAppTabs = await chrome.tabs.query({
         url: 'https://web.whatsapp.com/*',
         active: true

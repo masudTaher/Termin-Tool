@@ -26,8 +26,7 @@ const expectedHeaders = [
     "Kostengarantie Ja Nein",
     "Patienten Nr::Patienten_Geschlecht",
     "Patienten Nr::Patienten_Status",
-    "Patienten Nr::Patienten_Vorname",
-    "Arzt Nr::Vorname"
+    "Patienten Nr::Patienten_Vorname"
 ];
 
 // Excel-Datei lesen und verarbeiten
@@ -37,7 +36,7 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
     // Überprüfe, ob eine Datei ausgewählt wurde
     if (!file) {
         const notificationDiv = document.getElementById('notification');
-        notificationDiv.innerText = "Keine Datei ausgewählt. Bitte wählen Sie eine gültige Excel-Datei aus.";
+        notificationDiv.innerText = "Keine Datei ausgewählt. Bitte wähle eine gültige Excel-Datei aus.";
         notificationDiv.style.display = 'block'; // Zeige die Fehlermeldung an
 
         // Fehlermeldung nach 5 Sekunden ausblenden
@@ -55,7 +54,7 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
     // Überprüfe, ob das ausgewählte Objekt vom Typ Blob ist
     if (!(file instanceof Blob)) {
         const notificationDiv = document.getElementById('notification');
-        notificationDiv.innerText = "Ungültiges Dateiformat. Bitte wählen Sie eine gültige Excel-Datei aus.";
+        notificationDiv.innerText = "Ungültiges Dateiformat. Bitte wähle eine gültige Excel-Datei aus.";
         notificationDiv.style.display = 'block'; // Zeige die Fehlermeldung an
 
         // Fehlermeldung nach 5 Sekunden ausblenden
@@ -102,10 +101,13 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
 
         // Fehlende Header identifizieren
         const missingHeaders = expectedHeaders.filter(header => !actualHeaders.includes(header));
+        const hasAppointmentLocation = ["Arzt Nr::Ort", "Arzt Nr::Stadt", "Ort", "Termin_Ort", "Stadt"]
+            .some(header => actualHeaders.includes(header));
+        if (!hasAppointmentLocation) missingHeaders.push("Arzt Nr::Ort (oder Ort / Stadt)");
 
         if (missingHeaders.length > 0) {
             const notificationDiv = document.getElementById('notification');
-            notificationDiv.innerText = "Die Datei enthält nicht alle erforderlichen Spalten: " + missingHeaders.join(", ") + ". Bitte überprüfen Sie die Datei.";
+            notificationDiv.innerText = "Die Datei enthält nicht alle erforderlichen Spalten: " + missingHeaders.join(", ") + ". Bitte prüfe die Datei.";
             notificationDiv.style.display = 'block'; // Zeige die Fehlermeldung an
             showWorkflowStatus('In der Datei fehlen benötigte Spalten: ' + missingHeaders.join(', '), 'error');
 
@@ -123,6 +125,9 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
 
         // Entferne die Header-Zeile für die weitere Verarbeitung
         alleTermine = normalizeTerminRecords(XLSX.utils.sheet_to_json(firstSheet));
+        // Jeder Termin bekommt eine feste interne Kennung, damit das Live-Tracking ihn wiedererkennt.
+        const importStamp = Date.now().toString(36);
+        alleTermine.forEach((termin, index) => { termin._src = `${importStamp}-${index}`; });
         // Eine neu hochgeladene Datei beginnt einen frischen Filterlauf.
         saveTerminWorkflow({ step: 'filtern' });
 
@@ -155,32 +160,55 @@ function formatExcelTime(value) {
 
 // Filterregeln lassen sich in der Oberfläche anpassen und bleiben lokal auf diesem PC.
 const FILTER_RULES_STORAGE_KEY = 'terminTool.filterRules.v1';
+// Stand der Regeln. Bei einer neuen Nummer werden gespeicherte Regeln einmalig angepasst.
+const FILTER_RULES_VERSION = 2;
 const defaultFilterRules = {
     alwaysKeep: ['Büro'],
     alwaysExclude: ['Auftrag'],
-    includeContains: ['Hennef', 'Sieg', 'Bad Godesberg', 'Godesberg', 'Bonn', 'Köln', 'Wesseling', 'Sankt Augustin', 'Troisdorf', 'Asbach'],
-    includeWholeWords: ['Mona', 'Abdo', 'Adel', 'LM', 'Flughafen Köln/Bonn', 'Flughafen Düsseldorf', 'Flughafen Frankfurt']
+    includeContains: ['Hennef', 'Sieg', 'Bad Godesberg', 'Godesberg', 'Bonn', 'Köln', 'Wesseling', 'Sankt Augustin', 'Troisdorf', 'Asbach', 'Ahrweiler', 'Neuenahr', 'Remagen', 'Andernach'],
+    includeWholeWords: ['Abdo', 'Adel', 'LM']
 };
 const filterRuleGroups = Object.keys(defaultFilterRules);
+const sameRule = (left, right) => String(left).toLocaleLowerCase('de-DE') === String(right).toLocaleLowerCase('de-DE');
+
+// Version 2: „Mona“ allein zählt nicht mehr (nur zusammen mit einem Ort der Region oder „Büro“),
+// Flughäfen zählen nur noch mit „Büro“, Ahrweiler/Remagen/Andernach gehören zur Region.
+function migrateFilterRules(rules) {
+    const droppedWords = ['Mona', 'Flughafen Köln/Bonn', 'Flughafen Düsseldorf', 'Flughafen Frankfurt'];
+    rules.includeWholeWords = rules.includeWholeWords.filter(rule => !droppedWords.some(word => sameRule(word, rule)));
+    ['Ahrweiler', 'Neuenahr', 'Remagen', 'Andernach'].forEach(place => {
+        if (!rules.includeContains.some(rule => sameRule(rule, place))) rules.includeContains.push(place);
+    });
+    if (!rules.alwaysKeep.some(rule => sameRule(rule, 'Büro'))) rules.alwaysKeep.unshift('Büro');
+    return rules;
+}
 
 function readFilterRules() {
     try {
         const saved = JSON.parse(localStorage.getItem(FILTER_RULES_STORAGE_KEY) || '{}');
-        return Object.fromEntries(filterRuleGroups.map(group => {
+        const hasSavedRules = filterRuleGroups.some(group => Array.isArray(saved[group]));
+        const rules = Object.fromEntries(filterRuleGroups.map(group => {
             const values = Array.isArray(saved[group]) ? saved[group] : defaultFilterRules[group];
             const cleaned = [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].slice(0, 100);
             return [group, cleaned];
         }));
+        if (hasSavedRules && Number(saved.version || 1) < FILTER_RULES_VERSION) {
+            migrateFilterRules(rules);
+            localStorage.setItem(FILTER_RULES_STORAGE_KEY, JSON.stringify({ ...rules, version: FILTER_RULES_VERSION }));
+        }
+        return rules;
     } catch (error) {
         return Object.fromEntries(filterRuleGroups.map(group => [group, [...defaultFilterRules[group]]]));
     }
 }
 
 let filterRules = readFilterRules();
+// Merkt sich je Termin, warum er bleibt oder herausfällt (nur für die Anzeige, nicht für den Export).
+const filterReasons = new WeakMap();
 
 function saveFilterRules() {
     try {
-        localStorage.setItem(FILTER_RULES_STORAGE_KEY, JSON.stringify(filterRules));
+        localStorage.setItem(FILTER_RULES_STORAGE_KEY, JSON.stringify({ ...filterRules, version: FILTER_RULES_VERSION }));
         return true;
     } catch (error) {
         const status = document.getElementById('filterRuleStatus');
@@ -280,87 +308,50 @@ function filterTermine() {
     herausgefilterteTermine = [];
 
     alleTermine.forEach(termin => {
-
-        const {
-            'Arzt Nr::Name': arztName,
-            'Bemerkung': bemerkung,
-            'Arzt Nr::Vorname': arztVorname
-        } = termin;
-
-        // Wenn im Bemerkungsfeld „Büro“ steht (unabhängig vom Ort), bleibt der Termin immer.
-        const bemerkungText = String(bemerkung || '');
-        const containsBueroInBemerkung = filterRules.alwaysKeep.some(rule =>
-            bemerkungText.toLocaleLowerCase('de-DE').includes(rule.toLocaleLowerCase('de-DE'))
-        );
-        if (containsBueroInBemerkung) {
-            gefilterteTermine.push(termin); // Termin bleibt
-            return; // Termin ist verarbeitet, keine weitere Prüfung erforderlich
-        }
-
-        // Wenn "Auftrag" irgendwo vorkommt, wird der Termin sofort herausgefiltert
-        const containsAuftrag = filterRules.alwaysExclude.some(rule =>
-            bemerkungText.toLocaleLowerCase('de-DE').includes(rule.toLocaleLowerCase('de-DE'))
-        );
-        if (containsAuftrag) {
-            herausgefilterteTermine.push(termin);
-            return; // Termin wird übersprungen und nicht weiter verarbeitet
-        }
-
-        // Prüfen, ob das Wort "Flughafen" im Arzt Nr::Name vorkommt
-        const containsFlughafen = arztName &&
-            (arztName.toLowerCase().includes("flughafen") || arztName.toLowerCase().includes("abflug") || arztName.toLowerCase().includes("ankunft"));
-
-        if (containsFlughafen) {
-
-            const airportCitiesNachBleiben = ["nach bonn", "nach köln"];
-            const citieMatchBleiben = airportCitiesNachBleiben.some(city => bemerkung && bemerkung.toLowerCase().includes(city));
-            if (citieMatchBleiben) {
-                gefilterteTermine.push(termin); // Termin bleibt
-                return; // Termin ist verarbeitet, keine weitere Prüfung erforderlich
-            }
-
-            const airportCitiesNachHerausfiltern = ["nach heidelberg", "nach mannheim", "nach frankfurt", "ftt"];
-            const citieMatchHerausfiltern = airportCitiesNachHerausfiltern.some(city => bemerkung && bemerkung.toLowerCase().includes(city));
-            if (citieMatchHerausfiltern) {
-                herausgefilterteTermine.push(termin);
-                return; // Termin wird übersprungen und nicht weiter verarbeitet
-            }
-
-            // Prüfen, ob "Köln", "Bonn", "Düsseldorf" oder "Frankfurt" sowohl in Arzt Nr::Name als auch in Arzt Nr::Vorname vorkommen
-            const airportCities = ["köln", "bonn", "düsseldorf", "frankfurt"];
-
-            const nameMatch = airportCities.some(city => arztName && arztName.toLowerCase().includes(city));
-            const vornameMatch = airportCities.some(city => arztVorname && arztVorname.toLowerCase().includes(city));
-
-            if (nameMatch || vornameMatch) {
-                gefilterteTermine.push(termin); // Termin bleibt, da Flughafen und die Städte gefunden wurden
-                return; // Termin ist verarbeitet, keine weitere Prüfung erforderlich
-            }
-        }
-
-        // Wenn eines der Filterkriterien enthalten ist, bleibt der Termin
-        const match1 = filterRules.includeContains.some(kriterium =>
-                (bemerkung && matchesCriteria1(bemerkung, kriterium)) ||
-                (arztVorname && matchesCriteria1(arztVorname, kriterium)));
-				
-				const match2 = filterRules.includeWholeWords.some(kriterium =>
-                (bemerkung && matchesCriteria2(bemerkung, kriterium)) ||
-                (arztVorname && matchesCriteria2(arztVorname, kriterium)));
-
-		// Wenn ein Treffer in einer der beiden Listen gefunden wurde, bleibt der Termin
-		if (match1 || match2) {
-            gefilterteTermine.push(termin);
-        } else {
-            herausgefilterteTermine.push(termin);
-        }
+        const result = classifyTermin(termin);
+        filterReasons.set(termin, result.reason);
+        (result.keep ? gefilterteTermine : herausgefilterteTermine).push(termin);
     });
 
     renderTables();
 }
 
+// Entscheidet für einen Termin, ob er zu uns gehört – und nennt den Grund.
+// Reihenfolge: 1. „Büro“ bleibt immer · 2. „Auftrag“ fällt raus ·
+// 3. Flughafen ohne „Büro“ fällt raus · 4. Ort der Region oder ein Suchwort bleibt.
+function classifyTermin(termin) {
+    const lower = value => String(value || '').toLocaleLowerCase('de-DE');
+    const arztName = String(termin['Arzt Nr::Name'] || '');
+    const bemerkung = String(termin['Bemerkung'] || '');
+    const arztOrt = String(termin['Arzt Nr::Ort'] || termin['Arzt Nr::Stadt']
+        || termin.Ort || termin.Termin_Ort || termin.Stadt || '');
+
+    const keepRule = filterRules.alwaysKeep.find(rule => lower(bemerkung).includes(lower(rule)));
+    if (keepRule) return { keep: true, reason: `„${keepRule}“ in der Bemerkung` };
+
+    const excludeRule = filterRules.alwaysExclude.find(rule => lower(bemerkung).includes(lower(rule)));
+    if (excludeRule) return { keep: false, reason: `„${excludeRule}“ in der Bemerkung` };
+
+    // Flughafen-Termine gehören nur mit „Büro“ in der Bemerkung zu uns (oben bereits geprüft).
+    const isAirport = /flughafen|airport|abflug|ankunft/.test(lower(arztName))
+        || /flughafen|airport/.test(lower(arztOrt))
+        || /flughafen|airport/.test(lower(bemerkung));
+    if (isAirport) return { keep: false, reason: 'Flughafen ohne „Büro“' };
+
+    const place = filterRules.includeContains.find(rule =>
+        matchesCriteria1(arztOrt, rule) || matchesCriteria1(bemerkung, rule));
+    if (place) return { keep: true, reason: `Region: ${place}` };
+
+    const word = filterRules.includeWholeWords.find(rule =>
+        matchesCriteria2(bemerkung, rule) || matchesCriteria2(arztOrt, rule));
+    if (word) return { keep: true, reason: `Suchwort: ${word}` };
+
+    return { keep: false, reason: 'Kein Ort der Region' };
+}
+
 // Funktion für filterKriterien1 (Teilstringsuche)
 function matchesCriteria1(text, kriterium) {
-    return text.toLowerCase().includes(kriterium.toLowerCase());
+    return String(text || '').toLocaleLowerCase('de-DE').includes(String(kriterium || '').toLocaleLowerCase('de-DE'));
 }
 
 // Funktion für filterKriterien2 (ganzes Wort muss übereinstimmen)
@@ -368,7 +359,7 @@ function matchesCriteria2(text, criteria) {
     const lowerCaseText = String(text || '').toLocaleLowerCase('de-DE');
     const lowerCaseCriteria = String(criteria || '').toLocaleLowerCase('de-DE');
     const escapedCriteria = lowerCaseCriteria.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const regex = new RegExp(`(^|\\s)${escapedCriteria}(\\s|$)`, 'i');
+	const regex = new RegExp(`(^|[^\\p{L}\\p{N}])${escapedCriteria}(?=$|[^\\p{L}\\p{N}])`, 'iu');
     return regex.test(lowerCaseText);
 }
 
@@ -384,7 +375,8 @@ const headerMapping = {
     'Arzt Nr::Name': 'Arzt Name',
     'Patienten Nr::Patienten_Status': 'Pat. Status',
     'Patienten Nr::Patienten_Vorname': 'Pat. Vorname',
-    'Arzt Nr::Vorname': 'Ort',
+    'Arzt Nr::Vorname': 'Arzt Vorname',
+    'Arzt Nr::Ort': 'Ort',
 };
 
 function renderTables() {
@@ -396,31 +388,21 @@ function renderTables() {
     gefiltertTbody.innerHTML = '';
     entferntTbody.innerHTML = '';
 
-// Fülle die gefilterte Tabelle, wenn es Einträge gibt
-gefilterteTermine.forEach((termin, index) => {
-    gefiltertTbody.innerHTML += `
-      <tr draggable="true" ondragstart="drag(event, 'gefiltert', ${index})">
+    const renderRows = (termine, source) => termine.map((termin, index) => `
+      <tr draggable="true" ondragstart="drag(event, '${source}', ${index})">
         <td>${escapeHtml(formatExcelTime(termin['Termin_Uhrzeit']))}</td>
-        <td>${escapeHtml((termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] || ''))}</td>
+        <td>${escapeHtml([termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']].filter(value => String(value || '').trim()).join(' '))}</td>
         <td>${escapeHtml(termin['Arzt Nr::Name'] ?? '')}</td>
-        <td>${escapeHtml(termin['Bemerkung'] || '')}</td>
-        <td>${escapeHtml(termin['Arzt Nr::Vorname'] ?? '')}</td>
-      </tr>
-    `;
-});
-
-// Fülle die entfernte Tabelle, wenn es Einträge gibt
-herausgefilterteTermine.forEach((termin, index) => {
-    entferntTbody.innerHTML += `
-      <tr draggable="true" ondragstart="drag(event, 'entfernt', ${index})">
-        <td>${escapeHtml(formatExcelTime(termin['Termin_Uhrzeit']))}</td>
-        <td>${escapeHtml((termin['Patienten Nr::Patienten_Vorname'] || '') + (termin['Patienten Nr::Patienten_Name'] || ''))}</td>
-        <td>${escapeHtml(termin['Arzt Nr::Name'] ?? '')}</td>
-        <td>${escapeHtml(termin['Bemerkung'] || '')}</td>
-        <td>${escapeHtml(termin['Arzt Nr::Vorname'] ?? '')}</td>
-      </tr>
-    `;
-});
+        <td>${escapeHtml(termin['Bemerkung'] || '')}${filterReasons.get(termin) ? `<span class="filter-reason" data-kind="${source === 'gefiltert' ? 'keep' : 'drop'}">${escapeHtml(filterReasons.get(termin))}</span>` : ''}</td>
+        <td>${escapeHtml(termin['Arzt Nr::Ort'] || termin.Ort || termin.Termin_Ort || termin.Stadt || '')}</td>
+        <td class="move-cell"><button type="button" class="move-button" onclick="moveTermin('${source}', ${index})" title="${source === 'gefiltert' ? 'Herausfiltern' : 'Wieder aufnehmen'}" aria-label="${source === 'gefiltert' ? 'Termin herausfiltern' : 'Termin wieder aufnehmen'}">${source === 'gefiltert' ? '→' : '←'}</button></td>
+      </tr>`).join('');
+    gefiltertTbody.innerHTML = renderRows(gefilterteTermine, 'gefiltert');
+    entferntTbody.innerHTML = renderRows(herausgefilterteTermine, 'entfernt');
+    const keepCount = document.getElementById('keepCount');
+    const dropCount = document.getElementById('dropCount');
+    if (keepCount) keepCount.textContent = gefilterteTermine.length;
+    if (dropCount) dropCount.textContent = herausgefilterteTermine.length;
 
     // Sichtbarkeit basierend auf der Anzahl der Einträge festlegen
     if (gefilterteTermine.length > 0 || herausgefilterteTermine.length > 0) {
@@ -465,9 +447,11 @@ function drop(event, targetTable) {
     if (draggedItem) {
         if (draggedItem.sourceTable === 'gefiltert' && targetTable === 'entfernt') {
             const movedItem = gefilterteTermine.splice(draggedItem.index, 1)[0];
+            filterReasons.set(movedItem, 'Von Hand verschoben');
             herausgefilterteTermine.push(movedItem);
         } else if (draggedItem.sourceTable === 'entfernt' && targetTable === 'gefiltert') {
             const movedItem = herausgefilterteTermine.splice(draggedItem.index, 1)[0];
+            filterReasons.set(movedItem, 'Von Hand verschoben');
             gefilterteTermine.push(movedItem);
         }
 
@@ -476,17 +460,37 @@ function drop(event, targetTable) {
     }
 }
 
-function continueToBearbeiten() {
+// Verschieben per Klick – schneller als Ziehen und auch per Tastatur bedienbar.
+function moveTermin(sourceTable, index) {
+    const moved = (sourceTable === 'gefiltert' ? gefilterteTermine : herausgefilterteTermine).splice(index, 1)[0];
+    if (!moved) return;
+    filterReasons.set(moved, 'Von Hand verschoben');
+    (sourceTable === 'gefiltert' ? herausgefilterteTermine : gefilterteTermine).push(moved);
+    renderTables();
+}
+
+// Weiter ins Live-Tracking. Läuft dort schon ein Tag (Status, Dolmetscher, Fahrzeuge),
+// bleibt dieser Stand erhalten: neue Termine kommen dazu, herausgefilterte fallen weg.
+function continueToTracking() {
     if (alleTermine.length === 0) {
         showWorkflowStatus('Bitte lade zuerst eine Excel-Datei mit Terminen.', 'error');
         return;
     }
 
-    const saved = persistTerminRecords(gefilterteTermine, 'bearbeiten', {
+    const workflow = readTerminWorkflow();
+    let records = gefilterteTermine;
+    if (workflow.step === 'tracking' && Array.isArray(workflow.records) && workflow.records.length) {
+        const removedIds = new Set(herausgefilterteTermine.map(termin => termin._src).filter(Boolean));
+        const kept = workflow.records.filter(record => !record._src || !removedIds.has(record._src));
+        const knownIds = new Set(kept.map(record => record._src).filter(Boolean));
+        records = [...kept, ...gefilterteTermine.filter(termin => !termin._src || !knownIds.has(termin._src))];
+    }
+
+    const saved = persistTerminRecords(records, 'tracking', {
         filtered: gefilterteTermine,
         removed: herausgefilterteTermine
     });
-    if (saved) window.location.href = 'termineBearbeiten.html';
+    if (saved) window.location.href = 'termineTracking.html';
 }
 
 function restoreFilterSession() {
@@ -506,7 +510,7 @@ function saveToExcel() {
 
     // Die bekannten Terminspalten bleiben vorne. Kontaktangaben aus dem
     // FileMaker-Export werden zusätzlich mitgespeichert, damit sie im
-    // Bearbeitungs- und Tracking-Schritt noch für WhatsApp verfügbar sind.
+    // Live-Tracking noch für WhatsApp verfügbar sind.
     const baseHeaders = [
         'Termin_Datum',
         'Termin_Uhrzeit',

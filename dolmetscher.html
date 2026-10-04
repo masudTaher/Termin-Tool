@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Dolmetscher · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="dolmetscher">
+      <main class="container directory-page">
+         <div class="page-heading">
+            <div>
+               <p class="page-kicker">STAMMDATEN</p>
+               <h1>Dolmetscherliste</h1>
+               <p>Gespeicherte Namen erscheinen beim Zuweisen als Vorschlag, sobald du die ersten Buchstaben eingibst.</p>
+            </div>
+         </div>
+
+         <div class="directory-layout">
+            <section class="directory-card" aria-labelledby="directoryAddTitle">
+               <div class="directory-card-heading">
+                  <span class="directory-step">01</span>
+                  <div><h2 id="directoryAddTitle">Namen hinzufügen</h2><p>Du kannst einzelne Namen erfassen oder eine ganze Liste einfügen.</p></div>
+               </div>
+               <form id="addInterpreterForm" class="directory-single-form">
+                  <label for="interpreterNameInput">Name der Dolmetscherin oder des Dolmetschers</label>
+                  <div class="directory-input-row">
+                     <input id="interpreterNameInput" type="text" list="dolmetscherSuggestions" autocomplete="off" maxlength="100" placeholder="Zum Beispiel: Sara Jadaa" required>
+                     <button type="submit" class="button-primary">Namen speichern</button>
+                  </div>
+               </form>
+               <form id="addInterpreterBulkForm" class="directory-bulk-form">
+                  <label for="interpreterNamesBulk">Mehrere Namen – einen Namen pro Zeile</label>
+                  <textarea id="interpreterNamesBulk" rows="5" placeholder="Sara Jadaa&#10;Malak Taher&#10;..." spellcheck="false"></textarea>
+                  <button type="submit" class="button-secondary">Alle Namen übernehmen</button>
+               </form>
+               <datalist id="dolmetscherSuggestions"></datalist>
+               <p id="interpreterDirectoryStatus" class="directory-status" role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="directory-card directory-list-card" aria-labelledby="directoryListTitle">
+               <div class="directory-card-heading">
+                  <span class="directory-step directory-step-teal">02</span>
+                  <div><h2 id="directoryListTitle">Gespeicherte Namen</h2><p id="interpreterDirectoryCount">Liste wird geladen …</p></div>
+               </div>
+               <ul id="interpreterDirectoryList" class="directory-list"></ul>
+               <div class="directory-tools">
+                  <button type="button" id="exportInterpreterNames" class="button-secondary">Liste exportieren</button>
+                  <label class="button-secondary import-name-button" for="importInterpreterFile">Liste importieren</label>
+                  <input id="importInterpreterFile" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
+               </div>
+               <p class="directory-storage-note">Die Namensliste wird in diesem Browser auf diesem Gerät gespeichert. Für eine Kollegin oder ein anderes Gerät kannst du die Liste exportieren und dort importieren.</p>
+            </section>
+         </div>
+      </main>
+      <script src="teamDirectory.js"></script>
+   </body>
+</html>

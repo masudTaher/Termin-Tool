@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+      <meta name="robots" content="noindex">
+      <title>Dolmetscher-Portal · Botschaft Dolmetscher und Transport-App</title>
+      <!-- Als App auf dem Handy: Android nutzt das Manifest, iPhone die apple-Angaben. -->
+      <link rel="manifest" href="manifest.json">
+      <meta name="theme-color" content="#1769aa">
+      <meta name="mobile-web-app-capable" content="yes">
+      <meta name="apple-mobile-web-app-capable" content="yes">
+      <meta name="apple-mobile-web-app-title" content="Dolmetscher">
+      <meta name="apple-mobile-web-app-status-bar-style" content="default">
+      <link rel="apple-touch-icon" href="icon-180.png">
+      <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+      <link rel="stylesheet" href="style.css">
+      <script>
+         // Das Portal folgt der Einstellung des Handys (hell/dunkel).
+         if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+      </script>
+   </head>
+   <body data-page="portal">
+      <header class="portal-header">
+         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true">BD</span><span class="app-brand-copy"><strong>Dolmetscher-Portal</strong><small id="portalUser">Botschaft · Dolmetscher und Transport</small></span></span>
+         <button type="button" id="portalSignOut" class="button-secondary" hidden>Abmelden</button>
+      </header>
+
+      <main class="portal-main">
+         <p id="portalStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <!-- Anmeldung / Registrierung -->
+         <section id="portalAuth" class="directory-card" hidden>
+            <div class="portal-welcome">
+               <h1>Willkommen</h1>
+               <p>Botschaft Dolmetscher und Transport-App – hier übernimmst du dein Fahrzeug, trägst Arbeitstage ein und prüfst deine Abrechnung.</p>
+            </div>
+            <div class="portal-tabs" role="tablist">
+               <button type="button" role="tab" id="tabSignIn" class="is-active" aria-selected="true">Anmelden</button>
+               <button type="button" role="tab" id="tabSignUp" aria-selected="false">Neu registrieren</button>
+            </div>
+            <form id="signInForm" class="fleet-form">
+               <label for="signInEmail">E-Mail</label>
+               <input id="signInEmail" type="email" autocomplete="email" required>
+               <label for="signInPassword">Passwort</label>
+               <input id="signInPassword" type="password" autocomplete="current-password" required>
+               <button type="submit" class="button-primary">Anmelden</button>
+            </form>
+            <form id="signUpForm" class="fleet-form" hidden>
+               <label for="signUpName">Vor- und Nachname</label>
+               <input id="signUpName" type="text" autocomplete="name" maxlength="100" required>
+               <label for="signUpPhone">Handynummer</label>
+               <input id="signUpPhone" type="tel" autocomplete="tel" maxlength="30" pattern="[0-9+ \/\(\)\-]{6,}" placeholder="Zum Beispiel: 0170 1234567" required>
+               <span class="field-label" id="signUpEmploymentLabel">Wie arbeitest du für uns?</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="signUpEmploymentLabel">
+                  <label><input type="radio" name="signUpEmployment" value="temporär" required><span>Temporär</span></label>
+                  <label><input type="radio" name="signUpEmployment" value="fest"><span>Fest angestellt</span></label>
+               </div>
+               <label for="signUpEmail">E-Mail</label>
+               <input id="signUpEmail" type="email" autocomplete="email" required>
+               <label for="signUpPassword">Passwort (mindestens 8 Zeichen)</label>
+               <input id="signUpPassword" type="password" autocomplete="new-password" minlength="8" required>
+               <button type="submit" class="button-primary">Konto anlegen</button>
+               <p class="fleet-footnote">Nach der Registrierung schaltet die Einsatzleitung dein Konto frei. Erst dann kannst du Fahrzeuge übernehmen.</p>
+            </form>
+         </section>
+
+         <!-- Konto wartet auf Freischaltung -->
+         <section id="portalPending" class="directory-card" hidden>
+            <h2>Dein Konto wartet auf Freischaltung</h2>
+            <p class="portal-text">Die Einsatzleitung muss dein Konto einmal freischalten. Sag kurz Bescheid und tippe danach auf „Erneut prüfen“.</p>
+            <button type="button" id="portalRecheck" class="button-primary">Erneut prüfen</button>
+         </section>
+
+         <!-- Portal -->
+         <div id="portalApp" hidden>
+
+            <!-- ================= Seite 1: Fahrzeug ================= -->
+            <section data-panel="vehicle" class="portal-page" aria-labelledby="helloTitle">
+               <div class="portal-hello"><h1 id="helloTitle">Hallo</h1><p id="helloDate"></p></div>
+               <ul id="startNotices" class="start-notices"></ul>
+
+               <!-- Ohne Fahrzeug: nur übernehmen ist möglich -->
+               <div id="noVehicle" class="portal-page">
+                  <section class="directory-card" aria-labelledby="takeVehicleTitle">
+                     <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="takeVehicleTitle">Fahrzeug übernehmen</h2><p id="myVehicleInfo">Wähle ein freies Fahrzeug.</p></div></div>
+                     <form id="takeVehicleForm" class="fleet-form">
+                        <label for="takeVehicleSelect">Fahrzeug</label>
+                        <select id="takeVehicleSelect" required></select>
+                        <div id="takeLastState" class="last-state" hidden>
+                           <span class="field-label">So wurde das Auto zuletzt abgegeben</span>
+                           <dl id="takeStateList" class="vehicle-state"></dl>
+                           <details id="takeDamages" class="known-damages">
+                              <summary id="takeDamagesSummary">Bekannte Schäden ansehen</summary>
+                              <div class="sketch-wrap"><div id="takeSketch"></div></div>
+                              <ul id="takeDamageList" class="directory-list portal-list"></ul>
+                           </details>
+                        </div>
+                        <label for="takeVehicleMileage">Kilometerstand jetzt</label>
+                        <input id="takeVehicleMileage" type="number" inputmode="numeric" min="0" step="1" placeholder="km" required>
+                        <p id="takeMileageHint" class="field-hint"></p>
+                        <div id="takeNoteRow" hidden>
+                           <label for="takeStartNote">Stimmt etwas nicht? <span class="optional-label">optional – geht an die Einsatzleitung und den letzten Fahrer</span></label>
+                           <textarea id="takeStartNote" rows="2" maxlength="500" placeholder="Zum Beispiel: Tank ist fast leer, innen nicht sauber"></textarea>
+                        </div>
+                        <label id="takeEmergencyRow" class="whatsapp-note-option" hidden><input type="checkbox" id="takeEmergency"><span>Notdienst / Bereitschaft – das Auto bleibt über Nacht bei mir</span></label>
+                        <button type="submit" class="button-primary">Fahrzeug übernehmen</button>
+                     </form>
+                     <p class="fleet-footnote">Schäden und Meldungen kannst du eintragen, sobald du ein Fahrzeug übernommen hast.</p>
+                  </section>
+               </div>
+
+               <!-- Mit Fahrzeug: Schaden, Meldung, Rückgabe -->
+               <div id="hasVehicle" class="portal-page" hidden>
+                  <section class="vehicle-hero" aria-label="Dein Fahrzeug">
+                     <span class="vehicle-hero-label">Dein Fahrzeug</span>
+                     <strong id="heroPlate" class="vehicle-hero-plate">–</strong>
+                     <span id="heroModel" class="vehicle-hero-model"></span>
+                     <span id="heroSince" class="vehicle-hero-since"></span>
+                  </section>
+                  <p id="returnReminder" class="reminder-banner" hidden></p>
+                  <div class="action-grid">
+                     <button type="button" class="action-tile" data-go="damage"><strong>Schaden melden</strong><small>mit Skizze und Foto</small></button>
+                     <button type="button" class="action-tile" data-go="alert"><strong>Meldung im Auto</strong><small>Reifendruck, AdBlue, Service</small></button>
+                     <button type="button" class="action-tile action-tile-primary" data-go="return"><strong>Fahrzeug zurückgeben</strong><small>Kilometer, Tank, Parkort, Sauberkeit</small></button>
+                  </div>
+                  <section class="directory-card" aria-labelledby="lastDriverTitle">
+                     <h2 id="lastDriverTitle" class="card-title">So hast du das Auto bekommen</h2>
+                     <dl id="vehicleState" class="vehicle-state"></dl>
+                     <p id="heroDamages" class="fleet-footnote"></p>
+                  </section>
+               </div>
+
+               <ul id="returnNotes" class="directory-list portal-list"></ul>
+
+               <details id="installCard" class="install-card" hidden>
+                  <summary>Portal als App auf das Handy legen</summary>
+                  <button type="button" id="installButton" class="button-primary" hidden>App installieren</button>
+                  <ol id="installSteps" class="install-steps"></ol>
+               </details>
+            </section>
+
+            <!-- Unterseite: Schaden -->
+            <section class="directory-card" data-panel="damage" aria-labelledby="damageTitle" hidden>
+               <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">!</span><div><h2 id="damageTitle">Schaden melden</h2><p id="damageVehicleLabel">Schau zuerst, ob der Schaden schon markiert ist.</p></div></div>
+               <form id="damageForm" class="fleet-form">
+                  <div class="sketch-wrap">
+                     <div id="damageSketch"></div>
+                     <ul class="sketch-legend">
+                        <li><i data-status="offen"></i>Neu gemeldet</li>
+                        <li><i data-status="bekannt"></i>Altschaden</li>
+                        <li><i data-status="in Arbeit"></i>In Reparatur</li>
+                        <li><i data-status="picked"></i>Deine neue Markierung</li>
+                     </ul>
+                  </div>
+                  <p id="damagePosition" class="field-hint">Tippe in der Skizze auf die Stelle des neuen Schadens.</p>
+                  <ul id="knownDamages" class="directory-list portal-list"></ul>
+                  <label for="damageDescription">Was ist passiert?</label>
+                  <textarea id="damageDescription" rows="3" maxlength="600" required placeholder="Zum Beispiel: Kratzer an der Stoßstange, beim Einparken bemerkt"></textarea>
+                  <label for="damagePhoto">Fotos <span class="optional-label">bis zu 3</span></label>
+                  <input id="damagePhoto" type="file" accept="image/*" multiple>
+                  <button type="submit" class="button-primary">Schaden melden</button>
+               </form>
+            </section>
+
+            <!-- Unterseite: Meldung im Auto -->
+            <section class="directory-card" data-panel="alert" aria-labelledby="alertTitle" hidden>
+               <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
+               <div class="directory-card-heading"><span class="directory-step directory-step-dark">i</span><div><h2 id="alertTitle">Meldung im Auto</h2><p id="alertVehicleLabel">Warnleuchte oder Hinweis im Display.</p></div></div>
+               <form id="alertForm" class="fleet-form">
+                  <span class="field-label" id="alertKindLabel">Was wird angezeigt?</span>
+                  <div id="alertKinds" class="segmented segmented-wrap" role="radiogroup" aria-labelledby="alertKindLabel"></div>
+                  <label for="alertNote">Hinweis <span class="optional-label">optional</span></label>
+                  <input id="alertNote" type="text" maxlength="200" placeholder="Zum Beispiel: Reifen hinten links">
+                  <label for="alertPhoto">Foto vom Display <span class="optional-label">optional</span></label>
+                  <input id="alertPhoto" type="file" accept="image/*">
+                  <button type="submit" class="button-primary">Meldung senden</button>
+               </form>
+               <ul id="openAlerts" class="directory-list portal-list"></ul>
+            </section>
+
+            <!-- Unterseite: Rückgabe -->
+            <section class="directory-card" data-panel="return" aria-labelledby="returnTitle" hidden>
+               <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
+               <div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="returnTitle">Fahrzeug zurückgeben</h2><p id="returnVehicleLabel">Bitte alle Angaben ausfüllen.</p></div></div>
+               <form id="returnVehicleForm" class="fleet-form">
+                  <label for="returnVehicleMileage">Kilometerstand</label>
+                  <input id="returnVehicleMileage" type="number" inputmode="numeric" min="0" step="1" placeholder="km" required>
+                  <p id="returnMileageHint" class="field-hint"></p>
+                  <span class="field-label" id="fuelLabel">Tankstand</span>
+                  <div id="returnFuel" class="segmented" role="radiogroup" aria-labelledby="fuelLabel"></div>
+                  <label for="returnParking">Wo steht das Auto?</label>
+                  <select id="returnParking" required></select>
+                  <span class="field-label" id="cleanInsideLabel">Innen sauber?</span>
+                  <div class="segmented" role="radiogroup" aria-labelledby="cleanInsideLabel">
+                     <label><input type="radio" name="cleanInside" value="yes" required><span>Sauber</span></label>
+                     <label><input type="radio" name="cleanInside" value="no"><span>Nicht sauber</span></label>
+                  </div>
+                  <span class="field-label" id="cleanOutsideLabel">Außen sauber?</span>
+                  <div class="segmented" role="radiogroup" aria-labelledby="cleanOutsideLabel">
+                     <label><input type="radio" name="cleanOutside" value="yes" required><span>Sauber</span></label>
+                     <label><input type="radio" name="cleanOutside" value="no"><span>Nicht sauber</span></label>
+                  </div>
+                  <button type="submit" class="button-primary">Fahrzeug zurückgeben</button>
+               </form>
+            </section>
+
+            <!-- ================= Seite 2: Aufträge ================= -->
+            <section class="directory-card" data-panel="jobs" aria-labelledby="jobsTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step">✓</span><div><h2 id="jobsTitle">Meine Aufträge</h2><p id="jobsSummary">Wird geladen …</p></div></div>
+               <ul id="jobList" class="job-list"></ul>
+               <details class="job-history">
+                  <summary>Verlauf: was ich angenommen und gearbeitet habe</summary>
+                  <ul id="jobHistory" class="directory-list portal-list"></ul>
+               </details>
+            </section>
+
+            <!-- ================= Seite 3: Arbeitstage ================= -->
+            <div data-panel="workdays" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="workdaysTitle">
+                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">1</span><div><h2 id="workdaysTitle">Wann kann ich arbeiten?</h2><p>Tippe für jeden Tag an, ob du kannst. Wird sofort gespeichert.</p></div></div>
+                  <ul id="workdayList" class="workday-list"></ul>
+               </section>
+               <section class="directory-card" aria-labelledby="workedTitle">
+                  <div class="directory-card-heading"><span class="directory-step directory-step-dark">2</span><div><h2 id="workedTitle">Meine gearbeiteten Tage</h2><p id="workedSummary">Wird geladen …</p></div></div>
+                  <div class="portal-tabs" id="workedMonths"></div>
+                  <ul id="workedList" class="directory-list portal-list"></ul>
+               </section>
+            </div>
+
+            <!-- ================= Seite 4: Abrechnung ================= -->
+            <div data-panel="statement" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="statementTitle">
+                  <div class="directory-card-heading"><span class="directory-step">€</span><div><h2 id="statementTitle">Meine Abrechnung</h2><p>Prüfe den Monat, sobald er freigegeben ist, und bestätige ihn.</p></div></div>
+                  <div class="fleet-form"><label for="statementMonth">Monat</label><select id="statementMonth"></select></div>
+                  <div id="statementBody" class="statement-body"></div>
+               </section>
+               <section class="directory-card" aria-labelledby="receiptsTitle">
+                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">+</span><div><h2 id="receiptsTitle">Park- und Tankbelege</h2><p id="receiptsSummary">Beleg fotografieren und eintragen.</p></div></div>
+                  <button type="button" class="button-primary portal-wide-button" data-go="receipts">Beleg einreichen</button>
+                  <ul id="receiptList" class="directory-list portal-list"></ul>
+               </section>
+               <section class="directory-card" aria-labelledby="statementVehiclesTitle">
+                  <h2 id="statementVehiclesTitle" class="card-title">Meine Fahrzeuge in diesem Monat</h2>
+                  <ul id="statementVehicles" class="directory-list portal-list"></ul>
+               </section>
+            </div>
+
+            <!-- Unterseite: Beleg -->
+            <section class="directory-card" data-panel="receipts" aria-labelledby="receiptFormTitle" hidden>
+               <button type="button" class="back-button" data-go="statement">← Zurück</button>
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">+</span><div><h2 id="receiptFormTitle">Beleg einreichen</h2><p>Er landet direkt in der Monatsabrechnung.</p></div></div>
+               <form id="receiptForm" class="fleet-form">
+                  <span class="field-label" id="receiptKindLabel">Art</span>
+                  <div class="segmented" role="radiogroup" aria-labelledby="receiptKindLabel">
+                     <label><input type="radio" name="receiptKind" value="Parken" checked required><span>Parken</span></label>
+                     <label><input type="radio" name="receiptKind" value="Tanken"><span>Tanken</span></label>
+                     <label><input type="radio" name="receiptKind" value="Sonstiges"><span>Sonstiges</span></label>
+                  </div>
+                  <label for="receiptDate">Datum auf dem Beleg</label>
+                  <input id="receiptDate" type="date" required>
+                  <label for="receiptPlace">Ort (Parkhaus, Klinik, Tankstelle)</label>
+                  <input id="receiptPlace" type="text" maxlength="120" placeholder="Zum Beispiel: Parkhaus Uniklinik Bonn" required>
+                  <label for="receiptAmount">Betrag in Euro</label>
+                  <input id="receiptAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00" required>
+                  <label for="receiptNote">Bemerkung <span class="optional-label">optional</span></label>
+                  <input id="receiptNote" type="text" maxlength="200" placeholder="Zum Beispiel: 14:44–15:35 Uhr, EC-Karte">
+                  <label for="receiptPhoto">Foto vom Beleg</label>
+                  <input id="receiptPhoto" type="file" accept="image/*" required>
+                  <button type="submit" class="button-primary">Beleg einreichen</button>
+               </form>
+            </section>
+         </div>
+      </main>
+
+      <!-- Untere Leiste: vier feste Bereiche -->
+      <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden>
+         <button type="button" data-view="vehicle" class="is-active">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16.5V12l1.8-5a2 2 0 0 1 1.9-1.3h6.6A2 2 0 0 1 17.2 7L19 12v4.5"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4"/></svg>
+            <span>Fahrzeug</span>
+         </button>
+         <button type="button" data-view="jobs">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 12.5l2.3 2.3 4.7-4.8"/></svg>
+            <span>Aufträge</span><em id="jobsBadge" class="tab-badge" hidden></em>
+         </button>
+         <button type="button" data-view="workdays">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg>
+            <span>Arbeitstage</span>
+         </button>
+         <button type="button" data-view="statement">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 6.5a6.5 6.5 0 1 0 0 11"/><path d="M4 10.5h9M4 13.5h9"/></svg>
+            <span>Abrechnung</span><em id="statementBadge" class="tab-badge" hidden></em>
+         </button>
+      </nav>
+
+      <div id="toastRegion" class="toast-region" role="status" aria-live="polite"></div>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="carSketch.js"></script>
+      <script src="portalApp.js"></script>
+   </body>
+</html>

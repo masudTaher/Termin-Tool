@@ -2,84 +2,12 @@
 <html lang="de">
    <head>
       <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Termine Bearbeiten</title>
-      <link rel="stylesheet" href="style.css">
+      <title>Weiterleitung · Botschaft Dolmetscher und Transport-App</title>
+      <!-- Der Schritt „Bearbeiten“ wurde entfernt: Nach dem Filtern geht es direkt ins Live-Tracking. -->
+      <meta http-equiv="refresh" content="0; url=termineTracking.html">
+      <script>window.location.replace("termineTracking.html");</script>
    </head>
-   <body data-page="bearbeiten">
-      <header class="app-header">
-         <a class="app-brand" href="termineFiltern.html" aria-label="Termin Tool – Start">
-            <span class="app-brand-mark" aria-hidden="true">TT</span>
-            <span class="app-brand-copy"><strong>Termin Tool</strong><small>Dolmetscher- und Fahrdienst</small></span>
-         </a>
-         <span class="local-session-badge"><span aria-hidden="true"></span> Nur in diesem Tab gespeichert</span>
-      </header>
-      <div class="wrapper">
-         <!-- Sidebar -->
-         <aside class="sidebar" id="sidebar">
-            <ul>
-               <li><a href="termineFiltern.html">Termine Filtern</a></li>
-               <li><a href="termineBearbeiten.html" class="active">Termine Bearbeiten</a></li>
-               <li><a href="termineTracking.html">Termine Tracking</a></li>
-            </ul>
-         </aside>
-         <div class="container" id="container">
-	            <div class="page-heading">
-               <div><p class="page-kicker">ARBEITSABLAUF · SCHRITT 2 VON 3</p><h1>Termine bearbeiten</h1><p>Dolmetscher zuweisen, Dauer prüfen und den Arbeitstag vorbereiten.</p></div>
-            </div>
-            <div class="toggle-btn">
-               <button id="toggleSidebar">☰</button>
-            </div>
-            <nav class="workflow-steps" aria-label="Arbeitsablauf">
-               <a class="workflow-step" href="termineFiltern.html"><span>1</span><strong>Filtern</strong></a>
-               <a class="workflow-step is-current" href="termineBearbeiten.html" aria-current="step"><span>2</span><strong>Bearbeiten</strong></a>
-               <a class="workflow-step" href="termineTracking.html"><span>3</span><strong>Live-Tracking</strong></a>
-            </nav>
-            <p id="workflowStatus" class="workflow-status" role="status">Lade die gefilterten Termine aus dem vorherigen Schritt oder wähle eine Excel-Datei.</p>
-            <div id="notification" class="notification" role="alert" aria-live="assertive" style="display: none;"></div>
-            <!-- Upload section -->
-            <div class="upload-section">
-               <h2>Excel-Datei bei Bedarf manuell laden</h2>
-               <p class="upload-hint">Kommst du aus dem Filter-Schritt, sind die Termine bereits übernommen. Eine Datei brauchst du nur für einen separaten Import.</p>
-               <input type="file" id="uploadButton" aria-label="Excel-Datei auswählen" accept=".xlsx, .xls">
-            </div>
-            <!-- Table section -->
-            <div class="tables-section">
-               <div>
-                  <table id="dataTable">
-                     <thead>
-                        <!-- Header wird hier durch JavaScript eingefügt -->
-                     </thead>
-                     <tbody id="tableBody">
-                        <!-- Datenzeilen werden hier durch JavaScript eingefügt -->
-                     </tbody>
-                  </table>
-               </div>
-            </div>
-            <!-- Action section -->
-            <div class="action-section">
-               <button id="minUeber">Min. Übersetzer ermitteln</button>
-               <button id="saveExcelButton" class="button-secondary">Excel-Datei herunterladen</button>
-               <button id="savePdfButton">Als PDF speichern</button>
-               <button id="continueToTracking" class="button-primary">Weiter zum Live-Tracking <span aria-hidden="true">→</span></button>
-            </div>
-         </div>
-      </div>
-      <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
-      <script src="workflowStorage.js"></script>
-      <script src="termineBearbeitenApp.js"></script>
-      <script>
-         const sidebar = document.getElementById('sidebar');
-         const container = document.getElementById('container');
-         const toggleBtn = document.getElementById('toggleSidebar');
-
-         toggleBtn.addEventListener('click', function () {
-            sidebar.classList.toggle('active');
-            container.classList.toggle('expanded');
-         });
-      </script>
-
+   <body>
+      <p>Der Schritt „Bearbeiten“ wurde entfernt. <a href="termineTracking.html">Weiter zum Live-Tracking</a></p>
    </body>
 </html>

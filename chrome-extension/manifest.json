@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Termin-Tool – WhatsApp-Tab wiederverwenden",
-  "version": "1.0.0",
+  "name": "Botschaft Dolmetscher und Transport-App – WhatsApp-Tab wiederverwenden",
+  "version": "1.2.0",
   "description": "Öffnet den vorbereiteten Auftrag im bereits geöffneten WhatsApp-Web-Tab.",
   "permissions": ["windows"],
   "host_permissions": [
     "https://masudtaher.github.io/Termin-Tool/*",
+    "http://127.0.0.1:8765/*",
     "https://web.whatsapp.com/*"
   ],
   "background": {
@@ -13,7 +14,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://masudtaher.github.io/Termin-Tool/*"],
+      "matches": ["https://masudtaher.github.io/Termin-Tool/*", "http://127.0.0.1:8765/*"],
       "js": ["termin-tool-bridge.js"],
       "run_at": "document_start"
     }

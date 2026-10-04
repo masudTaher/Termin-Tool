@@ -11,7 +11,7 @@ Die Erweiterung kann nur auf die Termin-Tool-Seite und WhatsApp Web zugreifen. S
 3. Oben rechts **Entwicklermodus** einschalten.
 4. Auf **Entpackte Erweiterung laden** klicken.
 5. Den gespeicherten Ordner `chrome-extension` auswählen (den Ordner mit `manifest.json`).
-6. Die GitHub-Seite des Termin-Tools neu laden.
+6. Die Seite des Termin-Tools neu laden (GitHub-Seite oder lokal gestartet über `start-local-app.bat`). Nach einem Update der Erweiterung in `chrome://extensions` einmal auf **Neu laden** klicken.
 7. WhatsApp Web öffnen und angemeldet lassen. Danach im Live-Tracking auf **WhatsApp** und anschließend **Im WhatsApp-Web-Tab öffnen** klicken.
 
 Falls Chrome auf dem Arbeits-PC das Laden von Erweiterungen durch eine Richtlinie blockiert, kann die IT die Erweiterung freigeben. Bis dahin funktionieren **Nachricht kopieren** und Einfügen im geöffneten WhatsApp-Tab weiterhin.

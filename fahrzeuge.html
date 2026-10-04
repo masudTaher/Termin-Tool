@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Fahrzeuge · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="fahrzeuge">
+      <main class="container fleet-page">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">FAHRDIENST · FUHRPARK</p><h1>Fahrzeugübergaben</h1><p>Sieh auf einen Blick, wer welches Fahrzeug übernommen hat und wann es weitergegeben wurde.</p></div>
+            <div class="fleet-heading-actions"><button id="undoFleetChange" type="button" class="button-secondary" disabled>Rückgängig</button><a href="termineTracking.html" class="button-secondary back-to-tracking">Zum Live-Tracking</a></div>
+         </div>
+         <p id="fleetStatus" class="workflow-status" role="status" aria-live="polite">Fahrzeuge und Übergaben werden nur auf diesem Gerät gespeichert.</p>
+
+         <div class="fleet-summary">
+            <article class="overview-card"><span class="overview-label">Fahrzeuge</span><strong id="fleetVehicleCount">0</strong><small>im Fuhrpark erfasst</small></article>
+            <article class="overview-card overview-card-open"><span class="overview-label">Aktuell unterwegs</span><strong id="fleetActiveCount">0</strong><small>ohne Rückgabezeit heute</small></article>
+            <article class="overview-card overview-card-alert"><span class="overview-label">Übergaben heute</span><strong id="fleetHandoverCount">0</strong><small>im gewählten Tagesprotokoll</small></article>
+         </div>
+
+         <div class="fleet-layout">
+            <section class="directory-card fleet-card" aria-labelledby="vehicleRegisterHeading">
+               <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="vehicleRegisterHeading">Fahrzeug erfassen</h2><p>Einmal anlegen – danach im Live-Tracking mit einem Klick zuweisen.</p></div></div>
+               <form id="addVehicleForm" class="fleet-form fleet-form-grid">
+                  <input type="hidden" id="vehicleEditId">
+                  <div class="fleet-field"><label for="vehiclePlate">Kennzeichen</label>
+                  <input id="vehiclePlate" type="text" maxlength="24" placeholder="Zum Beispiel: BN AB 123" required></div>
+                  <div class="fleet-field"><label for="vehicleBrand">Marke / Modell</label>
+                  <input id="vehicleBrand" type="text" maxlength="40" list="vehicleBrandSuggestions" placeholder="Zum Beispiel: Mercedes V-Klasse"></div>
+                  <div class="fleet-field"><label for="vehicleBody">Bauart</label>
+                  <select id="vehicleBody"><option value="">Bitte wählen</option><option value="Kombi">Kombi</option><option value="Limousine">Limousine</option><option value="Bus">Bus</option></select></div>
+                  <div class="fleet-field"><label for="vehicleType">Fahrzeugart</label>
+                  <select id="vehicleType"><option value="Diplomatisch">Diplomatisch</option><option value="Mietwagen">Mietwagen</option></select></div>
+                  <div class="fleet-field fleet-field-wide"><label for="vehicleLabel">Hinweis <span class="optional-label">optional</span></label>
+                  <input id="vehicleLabel" type="text" maxlength="60" placeholder="Zum Beispiel: schwarz, 7 Sitze"></div>
+                  <div class="fleet-form-actions fleet-field-wide"><button type="submit" id="vehicleSubmitButton" class="button-primary">Fahrzeug speichern</button><button type="button" id="vehicleCancelEdit" class="button-secondary" hidden>Abbrechen</button></div>
+               </form>
+               <datalist id="vehicleBrandSuggestions"><option value="Mercedes"><option value="BMW"><option value="Audi"><option value="VW"><option value="Toyota"><option value="Ford"><option value="Opel"><option value="Skoda"></datalist>
+               <h3 class="fleet-subheading">Gespeicherte Fahrzeuge</h3>
+               <ul id="vehicleDirectoryList" class="vehicle-list"></ul>
+            </section>
+
+            <section class="directory-card fleet-card" aria-labelledby="handoverHeading">
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">02</span><div><h2 id="handoverHeading">Fahrzeug übernehmen</h2><p>Bei einem Fahrerwechsel wird die vorherige Nutzung automatisch beendet.</p></div></div>
+               <form id="addHandoverForm" class="fleet-form fleet-handover-form">
+                  <label for="handoverVehicle">Fahrzeug</label>
+                  <select id="handoverVehicle" required></select>
+                  <label for="driverName">Fahrer/in</label>
+                  <input id="driverName" list="knownDrivers" autocomplete="off" maxlength="100" placeholder="Namen eingeben oder auswählen" required>
+                  <label for="handoverDate">Datum</label>
+                  <input id="handoverDate" type="date" required>
+                  <label for="handoverTime">Übergabezeit</label>
+                  <input id="handoverTime" type="time" required>
+                  <label for="handoverMileage">Kilometerstand <span class="optional-label">optional</span></label>
+                  <input id="handoverMileage" type="number" min="0" step="1" placeholder="km">
+                  <label for="handoverNote">Notiz <span class="optional-label">optional</span></label>
+                  <input id="handoverNote" type="text" maxlength="160" placeholder="Zum Beispiel: Schlüssel übergeben">
+                  <button type="submit" class="button-primary">Übergabe eintragen</button>
+               </form>
+               <datalist id="knownDrivers"></datalist>
+               <p class="fleet-footnote">Der Verlauf bleibt für das ausgewählte Datum abrufbar. Beim nächsten Fahrer wird die Übergabezeit als Ende der vorherigen Fahrt übernommen.</p>
+            </section>
+         </div>
+
+         <section class="directory-card fleet-log-card" aria-labelledby="fleetLogHeading">
+            <div class="fleet-log-heading">
+               <div class="directory-card-heading"><span class="directory-step directory-step-dark">03</span><div><h2 id="fleetLogHeading">Tagesprotokoll</h2><p id="fleetLogSummary">Alle Übergaben des gewählten Tages.</p></div></div>
+               <div class="fleet-log-controls"><label for="fleetLogDate">Tag</label><input id="fleetLogDate" type="date"><button type="button" id="exportFleetLog" class="button-secondary">Protokoll exportieren</button></div>
+            </div>
+            <div class="fleet-table-wrap">
+               <table class="fleet-table"><thead><tr><th>Fahrzeug</th><th>Fahrzeugart</th><th>Fahrer/in</th><th>Beginn</th><th>Übergabe / Ende</th><th>Kilometer</th><th>Notiz</th><th>Aktion</th></tr></thead><tbody id="fleetLogBody"></tbody></table>
+            </div>
+            <p id="fleetLogEmpty" class="directory-empty" hidden>Für diesen Tag gibt es noch keine Einträge.</p>
+         </section>
+      </main>
+      <script src="workflowStorage.js"></script>
+      <script src="teamDirectory.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="fahrzeugeApp.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudFleetSync.js"></script>
+      <script src="cloudInbox.js"></script>
+   </body>
+</html>

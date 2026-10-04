@@ -3,51 +3,44 @@
    <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Termine Tracking</title>
+      <title>2 Live-Tracking · Botschaft Dolmetscher und Transport-App</title>
       <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
    </head>
    <body data-page="tracking">
-      <header class="app-header">
-         <a class="app-brand" href="termineFiltern.html" aria-label="Termin Tool – Start">
-            <span class="app-brand-mark" aria-hidden="true">TT</span>
-            <span class="app-brand-copy"><strong>Termin Tool</strong><small>Dolmetscher- und Fahrdienst</small></span>
-         </a>
-         <span class="local-session-badge"><span aria-hidden="true"></span> Nur in diesem Tab gespeichert</span>
-      </header>
       <div class="wrapper">
-         <!-- Sidebar -->
-         <aside class="sidebar" id="sidebar">
-            <ul>
-               <li><a href="termineFiltern.html">Termine Filtern</a></li>
-               <li><a href="termineBearbeiten.html">Termine Bearbeiten</a></li>
-               <li><a href="termineTracking.html" class="active">Termine Tracking</a></li>
-            </ul>
-         </aside>
          <div class="container" id="container">
 	            <div class="page-heading">
-               <div><p class="page-kicker">ARBEITSABLAUF · SCHRITT 3 VON 3</p><h1>Live-Tracking</h1><p>Status aktualisieren, Rückmeldungen nachhalten und Aufträge vorbereiten.</p></div>
+               <div><p class="page-kicker">TAGESABLAUF · SCHRITT 2 VON 2</p><h1>Live-Tracking</h1><p>Dolmetscher und Autos verteilen, Status verfolgen, Aufträge senden.</p></div>
             </div>
 
             <div id="notification" class="notification" role="alert" aria-live="assertive" style="display: none;"></div>
-		  
-		  <div class="toggle-btn">
-               <button id="toggleSidebar">☰</button>
-            </div>
+            <p id="workflowStatus" class="workflow-status" role="status">Lade zuerst die Termine im Schritt „Filtern“ – oder wähle hier eine Excel-Datei.</p>
 
-            <nav class="workflow-steps" aria-label="Arbeitsablauf">
-               <a class="workflow-step" href="termineFiltern.html"><span>1</span><strong>Filtern</strong></a>
-               <a class="workflow-step" href="termineBearbeiten.html"><span>2</span><strong>Bearbeiten</strong></a>
-               <a class="workflow-step is-current" href="termineTracking.html" aria-current="step"><span>3</span><strong>Live-Tracking</strong></a>
-            </nav>
-            <p id="workflowStatus" class="workflow-status" role="status">Lade die bearbeiteten Termine aus dem vorherigen Schritt oder wähle eine Excel-Datei.</p>
-			
-			
-			
-			<div class="upload-section">
-               <h2>Excel-Datei bei Bedarf manuell laden</h2>
-               <p class="upload-hint">Kommst du aus dem Bearbeiten-Schritt, sind die Termine bereits übernommen. Eine Datei brauchst du nur für einen separaten Import.</p>
-               <input type="file" id="trackingFile" aria-label="Excel-Datei auswählen" accept=".xlsx, .xls">
+            <section class="tracking-overview" aria-label="Tagesübersicht – klicken zum Filtern">
+               <button type="button" class="overview-card is-active" data-status-filter="alle" aria-pressed="true"><span class="overview-label">Alle Termine</span><strong id="overviewTotal">0</strong></button>
+               <button type="button" class="overview-card overview-card-open" data-status-filter="offen" aria-pressed="false"><span class="overview-label">Offen</span><strong id="overviewOpen">0</strong></button>
+               <button type="button" class="overview-card overview-card-departed" data-status-filter="unterwegs" aria-pressed="false"><span class="overview-label">Unterwegs</span><strong id="overviewDeparted">0</strong></button>
+               <button type="button" class="overview-card overview-card-done" data-status-filter="erledigt" aria-pressed="false"><span class="overview-label">Erledigt</span><strong id="overviewDone">0</strong></button>
+               <button type="button" class="overview-card overview-card-cancelled" data-status-filter="storniert" aria-pressed="false"><span class="overview-label">Storniert</span><strong id="overviewCancelled">0</strong></button>
+            </section>
+            <div class="tracking-toolbar">
+               <label class="tracking-search"><span class="visually-hidden">Termine durchsuchen</span><input type="search" id="trackingSearch" placeholder="Suchen: Patient, Dolmetscher, Ort, Fahrzeug …" autocomplete="off"></label>
+               <span id="trackingFilterInfo" class="tracking-filter-info" role="status"></span>
+               <span id="cloudDayStatus" class="cloud-day-status" role="status" hidden></span>
+               <div class="reminder-control"><span class="reminder-control-text">Erinnerung 60 Min. (Bonn) / 90 Min. (außerhalb)</span><button id="enableReminderSound" type="button" class="button-secondary">Ton einschalten</button><small id="reminderSoundStatus" role="status">Einmal pro Sitzung aktivieren</small></div>
             </div>
+            <div id="reminderBanner" class="reminder-banner" role="alert" aria-live="assertive" hidden></div>
+			
+			
+			
+			<details class="upload-section" id="uploadPanel" open>
+               <summary>Excel-Datei manuell laden</summary>
+               <div>
+                  <p class="upload-hint">Kommst du aus dem Schritt „Filtern“, sind die Termine bereits übernommen. Eine Datei brauchst du nur für einen separaten Import.</p>
+                  <input type="file" id="trackingFile" aria-label="Excel-Datei auswählen" accept=".xlsx, .xls">
+               </div>
+            </details>
 			
 			
             <div class="tables-section">
@@ -55,41 +48,43 @@
                   <table id="dataTable">
                      <thead>
                         <tr>
-						   <th>Lfd. Nr.</th>
+                           <th>Nr.</th>
                            <th>Start</th>
-                           <th>Pat. Nr	</th>
+                           <th>Pat.-Nr.</th>
                            <th>Patient</th>
-                           <th>Geschlecht</th>
                            <th>Bemerkung</th>
                            <th>Arzt</th>
                            <th>Ort</th>
-                           <th>Übersetzer</th>
-						   <th>Anzahl Termine</th>
+                           <th>Dolmetscher / Auto</th>
                            <th>Status</th>
-						   <th>Aktion</th> <!-- Neue Spalte für Aktionen -->
+                           <th>Aktion</th>
                         </tr>
                      </thead>
                      <tbody id="tableBody">
                         <!-- Datenzeilen werden hier durch JavaScript eingefügt -->
                      </tbody>
                   </table>
+                  <p id="trackingEmptyFilter" class="directory-empty" hidden>Kein Termin passt zur Suche oder zum gewählten Status.</p>
                </div>
             </div>
             <!-- Action section -->
-            <div class="action-section">
-			   <button id="addRowButton">Neue Zeile hinzufügen</button>
-               <button id="saveChanges" class="button-primary">Abschließende Excel-Datei herunterladen</button>
-			   <button id="savePdfButton">Als PDF speichern</button>
+            <div class="action-section tracking-actions" role="toolbar" aria-label="Tracking-Aktionen">
+			   <button type="button" id="undoChangesButton" class="button-secondary" disabled>Letzte Änderung rückgängig</button>
+			   <button type="button" id="addRowButton" class="button-secondary">+ Neuer Termin</button>
+               <button id="saveChanges" class="button-primary">Excel-Datei herunterladen</button>
+			   <details class="action-overflow"><summary>Weitere Aktionen</summary><div class="action-overflow-panel"><button id="savePdfButton" type="button" class="button-secondary">Als PDF speichern</button><button id="archiveDayButton" type="button" class="button-secondary">Tag online archivieren</button></div></details>
             </div>
 			
 			
 			
 			
 <!-- Modal für das Hinzufügen einer neuen Zeile -->
-<div id="addRowModal" class="modal">
-  <div class="modal-content">
-    <span class="close" onclick="toggleAddRowModal()">&times;</span>
-    <h2>Neue Zeile hinzufügen</h2>
+<div id="addRowModal" class="modal" aria-hidden="true">
+  <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="addRowModalTitle">
+    <div class="whatsapp-modal-heading">
+      <h2 id="addRowModalTitle">Neuen Termin hinzufügen</h2>
+      <button type="button" class="whatsapp-close-button" aria-label="Fenster schließen" onclick="toggleAddRowModal()">&times;</button>
+    </div>
     <p class="form-intro">Pflicht sind Startzeit, Patientennummer, Geschlecht und Name. Arzt, Bemerkung, Ort und Übersetzer kannst du ergänzen, sie sind aber optional.</p>
     <form id="addRowForm">
       <div class="modal-body">
@@ -99,15 +94,15 @@
         </div>
 	  <div class="form-group">
 		<label for="patientNr">Patienten-Nr. <span class="required-label">Pflicht</span></label>
-		<input type="number" id="patientNr" required />
+		<input type="text" id="patientNr" inputmode="numeric" autocomplete="off" required />
 	  </div>
 		
 		        <div class="form-group">
-          <label for="patientGeschlecht">Geschlecht</label>
+          <label for="patientGeschlecht">Geschlecht <span class="required-label">Pflicht</span></label>
 		  <select id="patientGeschlecht" required>
           <option value="" selected disabled>Bitte wählen</option>
           <option value="M : Männlich">M</option>
-		  <option value="F  : Weiblich">F</option>
+		  <option value="F : Weiblich">F</option>
         </select>
 		  
         </div>
@@ -134,12 +129,12 @@
         </div>
         <div class="form-group">
           <label for="uebersetzer">Übersetzer <span class="optional-label">optional</span></label>
-          <input type="text" id="uebersetzer" />
+          <input type="text" id="uebersetzer" list="dolmetscherSuggestions" autocomplete="off" />
         </div>
       </div>
       <div class="modal-buttons">
-        <button type="button" id="confirmAddRowButton" class="saveButton">Hinzufügen</button>
-        <button type="button" id="cancelAddRowButton" class="cancelButton" onclick="toggleAddRowModal()">Abbrechen</button>
+        <button type="button" id="cancelAddRowButton" class="button-secondary" onclick="toggleAddRowModal()">Abbrechen</button>
+        <button type="submit" id="confirmAddRowButton" class="button-primary">Hinzufügen</button>
       </div>
     </form>
   </div>
@@ -184,21 +179,21 @@
 			
          </div>
       </div>
-	  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+	  <datalist id="dolmetscherSuggestions"></datalist>
+	  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 	  	  	     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
      <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
       <script src="workflowStorage.js"></script>
+      <script src="teamDirectory.js"></script>
+      <script src="fleetStore.js"></script>
       <script src="termineTrackingApp.js"></script>
-      <script>
-         const sidebar = document.getElementById('sidebar');
-         const container = document.getElementById('container');
-         const toggleBtn = document.getElementById('toggleSidebar');
-
-         toggleBtn.addEventListener('click', function () {
-            sidebar.classList.toggle('active');
-            container.classList.toggle('expanded');
-         });
-      </script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudFleetSync.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="cloudDaySync.js"></script>
+      <script src="trackingReminders.js"></script>
 
    </body>
 </html>

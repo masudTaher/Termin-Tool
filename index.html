@@ -2,12 +2,64 @@
 <html lang="de">
    <head>
       <meta charset="UTF-8">
-      <title>Redirecting...</title>
-      <script>
-         window.location.href = "termineFiltern.html";
-      </script>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Übersicht · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
    </head>
-   <body>
-      <p>Weiterleitung... Falls Sie nicht automatisch weitergeleitet werden, <a href="termineFiltern.html">klicken Sie hier</a>.</p>
+   <body data-page="start">
+      <div class="wrapper">
+         <div class="container" id="container">
+            <div class="page-heading">
+               <div><p class="page-kicker">ÜBERSICHT</p><h1 id="startGreeting">Guten Tag</h1><p id="startToday"></p></div>
+            </div>
+
+            <section class="start-section" aria-labelledby="startFlowTitle">
+               <h2 id="startFlowTitle" class="start-section-title">Tagesablauf – in zwei Schritten</h2>
+               <div class="flow-steps">
+                  <a class="flow-step" id="flowFiltern" href="termineFiltern.html"><span class="flow-step-number">1</span><strong>Filtern</strong><small>Excel-Datei laden. Das Programm behält nur unsere Termine.</small><em id="flowFilternState"></em></a>
+                  <a class="flow-step" id="flowTracking" href="termineTracking.html"><span class="flow-step-number">2</span><strong>Live-Tracking</strong><small>Dolmetscher und Autos verteilen, den Tag begleiten: Los, Fertig, WhatsApp, Aufträge.</small><em id="flowTrackingState"></em></a>
+               </div>
+            </section>
+
+            <section class="start-section" id="startDay" aria-labelledby="startDayTitle" hidden>
+               <h2 id="startDayTitle" class="start-section-title">Heute im Live-Tracking</h2>
+               <div class="tracking-overview">
+                  <a class="overview-card" href="termineTracking.html"><span class="overview-label">Alle Termine</span><strong id="dayTotal">0</strong></a>
+                  <a class="overview-card overview-card-open" href="termineTracking.html"><span class="overview-label">Offen</span><strong id="dayOpen">0</strong></a>
+                  <a class="overview-card overview-card-departed" href="termineTracking.html"><span class="overview-label">Unterwegs</span><strong id="dayDeparted">0</strong></a>
+                  <a class="overview-card overview-card-done" href="termineTracking.html"><span class="overview-label">Erledigt</span><strong id="dayDone">0</strong></a>
+                  <a class="overview-card overview-card-cancelled" href="termineTracking.html"><span class="overview-label">Storniert</span><strong id="dayCancelled">0</strong></a>
+               </div>
+            </section>
+
+            <div class="start-columns">
+               <section class="directory-card" aria-labelledby="startTodoTitle">
+                  <h2 id="startTodoTitle" class="card-title">Darum musst du dich kümmern</h2>
+                  <p id="startTodoInfo" class="portal-text">Wird geladen …</p>
+                  <ul id="startTodo" class="start-todo"></ul>
+               </section>
+
+               <section class="directory-card" aria-labelledby="startMasterTitle">
+                  <h2 id="startMasterTitle" class="card-title">Stammdaten</h2>
+                  <ul class="start-todo">
+                     <li><a href="dolmetscher.html"><span>Dolmetscher in der Liste</span><b id="masterInterpreters">0</b></a></li>
+                     <li><a href="fahrzeuge.html"><span>Fahrzeuge</span><b id="masterVehicles">0</b></a></li>
+                  </ul>
+                  <h2 class="card-title start-portal-title">Dolmetscher-Portal</h2>
+                  <p class="portal-text">Diesen Link bekommen die Dolmetscher. Sie können das Portal wie eine App auf dem Handy speichern.</p>
+                  <div class="directory-input-row"><input id="startPortalLink" type="text" readonly aria-label="Portal-Link"><button type="button" id="startCopyLink" class="button-secondary">Link kopieren</button></div>
+               </section>
+            </div>
+         </div>
+      </div>
+      <script src="workflowStorage.js"></script>
+      <script src="teamDirectory.js"></script>
+      <script src="fleetStore.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="startApp.js"></script>
    </body>
 </html>
