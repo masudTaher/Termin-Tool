@@ -142,6 +142,22 @@
 
 
 
+<!-- Sonderkonditionen (selten): Betrag in Euro für diesen Tag, optional mit Grund -->
+<dialog id="specialDialog" class="confirm-dialog special-dialog" aria-labelledby="specialDialogTitle">
+  <form id="specialDialogForm" class="fleet-form" novalidate>
+    <h2 id="specialDialogTitle">Sonderkonditionen</h2>
+    <p class="field-hint" id="specialDialogInfo"></p>
+    <label for="specialDialogAmount">Betrag für diesen Tag</label>
+    <div class="euro-field"><input id="specialDialogAmount" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="0" aria-describedby="specialDialogHelp"><span aria-hidden="true">€</span></div>
+    <div id="specialDialogQuick" class="special-quick" role="group" aria-label="Häufige Beträge"></div>
+    <p class="field-hint" id="specialDialogHelp">Gilt statt des normalen Tagessatzes und erscheint in der Abrechnung als Sondertag.</p>
+    <label for="specialDialogReason">Grund <span class="optional-label">optional</span></label>
+    <input id="specialDialogReason" type="text" maxlength="80" list="specialDialogReasons" autocomplete="off" placeholder="Zum Beispiel: Flughafen, Wochenende">
+    <datalist id="specialDialogReasons"><option value="Flughafen"></option><option value="Wochenende"></option><option value="Feiertag"></option><option value="Nachteinsatz"></option><option value="Fernfahrt"></option><option value="Notfall"></option></datalist>
+    <div class="modal-buttons special-buttons"><button type="button" class="button-quiet-danger" id="specialDialogRemove">Entfernen</button><span></span><button type="button" class="button-secondary" id="specialDialogCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+  </form>
+</dialog>
+
 <div id="whatsappModal" class="modal" aria-hidden="true">
   <section class="modal-content whatsapp-modal-content" role="dialog" aria-modal="true" aria-labelledby="whatsappModalTitle">
     <div class="whatsapp-modal-heading">

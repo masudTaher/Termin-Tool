@@ -59,27 +59,34 @@
         home: icon('<path d="M4 11.5 12 5l8 6.500"/><path d="M6 10.500V19h4.500v-5h3v5H18v-8.500"/>'),
         menu: icon('<path d="M4 7h16M4 12h16M4 17h16"/>'),
         clock: icon('<circle cx="12" cy="12.500" r="8"/><path d="M12 8v4.500l3 2M9.500 2.500h5"/>'),
-        message: icon('<path d="M4.500 6.500a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.500 3.500v-3.500a2 2 0 0 1-2-2z"/><path d="M8.500 9h7M8.500 12h4.500"/>')
+        message: icon('<path d="M4.500 6.500a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.500 3.500v-3.500a2 2 0 0 1-2-2z"/><path d="M8.500 9h7M8.500 12h4.500"/>'),
+        patients: icon('<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>')
     };
 
+    // Vier Bereiche: Tagesablauf (Live-Tracking) · Patienten · Fahrzeuge · Dolmetscher – dazu die Verwaltung der Konten.
     const NAV = [
         { group: '', items: [
             { page: 'start', href: 'index.html', label: 'Übersicht', icon: ICONS.home }
         ] },
         { group: 'Tagesablauf', items: [
             { page: 'filtern', href: 'termineFiltern.html', label: 'Filtern', step: '1', icon: ICONS.filter },
-            { page: 'tracking', href: 'termineTracking.html', label: 'Live-Tracking', step: '2', icon: ICONS.tracking }
+            { page: 'tracking', href: 'termineTracking.html', label: 'Live-Tracking', step: '2', icon: ICONS.tracking },
+            { page: 'archiv', href: 'archiv.html', label: 'Tagesarchiv', icon: ICONS.archive }
         ] },
-        { group: 'Stammdaten', items: [
+        { group: 'Patienten', items: [
+            { page: 'patienten', href: 'patienten.html', label: 'Patienten', icon: ICONS.patients }
+        ] },
+        { group: 'Fahrzeuge', items: [
+            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
+            { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Übergaben', icon: ICONS.folder }
+        ] },
+        { group: 'Dolmetscher', items: [
             { page: 'dolmetscher', href: 'dolmetscher.html', label: 'Dolmetscher', icon: ICONS.people },
-            { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Fahrzeuge', icon: ICONS.car }
-        ] },
-        { group: 'Online', items: [
-            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.folder },
-            { page: 'archiv', href: 'archiv.html', label: 'Online-Archiv', icon: ICONS.archive },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
             { page: 'fest', href: 'festangestellte.html', label: 'Überstunden', icon: ICONS.clock },
-            { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message },
+            { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }
+        ] },
+        { group: 'Verwaltung', items: [
             { page: 'team', href: 'team.html', label: 'Team', icon: ICONS.cloud }
         ] }
     ];
@@ -120,8 +127,8 @@
         const tabs = [
             { page: 'start', href: 'index.html', label: 'Übersicht', icon: ICONS.home },
             { page: 'tracking', href: 'termineTracking.html', label: 'Tag', icon: ICONS.tracking },
-            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
-            { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }
+            { page: 'patienten', href: 'patienten.html', label: 'Patienten', icon: ICONS.patients },
+            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car }
         ];
         const tabbar = document.createElement('nav');
         tabbar.className = 'app-tabbar';
@@ -149,6 +156,7 @@
         toasts.className = 'toast-region';
         toasts.setAttribute('role', 'status');
         toasts.setAttribute('aria-live', 'polite');
+        toasts.setAttribute('popover', 'manual');      // damit Anzeigen auch über geöffneten Dialogen liegen
         document.body.append(toasts);
 
         applyTheme(readTheme());
@@ -162,27 +170,83 @@
         document.getElementById('importMasterDataFile').addEventListener('change', importMasterData);
     }
 
-    // Kurze Einblendung unten rechts; optional mit einer Aktion wie „Rückgängig“.
+    // Anzeige oben in der Mitte: grün = gespeichert (5 Sekunden), rot = Problem (bleibt länger).
+    // Ein Tipp auf die rote Anzeige führt zur Stelle des Fehlers (options.target: Element oder CSS-Auswahl;
+    // ohne Angabe das erste sichtbare Feld mit Fehlermeldung). Optional mit einer Aktion wie „Rückgängig“.
+    const TOAST_ICONS = {
+        success: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.800 2.800L16.500 9.500"/></svg>',
+        error: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17h.01"/></svg>',
+        info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>'
+    };
+
+    function findProblem(target) {
+        if (typeof target === 'string') { try { target = document.querySelector(target); } catch (error) { target = null; } }
+        if (target instanceof Element) return target;
+        return [...document.querySelectorAll('.field-error:not([hidden]), [aria-invalid="true"]')].find(node => node.getClientRects().length) || null;
+    }
+
+    window.jumpToProblem = function (target) {
+        const node = findProblem(target);
+        if (!node) return false;
+        // Zugeklappte Bereiche öffnen, damit die Stelle sichtbar ist.
+        for (let parent = node.parentElement; parent; parent = parent.parentElement) { if (parent.tagName === 'DETAILS') parent.open = true; }
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (node.matches('input, select, textarea, button, a[href], [tabindex]')) node.focus({ preventScroll: true });
+        node.classList.add('is-flagged');
+        window.setTimeout(() => node.classList.remove('is-flagged'), 2600);
+        return true;
+    };
+
     window.showToast = function (message, kind = 'info', options = {}) {
         const region = document.getElementById('toastRegion');
         if (!region) return;
         const toast = document.createElement('div');
         toast.className = 'toast';
         toast.dataset.kind = kind;
+        toast.insertAdjacentHTML('afterbegin', TOAST_ICONS[kind] || TOAST_ICONS.info);
         const text = document.createElement('span');
         text.textContent = message;
         toast.append(text);
+        const duration = options.duration || (kind === 'error' ? 10000 : 5000);
+        toast.style.setProperty('--toast-time', `${duration}ms`);
         const remove = () => toast.remove();
         if (options.actionLabel && typeof options.onAction === 'function') {
             const action = document.createElement('button');
             action.type = 'button';
             action.textContent = options.actionLabel;
-            action.addEventListener('click', () => { remove(); options.onAction(); });
+            action.addEventListener('click', event => { event.stopPropagation(); remove(); options.onAction(); });
             toast.append(action);
         }
+        if (kind === 'error') {
+            const target = findProblem(options.target);
+            if (target) {
+                toast.classList.add('has-target');
+                toast.setAttribute('role', 'button');
+                toast.tabIndex = 0;
+                const hint = document.createElement('em');
+                hint.className = 'toast-jump';
+                hint.textContent = 'Zur Stelle';
+                toast.append(hint);
+                const jump = () => { remove(); window.jumpToProblem(options.target || target); };
+                toast.addEventListener('click', jump);
+                toast.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jump(); } });
+            } else {
+                toast.addEventListener('click', remove);
+            }
+        } else if (!options.actionLabel) {
+            toast.addEventListener('click', remove);
+        }
+        // Eine Anzeige je Art: Eine neue rote ersetzt die alte; sobald etwas geklappt hat, sind ältere Fehlermeldungen überholt.
+        // Anzeigen mit einer Aktion („Rückgängig“) bleiben stehen, bis ihre Zeit abgelaufen ist.
+        region.querySelectorAll(kind === 'error' ? '.toast[data-kind="error"]' : `.toast[data-kind="${kind}"], .toast[data-kind="error"]`)
+            .forEach(old => { if (!old.querySelector('button')) old.remove(); });
         region.append(toast);
-        while (region.children.length > 4) region.firstElementChild.remove();
-        window.setTimeout(remove, options.duration || (kind === 'error' ? 8000 : 5000));
+        while (region.children.length > 3) region.firstElementChild.remove();
+        // Oberste Ebene des Browsers: so liegt die Anzeige auch über einem geöffneten Dialog.
+        if (typeof region.showPopover === 'function') {
+            try { if (region.matches(':popover-open')) region.hidePopover(); region.showPopover(); } catch (error) { /* ältere Browser: normale Ebene */ }
+        }
+        window.setTimeout(remove, duration);
     };
 
     // Ersatz für confirm(): liefert true/false als Promise.

@@ -272,7 +272,7 @@ function renderTrackingTable(data) {
             escapeHtml(getAppointmentLocation(termin)),
             `<input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben">`
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
-                + `<input class="special-input${special ? ' has-value' : ''}" type="number" min="0" step="1" inputmode="numeric" data-index="${index}" value="${special || ''}" placeholder="Sonder" title="Sondertag: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt" aria-label="Sonderbetrag für Termin ${index + 1}"></div>`
+                + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button></div>`
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>` : ''),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`,
             `<div class="tracking-row-actions">`
@@ -323,6 +323,7 @@ document.addEventListener('fleet-synced', () => {
         else if (button.classList.contains('delete-button')) deleteRow(index);
         else if (button.classList.contains('assign-button')) window.sendTrackingAssignment?.(index);
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
+        else if (button.classList.contains('special-button')) openSpecialDialog(index);
     });
     tableBody.addEventListener('change', event => {
         const target = event.target;
@@ -330,7 +331,6 @@ document.addEventListener('fleet-synced', () => {
         else if (target.classList.contains('interpreter-input')) updateInterpreterFromInput(target);
         else if (target.classList.contains('vehicle-select')) updateVehicleFromSelect(target);
         else if (target.classList.contains('time-input')) updateTimeFromInput(target);
-        else if (target.classList.contains('special-input')) updateSpecialFromInput(target);
     });
     // Enter im Namensfeld springt zum nächsten sichtbaren Termin.
     tableBody.addEventListener('keydown', event => {
@@ -1144,20 +1144,72 @@ function offerInterpreterForSiblings(termin, interpreter) {
 
 // Sondertag: Betrag, der für diesen Tag statt des normalen Tagessatzes gezahlt wird.
 // Er erscheint in der Monatsabrechnung automatisch als Sondertag der eingetragenen Person.
-function updateSpecialFromInput(input) {
-    const termin = trackingData[Number(input.dataset.index)];
-    if (!termin) return;
-    const amount = Math.max(0, Math.round(Number(input.value) || 0));
-    if ((Number(termin.Sonderbetrag) || 0) === amount) return;
-    recordTrackingUndo('Sonderbetrag geändert');
-    trackingData.forEach(item => { if (!Object.prototype.hasOwnProperty.call(item, 'Sonderbetrag')) item.Sonderbetrag = ''; });
-    termin.Sonderbetrag = amount || '';
-    input.value = amount || '';
-    input.classList.toggle('has-value', amount > 0);
-    input.closest('tr').classList.toggle('has-special', amount > 0);
-    persistTerminRecords(trackingData, 'tracking');
-    if (amount && !getAppointmentInterpreterName(termin)) showToast('Sonderbetrag gespeichert. Trage noch den Dolmetscher ein, damit der Tag in der Abrechnung landet.', 'info');
+// Sonderkonditionen sind selten: Ein Knopf je Termin öffnet ein kleines Fenster mit Betrag (in Euro, frei eingeben) und Grund.
+const SPECIAL_QUICK_AMOUNTS = window.TERMIN_CLOUD_CONFIG?.specialAmounts || [100, 150, 200];
+let specialDialogIndex = null;
+
+function openSpecialDialog(index) {
+    const termin = trackingData[index];
+    const dialog = document.getElementById('specialDialog');
+    if (!termin || !dialog) return;
+    specialDialogIndex = index;
+    const amount = Number(termin.Sonderbetrag) > 0 ? Number(termin.Sonderbetrag) : 0;
+    document.getElementById('specialDialogInfo').textContent = [
+        getAppointmentInterpreterName(termin) || 'noch kein Dolmetscher eingetragen',
+        String(termin.Termin_Uhrzeit || '').slice(0, 5) ? `${String(termin.Termin_Uhrzeit).slice(0, 5)} Uhr` : '',
+        termin['Arzt Nr::Name'] || ''
+    ].filter(Boolean).join(' · ');
+    document.getElementById('specialDialogAmount').value = amount || '';
+    document.getElementById('specialDialogReason').value = termin.Sondergrund || '';
+    document.getElementById('specialDialogRemove').hidden = !amount;
+    document.getElementById('specialDialogQuick').replaceChildren(...SPECIAL_QUICK_AMOUNTS.map(value => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'special-quick-button';
+        button.textContent = `${value} €`;
+        button.addEventListener('click', () => { document.getElementById('specialDialogAmount').value = value; document.getElementById('specialDialogAmount').focus(); });
+        return button;
+    }));
+    dialog.showModal();
+    document.getElementById('specialDialogAmount').focus();
+    document.getElementById('specialDialogAmount').select();
 }
+
+function setSpecial(index, amount, reason) {
+    const termin = trackingData[index];
+    if (!termin) return;
+    const cleanReason = amount ? String(reason || '').trim() : '';
+    if ((Number(termin.Sonderbetrag) || 0) === amount && String(termin.Sondergrund || '') === cleanReason) return;
+    recordTrackingUndo('Sonderkonditionen geändert');
+    trackingData.forEach(item => {
+        if (!Object.prototype.hasOwnProperty.call(item, 'Sonderbetrag')) item.Sonderbetrag = '';
+        if (!Object.prototype.hasOwnProperty.call(item, 'Sondergrund')) item.Sondergrund = '';
+    });
+    termin.Sonderbetrag = amount || '';
+    termin.Sondergrund = cleanReason;
+    persistTerminRecords(trackingData, 'tracking');
+    renderTrackingTable(trackingData);
+    if (!amount) showToast('Sonderkonditionen entfernt', 'success');
+    else if (!getAppointmentInterpreterName(termin)) showToast(`Sonderbetrag ${amount} € gespeichert. Trage noch den Dolmetscher ein, damit der Tag in der Abrechnung landet.`, 'info');
+    else showToast(`Sonderbetrag ${amount} € gespeichert`, 'success');
+}
+
+(function bindSpecialDialog() {
+    const dialog = document.getElementById('specialDialog');
+    if (!dialog) return;
+    const amountInput = document.getElementById('specialDialogAmount');
+    // Nur Ziffern: kein Zahlenfeld mit Pfeilen, sondern freie Eingabe.
+    amountInput.addEventListener('input', () => { amountInput.value = amountInput.value.replace(/\D/g, '').slice(0, 5); });
+    document.getElementById('specialDialogCancel').addEventListener('click', () => dialog.close());
+    document.getElementById('specialDialogRemove').addEventListener('click', () => { dialog.close(); setSpecial(specialDialogIndex, 0, ''); });
+    document.getElementById('specialDialogForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const amount = Math.round(Number(amountInput.value) || 0);
+        if (!(amount > 0)) { window.jumpToProblem?.('#specialDialogAmount'); showToast('Bitte trag den Betrag in Euro ein.', 'error', { target: '#specialDialogAmount' }); return; }
+        dialog.close();
+        setSpecial(specialDialogIndex, amount, document.getElementById('specialDialogReason').value);
+    });
+})();
 
 function updateVehicleFromSelect(select) {
     const index = Number(select.dataset.index);

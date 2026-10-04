@@ -2,8 +2,8 @@
 // Er hält nur die Programmdateien des Portals bereit, damit die App sofort startet.
 // Daten (Fahrzeuge, Aufträge, Abrechnung) kommen immer frisch aus der Datenbank
 // und werden hier nie gespeichert.
-const CACHE = 'botschaft-portal-v2';
-const SHELL = ['portal.html', 'style.css', 'cloudConfig.js', 'cloudClient.js', 'carSketch.js', 'receiptReader.js', 'portalApp.js', 'manifest.json', 'icon-192.png'];
+const CACHE = 'botschaft-portal-v3';
+const SHELL = ['portal.html', 'style.css', 'cloudConfig.js', 'cloudClient.js', 'carSketch.js', 'receiptReader.js', 'docScan.js', 'docPdf.js', 'portalApp.js', 'portalDocs.js', 'manifest.json', 'icon-192.png'];
 const SHELL_PATHS = new Set(SHELL.map(file => new URL(file, self.location.href).pathname));
 
 self.addEventListener('install', event => {

@@ -298,7 +298,7 @@ button:disabled { border-color: var(--line); background: var(--surface-soft); co
   .app-tab .nav-badge { position: absolute; top: 3px; left: calc(50% + 6px); min-width: 18px; height: 18px; margin: 0; padding: 0 5px; font-size: .64rem; }
   .container { width: calc(100% - 24px); padding-top: 16px; padding-bottom: 28px; }
   .page-heading h1 { font-size: 1.5rem; }
-  .toast-region { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .toast-region, .toast-region[popover] { top: calc(10px + env(safe-area-inset-top, 0px)); }
 }
 
 /* ---------- 4 Bausteine ---------- */
@@ -642,16 +642,30 @@ body[data-page="tracking"] #dataTable .vehicle-select { margin-top: 4px; }
 
 .confirm-dialog { width: min(92vw, 440px); margin: auto; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
 .confirm-dialog::backdrop { background: rgba(15, 23, 42, .5); backdrop-filter: blur(3px); }
-.confirm-dialog p { margin-bottom: 18px; }
+.confirm-dialog p { margin-bottom: 18px; white-space: pre-line; }
 
-.toast-region { position: fixed; right: 18px; bottom: 18px; z-index: 1200; display: flex; width: min(420px, calc(100vw - 36px)); flex-direction: column; gap: 8px; pointer-events: none; }
-.toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-left: 4px solid #4aa3e0; border-radius: 11px; background: #152238; color: #f1f5f9; box-shadow: var(--shadow-lg); font-size: .88rem; pointer-events: auto; animation: toast-in .18s ease-out; }
-.toast[data-kind="success"] { border-left-color: #4cc38a; }
-.toast[data-kind="error"] { border-left-color: #f08a8a; }
-.toast button, :root[data-theme="dark"] .toast button { flex: 0 0 auto; min-height: 30px; padding: 4px 10px; border-color: rgba(255,255,255,.35); background: transparent; color: #fff; font-size: .8rem; }
-.toast button:hover { background: rgba(255,255,255,.14); }
-:root[data-theme="dark"] .toast { border: 1px solid var(--line-strong); border-left-width: 4px; background: #243345; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+/* Anzeige oben in der Mitte: grün = gespeichert (5 Sekunden), rot = Problem (bleibt länger, ein Tipp führt zur Stelle). */
+.toast-region { position: fixed; top: 14px; left: 50%; z-index: 1200; display: flex; width: min(560px, calc(100vw - 24px)); flex-direction: column; gap: 8px; transform: translateX(-50%); pointer-events: none; }
+.toast-region[popover] { inset: 14px auto auto 50%; height: auto; margin: 0; padding: 0; border: 0; overflow: visible; background: transparent; color: inherit; }
+.toast { position: relative; display: flex; align-items: center; gap: 11px; overflow: hidden; padding: 12px 15px; border-radius: 13px; background: #152238; color: #f1f5f9; box-shadow: var(--shadow-lg); font-size: .92rem; font-weight: 600; line-height: 1.35; pointer-events: auto; animation: toast-in .22s ease-out; }
+.toast > svg { flex: 0 0 auto; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toast > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toast[data-kind="success"] { background: #0f7b4f; color: #fff; }
+.toast[data-kind="error"] { background: #c0352b; color: #fff; }
+.toast.has-target { cursor: pointer; }
+.toast .toast-jump { flex: 0 0 auto; padding: 3px 9px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; font-size: .76rem; font-weight: 700; white-space: nowrap; }
+.toast button, :root[data-theme="dark"] .toast button { flex: 0 0 auto; min-height: 30px; padding: 4px 10px; border-color: rgba(255,255,255,.45); background: transparent; color: #fff; font-size: .8rem; }
+.toast button:hover { background: rgba(255,255,255,.16); }
+.toast::after { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: rgba(255,255,255,.45); transform-origin: left; animation: toast-time var(--toast-time, 5s) linear forwards; }
+:root[data-theme="dark"] .toast { border: 1px solid var(--line-strong); background: #243345; }
+:root[data-theme="dark"] .toast[data-kind="success"] { border-color: #2f9d6c; background: #12684a; }
+:root[data-theme="dark"] .toast[data-kind="error"] { border-color: #d9605a; background: #a22f29; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-12px); } }
+@keyframes toast-time { to { transform: scaleX(0); } }
+/* Die Stelle, zu der eine rote Anzeige führt, blinkt kurz auf. */
+.is-flagged { outline: 3px solid var(--danger) !important; outline-offset: 3px; border-radius: 8px; animation: flag-pulse .65s ease-in-out 3; }
+@keyframes flag-pulse { 50% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .toast, .is-flagged { animation: none; } .toast::after { animation: none; display: none; } }
 
 /* ---------- 10 Online: Team-Seite und Dolmetscher-Portal ---------- */
 input[type="email"], input[type="password"], input[type="tel"], input[type="month"] { min-height: 40px; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; font-size: .9rem; }
@@ -798,7 +812,7 @@ body[data-page="portal"] { padding-left: 0; }
 .segmented input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 2px; }
 .damage-entry { align-items: flex-start; }
 /* Im Portal erscheinen Hinweise oben, damit sie auf dem Handy keine Knöpfe verdecken. */
-body[data-page="portal"] .toast-region { top: 66px; right: 12px; bottom: auto; left: 12px; width: auto; }
+body[data-page="portal"] .toast-region { top: calc(66px + env(safe-area-inset-top, 0px)); right: 12px; left: 12px; width: auto; transform: none; }
 
 /* ---------- 12 Aufträge, Rückmeldungen, Online-Archiv ---------- */
 .cloud-day-status { padding: 4px 10px; border-radius: 999px; background: var(--surface-hover); color: var(--muted); font-size: .78rem; font-weight: 650; }
@@ -905,8 +919,20 @@ tbody tr.payroll-rejected td { color: var(--muted); text-decoration: line-throug
 /* Sondertag im Live-Tracking */
 .vehicle-line { display: flex; gap: 4px; margin-top: 4px; }
 body[data-page="tracking"] #dataTable .vehicle-line .vehicle-select { flex: 1 1 auto; margin-top: 0; }
-body[data-page="tracking"] #dataTable .special-input { flex: 0 0 74px; width: 74px; padding-inline: 5px; font-variant-numeric: tabular-nums; }
-body[data-page="tracking"] #dataTable .special-input.has-value { border-color: #18794e; background: #dff1e3; color: #0f5132; font-weight: 700; }
+body[data-page="tracking"] #dataTable .special-button { flex: 0 0 auto; min-width: 62px; min-height: 0; padding: 4px 8px; border: 1px dashed var(--line-strong); border-radius: 8px; background: transparent; color: var(--muted); font-size: .74rem; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+body[data-page="tracking"] #dataTable .special-button:hover { border-color: var(--brand); color: var(--brand); }
+body[data-page="tracking"] #dataTable .special-button.has-value { border: 1px solid #18794e; background: #dff1e3; color: #0f5132; font-size: .8rem; font-weight: 800; }
+.special-dialog { width: min(92vw, 400px); }
+.special-dialog h2 { margin-bottom: 2px; font-size: 1.15rem; }
+.euro-field { position: relative; }
+.euro-field input { width: 100%; padding-right: 42px; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.euro-field span { position: absolute; top: 50%; right: 14px; color: var(--muted); font-size: 1.2rem; font-weight: 700; transform: translateY(-50%); pointer-events: none; }
+.special-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.special-quick-button, :root[data-theme="dark"] .special-quick-button { min-height: 34px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: .84rem; font-weight: 650; }
+.special-quick-button:hover { border-color: var(--brand); color: var(--brand); }
+.special-buttons { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.special-buttons span { flex: 1 1 auto; }
+.special-buttons [hidden] { display: none; }
 #dataTable tbody tr.has-special > td:first-child { box-shadow: inset 5px 0 0 #18794e; }
 .payroll-add { max-width: none; flex-wrap: wrap; }
 .payroll-add input { flex: 1 1 260px; max-width: 420px; }
@@ -1207,3 +1233,85 @@ a.app-nav-note:hover span { color: #fff; text-decoration: underline; }
 .portal-welcome .portal-org + p { margin-top: 8px; }
 .portal-credit { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 26px 0 6px; color: var(--muted); font-size: .72rem; line-height: 1.5; text-align: center; }
 .portal-credit span:last-child { font-weight: 700; }
+/* ---------- 21 Portal: Unterlagen (Fotos → PDF), Bericht über den Tag, Tankkarte ---------- */
+.portal-tabbar button, :root[data-theme="dark"] .portal-tabbar button { font-size: .66rem; letter-spacing: -.01em; }
+.fuel-card-banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-left: 5px solid var(--accent); border-radius: var(--radius); background: var(--accent-soft); color: var(--ink); }
+.fuel-card-banner[hidden] { display: none; }
+.fuel-card-icon svg { display: block; width: 30px; height: 30px; fill: none; stroke: var(--accent); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.fuel-card-text { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.fuel-card-text strong { font-size: .98rem; overflow-wrap: anywhere; }
+.fuel-card-text small { color: var(--ink-soft); font-size: .8rem; line-height: 1.4; }
+
+.job-docs-button, :root[data-theme="dark"] .job-docs-button { display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: center; gap: 9px; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--surface); color: var(--brand-dark); font-size: .92rem; font-weight: 700; }
+.job-docs-button:hover { background: var(--brand-soft); }
+.job-docs-icon svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+.doc-job .car-card-main strong { font-size: 1.08rem; }
+.doc-job-other, :root[data-theme="dark"] .doc-job-other { border-style: dashed; background: transparent; }
+.doc-kinds .doc-kind, :root[data-theme="dark"] .doc-kinds .doc-kind { justify-content: flex-start; gap: 14px; min-height: 60px; font-size: 1rem; font-weight: 650; text-align: left; }
+.doc-kind-icon { display: grid; flex: 0 0 auto; width: 40px; height: 40px; place-items: center; border-radius: 11px; background: var(--brand-soft); color: var(--brand-dark); }
+.doc-kind-icon svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+.doc-capture { display: flex; flex-direction: column; gap: 8px; }
+.wizard .doc-capture .big-button { margin-top: 0; }
+.doc-capture-button { display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; }
+.doc-capture-button svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.doc-gallery-button { display: flex; min-height: 44px; align-items: center; justify-content: center; border-radius: 11px; cursor: pointer; font-size: .9rem; }
+.doc-capture input:focus-visible + label, .doc-capture label:focus-within { outline: 3px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 2px; }
+#docBusy { margin-top: 10px; }
+.doc-pages { display: flex; flex-direction: column; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.doc-pages:empty { display: none; }
+.doc-page { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+.doc-page.has-issue { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); background: color-mix(in srgb, var(--danger-soft) 45%, var(--surface)); }
+.doc-page-thumb { display: grid; align-self: start; min-height: 84px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.doc-page-thumb canvas { display: block; max-width: 100%; max-height: 118px; }
+.doc-page-body { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.doc-page-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.doc-page-issue { margin: 0; color: var(--danger); font-size: .86rem; font-weight: 650; line-height: 1.35; }
+.doc-page-facts { color: var(--muted); font-size: .76rem; line-height: 1.35; }
+.doc-page-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.doc-page-actions button, :root[data-theme="dark"] .doc-page-actions button { min-height: 36px; padding: 5px 10px; font-size: .82rem; }
+.doc-alerts { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line)); border-left: 5px solid var(--danger); border-radius: var(--radius); background: var(--danger-soft); list-style: none; }
+.doc-alerts[hidden] { display: none; }
+.doc-alerts li { color: var(--ink); font-size: .9rem; font-weight: 650; line-height: 1.4; }
+.doc-alerts li[data-kind="missing"] { color: var(--danger); }
+.doc-alerts-action { margin-top: 4px; }
+.doc-alerts-action button { width: 100%; min-height: 42px; }
+.doc-skip, :root[data-theme="dark"] .doc-skip { width: 100%; min-height: 44px; margin-top: 8px; color: var(--brand); font-size: .86rem; }
+.doc-skip[hidden] { display: none; }
+.sent-doc .directory-entry-name strong { display: block; font-size: .92rem; }
+.sent-doc .vehicle-entry-actions { flex: 0 1 auto; }
+.directory-entry-name .sent-doc-warning { color: var(--danger); font-weight: 600; }
+#reportBody { min-height: 220px; font-size: 1rem; line-height: 1.5; }
+#reportJobs button { min-height: 30px; padding: 2px 8px; color: var(--brand); font-weight: 650; }
+/* ---------- 22 Fuhrpark: Tankkarten, Schaden eintragen, Kilometer korrigieren ---------- */
+.file-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+.file-heading-row .file-heading { margin: 0; }
+.file-heading-row button { min-height: 36px; padding: 6px 12px; font-size: .84rem; }
+.directory-card-heading .directory-step svg { display: block; }
+.fuel-list { margin-top: 4px; }
+.fuel-entry .vehicle-entry-actions select { max-width: 210px; }
+.fuel-add { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.fuel-add[hidden] { display: none; }
+.fuel-log { margin-top: 12px; color: var(--muted); font-size: .86rem; }
+.fuel-log[hidden] { display: none; }
+.fuel-log summary { cursor: pointer; font-weight: 650; }
+.fuel-log ul { margin-top: 8px; }
+.fuel-log .directory-entry { min-height: 38px; }
+.fuel-log .directory-entry-name { font-size: .82rem; font-weight: 500; }
+.damage-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; }
+.damage-dialog h2, #mileageDialog h2 { margin-bottom: 2px; font-size: 1.15rem; }
+.damage-dialog-grid { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 20px; margin-top: 10px; }
+.damage-dialog-fields { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.damage-dialog .sketch-wrap { margin-top: 6px; }
+.damage-dialog .segmented-wrap { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.damage-dialog .segmented span { min-height: 40px; font-size: .82rem; }
+.damage-dialog .modal-buttons, #mileageDialog .modal-buttons { margin-top: 16px; }
+#mileageDialog { width: min(420px, calc(100vw - 24px)); }
+@media (max-width: 700px) {
+  .damage-dialog-grid { grid-template-columns: 1fr; }
+  .damage-dialog .sketch-wrap { max-width: 230px; margin-inline: auto; }
+  .damage-dialog .segmented-wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fuel-entry .vehicle-entry-actions { flex: 1 1 100%; justify-content: flex-start; }
+  .fuel-entry .vehicle-entry-actions select { max-width: none; flex: 1 1 150px; }
+}

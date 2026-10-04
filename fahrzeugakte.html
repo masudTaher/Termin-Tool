@@ -21,6 +21,16 @@
                <ul id="inboxList" class="directory-list inbox-list"></ul>
             </section>
 
+            <section class="directory-card" aria-labelledby="fuelTitle" id="fuelSection">
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12.500" rx="2"/><path d="M3 10h18M7 14.500h4"/></svg></span><div><h2 id="fuelTitle">Tankkarten</h2><p id="fuelSummary">Wird geladen …</p></div></div>
+               <ul id="fuelList" class="directory-list fuel-list"></ul>
+               <form id="fuelAddForm" class="fleet-form fuel-add" hidden novalidate>
+                  <label for="fuelNumber">Neue Tankkarte anlegen</label>
+                  <div class="directory-input-row"><input id="fuelNumber" type="text" maxlength="40" autocomplete="off" placeholder="Kartennummer oder Bezeichnung, z. B. TK-07"><input id="fuelNote" type="text" maxlength="120" autocomplete="off" placeholder="Hinweis (optional)"><button type="submit" class="button-secondary">Anlegen</button></div>
+               </form>
+               <details class="fuel-log" id="fuelLogBox" hidden><summary>Verlauf: wer hatte wann welche Karte</summary><ul id="fuelLog" class="directory-list"></ul></details>
+            </section>
+
             <div class="fleet-filter" id="fleetFilter" role="group" aria-label="Fahrzeuge filtern">
                <button type="button" class="overview-card is-active" data-fleet-filter="alle" aria-pressed="true"><span class="overview-label">Alle Fahrzeuge</span><strong id="fleetCountAll">0</strong></button>
                <button type="button" class="overview-card overview-card-done" data-fleet-filter="frei" aria-pressed="false"><span class="overview-label">Frei</span><strong id="fleetCountFree">0</strong></button>
@@ -63,7 +73,7 @@
                   </div>
                   <div class="file-main">
                      <div data-file-panel="current">
-                        <h3 class="file-heading">Schäden am Fahrzeug</h3>
+                        <div class="file-heading-row"><h3 class="file-heading">Schäden am Fahrzeug</h3><button type="button" class="button-secondary" id="staffDamageOpen">Schaden eintragen</button></div>
                         <ul id="fileDamages" class="directory-list file-list"></ul>
                         <h3 class="file-heading">Offene Meldungen</h3>
                         <ul id="fileAlerts" class="directory-list file-list"></ul>
@@ -74,7 +84,7 @@
                         <h3 class="file-heading">Erledigte Meldungen</h3>
                         <ul id="fileAlertsArchive" class="directory-list file-list"></ul>
                         <h3 class="file-heading">Fahrten und Übergaben</h3>
-                        <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Fahrer/in</th><th>Zeit</th><th>Kilometer</th><th>Tank</th><th>Parkort</th><th>Innen</th><th>Außen</th><th>Hinweis</th></tr></thead><tbody id="fileHandovers"></tbody></table></div>
+                        <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Fahrer/in</th><th>Zeit</th><th>Kilometer</th><th>Tank</th><th>Parkort</th><th>Innen</th><th>Außen</th><th>Hinweis</th><th></th></tr></thead><tbody id="fileHandovers"></tbody></table></div>
                      </div>
                   </div>
                </div>
@@ -82,6 +92,46 @@
          </div>
       </main>
       <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto zur Meldung"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
+
+      <!-- Schaden durch die Einsatzleitung eintragen: Stelle markieren, Art wählen, Foto -->
+      <dialog id="damageDialog" class="confirm-dialog damage-dialog" aria-labelledby="staffDamageTitle">
+         <form id="staffDamageForm" class="fleet-form" novalidate>
+            <h2 id="staffDamageTitle">Schaden eintragen</h2>
+            <p class="field-hint" id="staffDamageVehicle"></p>
+            <div class="damage-dialog-grid">
+               <div>
+                  <span class="field-label"><b class="step-dot">1</b> Stelle in der Skizze antippen</span>
+                  <div class="sketch-wrap"><div id="staffDamageSketch"></div></div>
+                  <p id="staffDamagePosition" class="field-hint">Noch keine Stelle gewählt.</p>
+               </div>
+               <div class="damage-dialog-fields">
+                  <span class="field-label" id="staffDamageKindLabel"><b class="step-dot">2</b> Art des Schadens</span>
+                  <div id="staffDamageKinds" class="segmented segmented-wrap" role="radiogroup" aria-labelledby="staffDamageKindLabel"></div>
+                  <label for="staffDamageStatus"><b class="step-dot">3</b> Einordnung</label>
+                  <select id="staffDamageStatus"><option value="offen">Neuer Schaden</option><option value="bekannt">Altschaden (schon länger vorhanden)</option></select>
+                  <label for="staffDamagePhoto"><b class="step-dot">4</b> Foto <span class="optional-label" id="staffDamagePhotoHint">Pflicht · bis zu 3 Fotos</span></label>
+                  <input id="staffDamagePhoto" type="file" accept="image/*" multiple>
+                  <label for="staffDamageDescription">Beschreibung <span class="optional-label">optional</span></label>
+                  <textarea id="staffDamageDescription" rows="3" maxlength="600" placeholder="Zum Beispiel: beim Rangieren auf dem Hof"></textarea>
+               </div>
+            </div>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="staffDamageCancel">Abbrechen</button><button type="submit" class="button-primary">Schaden speichern</button></div>
+         </form>
+      </dialog>
+
+      <!-- Kilometer einer Fahrt korrigieren -->
+      <dialog id="mileageDialog" class="confirm-dialog" aria-labelledby="mileageDialogTitle">
+         <form id="mileageForm" class="fleet-form" novalidate>
+            <h2 id="mileageDialogTitle">Kilometer korrigieren</h2>
+            <p class="field-hint" id="mileageDialogInfo"></p>
+            <label for="mileageStart">Kilometer bei Übernahme</label>
+            <input id="mileageStart" type="number" min="0" step="1" inputmode="numeric">
+            <label for="mileageEnd">Kilometer bei Rückgabe</label>
+            <input id="mileageEnd" type="number" min="0" step="1" inputmode="numeric">
+            <label class="whatsapp-note-option" id="mileageCurrentRow"><input type="checkbox" id="mileageCurrent" checked><span>Auch als aktuellen Kilometerstand des Fahrzeugs übernehmen</span></label>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="mileageCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+         </form>
+      </dialog>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="workflowStorage.js"></script>

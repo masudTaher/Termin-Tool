@@ -1,6 +1,7 @@
 // Dolmetscher-Portal (Handy-App).
-// Untere Leiste – temporär: Fahrzeug · Aufträge · Arbeitstage · Abrechnung
-//               – fest:     Fahrzeug · Aufträge · Überstunden · Belege
+// Untere Leiste – temporär: Fahrzeug · Aufträge · Unterlagen · Arbeitstage · Abrechnung
+//               – fest:     Fahrzeug · Aufträge · Unterlagen · Überstunden · Belege
+// Unterlagen (Fotos → PDF) und der Bericht über den Tag stehen in portalDocs.js.
 // Übernahme und Rückgabe laufen Schritt für Schritt, damit nichts vergessen wird.
 // Ohne übernommenes Fahrzeug gibt es weder Schaden- noch Fehlermeldung.
 (function () {
@@ -28,17 +29,68 @@
     let previousView = 'vehicle';
     let workedMonth = '';
     let overtimeMonth = '';
+    let receiptOrigin = '';
+    let fuelCards = [];
 
-    function toast(message, kind = 'info') {
+    // Anzeige oben: grün = gespeichert oder gesendet (5 Sekunden), rot = Problem (bleibt länger).
+    // Ein Tipp auf die rote Anzeige führt zur Stelle des Fehlers (target: Element oder CSS-Auswahl).
+    const TOAST_ICONS = {
+        success: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.800 2.800L16.500 9.500"/></svg>',
+        error: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17h.01"/></svg>',
+        info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>'
+    };
+
+    function findProblem(target) {
+        if (typeof target === 'string') { try { target = document.querySelector(target); } catch (error) { target = null; } }
+        if (target instanceof Element) return target;
+        return [...document.querySelectorAll('.field-error:not([hidden]), [aria-invalid="true"]')].find(node => node.getClientRects().length) || null;
+    }
+
+    function jumpToProblem(target) {
+        const node = findProblem(target);
+        if (!node) return false;
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (node.matches('input, select, textarea, button, a[href], [tabindex]')) node.focus({ preventScroll: true });
+        node.classList.add('is-flagged');
+        window.setTimeout(() => node.classList.remove('is-flagged'), 2600);
+        return true;
+    }
+
+    function toast(message, kind = 'info', target = null) {
         const item = document.createElement('div');
         item.className = 'toast';
         item.dataset.kind = kind;
-        item.textContent = message;
+        item.insertAdjacentHTML('afterbegin', TOAST_ICONS[kind] || TOAST_ICONS.info);
+        const text = document.createElement('span');
+        text.textContent = message;
+        item.append(text);
+        const duration = kind === 'error' ? 10000 : 5000;
+        item.style.setProperty('--toast-time', `${duration}ms`);
+        const problem = kind === 'error' ? findProblem(target) : null;
+        if (problem) {
+            item.classList.add('has-target');
+            item.setAttribute('role', 'button');
+            item.tabIndex = 0;
+            const hint = document.createElement('em');
+            hint.className = 'toast-jump';
+            hint.textContent = 'Zur Stelle';
+            item.append(hint);
+            const jump = () => { item.remove(); jumpToProblem(target || problem); };
+            item.addEventListener('click', jump);
+            item.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jump(); } });
+        } else {
+            item.addEventListener('click', () => item.remove());
+        }
         const region = $('toastRegion');
+        // Immer nur eine Anzeige je Art; sobald etwas geklappt hat, sind ältere Fehlermeldungen überholt.
+        region.querySelectorAll(kind === 'error' ? '.toast[data-kind="error"]' : `.toast[data-kind="${kind}"], .toast[data-kind="error"]`).forEach(old => old.remove());
         region.append(item);
-        // Höchstens zwei Hinweise gleichzeitig, damit sie nichts verdecken.
-        while (region.children.length > 2) region.firstElementChild.remove();
-        window.setTimeout(() => item.remove(), kind === 'error' ? 7000 : 4000);
+        window.setTimeout(() => item.remove(), duration);
+    }
+
+    // Beim Wechsel der Seite oder des Schritts verschwinden rote Anzeigen – sie gehörten zur vorigen Stelle.
+    function clearErrors() {
+        document.querySelectorAll('#toastRegion .toast[data-kind="error"]').forEach(item => item.remove());
     }
 
     function setStatus(message, kind = 'info') {
@@ -121,7 +173,8 @@
         buildTabbar();
         show('app');
         await loadFleet();
-        await Promise.all([loadJobs(), loadReceipts(), loadStatements(), loadMessages(), isFest() ? loadOvertime() : loadWorkdays()]);
+        await Promise.all([loadJobs(), loadReceipts(), loadStatements(), loadMessages(), loadFuelCards(), isFest() ? loadOvertime() : loadWorkdays()]);
+        window.PortalDocs?.load();
         if (!isFest()) renderWorked();
         renderAccount();
         renderHome();
@@ -138,12 +191,14 @@
         workdays: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
         overtime: '<circle cx="12" cy="12.5" r="8"/><path d="M12 8v4.5l3 2M9.5 2.5h5"/>',
         statement: '<path d="M17.5 6.5a6.5 6.5 0 1 0 0 11"/><path d="M4 10.5h9M4 13.5h9"/>',
-        receiptsHome: '<path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/>'
+        receiptsHome: '<path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/>',
+        docs: '<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>'
     };
-    const TABS_TEMP = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['workdays', 'Arbeitstage'], ['statement', 'Abrechnung']];
-    const TABS_FEST = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['overtime', 'Überstunden'], ['receiptsHome', 'Belege']];
+    const TABS_TEMP = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['workdays', 'Arbeitstage'], ['statement', 'Abrechnung']];
+    const TABS_FEST = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Überstunden'], ['receiptsHome', 'Belege']];
     // Unterseiten gehören zu einem Bereich der unteren Leiste.
     const TAB_OF = { vehicle: 'vehicle', take: 'vehicle', damage: 'vehicle', alert: 'vehicle', return: 'vehicle', jobs: 'jobs',
+        docs: 'docs', docNew: 'docs', docReport: 'docs',
         workdays: 'workdays', overtime: 'overtime', statement: 'statement', receiptsHome: 'receiptsHome', receipts: 'receipts', messages: 'messages', account: 'account' };
     const NEEDS_VEHICLE = ['damage', 'alert', 'return'];
 
@@ -178,9 +233,12 @@
         if (['workdays', 'overtime', 'statement', 'receiptsHome'].includes(view) && !tabs.includes(view)) view = 'vehicle';
         if (NEEDS_VEHICLE.includes(view) && !myHandover) { toast('Übernimm zuerst ein Fahrzeug.', 'info'); view = 'vehicle'; }
         if (view === 'take' && myHandover) view = 'vehicle';
+        clearErrors();
         if (!['messages', 'account', 'receipts'].includes(view)) previousView = view;
+        // Der Beleg (Parkticket) lässt sich auch aus „Unterlagen“ öffnen – „Zurück“ führt dann dorthin.
+        if (view === 'receipts') receiptOrigin = currentView === 'docs' ? 'docs' : '';
         currentView = view;
-        const activeTab = view === 'receipts' ? (isFest() ? 'receiptsHome' : 'statement') : TAB_OF[view];
+        const activeTab = view === 'receipts' ? (receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')) : TAB_OF[view];
         document.querySelectorAll('#portalTabbar button').forEach(button => {
             const active = button.dataset.view === activeTab;
             button.classList.toggle('is-active', active);
@@ -197,13 +255,16 @@
         if (view === 'overtime') prepareOvertimeForm();
         if (view === 'messages') openMessages();
         if (view === 'account') renderAccount();
+        if (view === 'docs') window.PortalDocs?.open();
+        if (view === 'docNew') window.PortalDocs?.startWizard();
+        if (view === 'docReport') window.PortalDocs?.openReport();
     }
     document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => goTo(button.dataset.go)));
     $('openMessages').addEventListener('click', () => goTo('messages'));
     $('openAccount').addEventListener('click', () => goTo('account'));
     $('messagesBack').addEventListener('click', () => goTo(previousView));
     $('accountBack').addEventListener('click', () => goTo(previousView));
-    $('receiptBack').addEventListener('click', () => goTo(isFest() ? 'receiptsHome' : 'statement'));
+    $('receiptBack').addEventListener('click', () => goTo(receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')));
 
     // ---------- Startseite (Fahrzeug) ----------
     function renderHome() {
@@ -232,6 +293,26 @@
         $('messagesBadge').hidden = !unread;
         $('messagesBadge').textContent = unread ? String(unread) : '';
         addPushNotice();
+    }
+
+    // Tankkarte: Nur der Admin gibt sie aus und nimmt sie zurück – hier steht, welche Karte gerade bei mir ist.
+    async function loadFuelCards() {
+        const { data, error } = await client.from('tt_fuel_cards').select('*').eq('holder_id', profile.id).eq('active', true).order('number');
+        fuelCards = error ? [] : (data || []);
+        renderFuelCards();
+    }
+
+    function renderFuelCards() {
+        const banner = $('fuelCardBanner');
+        banner.hidden = !fuelCards.length;
+        if (!fuelCards.length) { banner.replaceChildren(); return; }
+        const numbers = fuelCards.map(card => card.number).join(', ');
+        const since = fuelCards[0].assigned_at ? new Date(fuelCards[0].assigned_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '';
+        const icon = svgSpan('fuel-card-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12.500" rx="2"/><path d="M3 10h18M7 14.500h4"/></svg>');
+        const text = el('span', 'fuel-card-text');
+        text.append(el('strong', '', `${fuelCards.length === 1 ? 'Tankkarte' : 'Tankkarten'} ${numbers}`),
+            el('small', '', `${fuelCards.length === 1 ? 'ist' : 'sind'} bei dir${since ? ` (seit ${since})` : ''}. Bitte gib sie nach dem Einsatz im Büro zurück.`));
+        banner.replaceChildren(icon, text);
     }
 
     // Einmaliger Hinweis auf der Startseite, solange Mitteilungen möglich, aber noch aus sind.
@@ -430,7 +511,8 @@
         pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.200 7-11.500A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>',
         person: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
         clinic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/><path d="M12 7v5M9.500 9.500h5"/></svg>',
-        note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>'
+        note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>',
+        camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>'
     };
     const svgSpan = (className, markup) => { const node = el('span', className); node.innerHTML = markup; return node; };
 
@@ -564,6 +646,14 @@
         });
         answer.append(note, buttons);
         card.append(top, details, answer);
+        // Ab dem Tag des Termins: Arztbericht, Rezept oder Überweisung direkt zu diesem Auftrag fotografieren.
+        if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
+            const docs = el('button', 'job-docs-button');
+            docs.type = 'button';
+            docs.append(svgSpan('job-docs-icon', JOB_ICONS.camera), el('span', '', 'Unterlagen fotografieren'));
+            docs.addEventListener('click', () => window.PortalDocs?.startFor(item));
+            card.append(docs);
+        }
         return card;
     }
 
@@ -679,7 +769,8 @@
         const entry = el('li', 'directory-entry damage-entry');
         const state = el('span', 'status-pill', CarSketch.STATUS_LABELS[item.status] || item.status);
         state.dataset.status = item.status;
-        entry.append(el('span', 'directory-entry-name', `${index + 1} · ${item.zone || 'ohne Position'} · ${item.description}`), state);
+        const what = [item.category, item.description].filter((text, position, list) => text && list.indexOf(text) === position).join(' – ');
+        entry.append(el('span', 'directory-entry-name', `${index + 1} · ${item.zone || 'ohne Position'} · ${what}`), state);
         return entry;
     }
 
@@ -718,6 +809,7 @@
     function makeWizard(name, total, onLeave) {
         let step = 1;
         const show = number => {
+            if (number !== step) clearErrors();
             step = number;
             document.querySelectorAll(`[data-${name}-step]`).forEach(node => { node.hidden = Number(node.dataset[`${name}Step`]) !== number; });
             $(`${name}Count`).textContent = `Schritt ${number} von ${total}`;
@@ -796,7 +888,7 @@
     $('takeAllFine').addEventListener('click', () => { $('takeStartNote').value = ''; takeWizard.show(3); $('takeVehicleMileage').focus(); });
     $('takeNotFine').addEventListener('click', () => { $('takeNoteRow').hidden = false; $('takeStartNote').focus(); });
     $('takeNoteNext').addEventListener('click', () => {
-        if (!$('takeStartNote').value.trim()) { toast('Bitte schreib kurz, was nicht stimmt.', 'error'); $('takeStartNote').focus(); return; }
+        if (!$('takeStartNote').value.trim()) { toast('Bitte schreib kurz, was nicht stimmt.', 'error', '#takeStartNote'); $('takeStartNote').focus(); return; }
         takeWizard.show(3);
         $('takeVehicleMileage').focus();
     });
@@ -930,6 +1022,7 @@
 
     // ---------- Schäden (nur für das übernommene Fahrzeug) ----------
     const NO_POSITION = 'Noch keine Stelle gewählt.';
+    buildSegmented($('damageKinds'), 'damageKind', (config.damageKinds || ['Sonstiges']).map(kind => [kind, kind]));
     async function loadDamages() {
         if (!sketch) {
             sketch = CarSketch.create($('damageSketch'), {
@@ -965,27 +1058,30 @@
         event.preventDefault();
         const button = event.target.querySelector('button[type="submit"]');
         const description = $('damageDescription').value.trim();
+        const category = radioValue('damageKind');
+        const files = [...($('damagePhoto').files || [])].slice(0, 3);
         if (!myHandover) { goTo('vehicle'); return; }
-        if (!description) return;
         if (!damagePosition) {
-            toast('Bitte tippe zuerst in der Skizze auf die Stelle des Schadens.', 'error');
+            toast('Bitte tippe zuerst in der Skizze auf die Stelle des Schadens.', 'error', '#damageSketch');
             $('damageSketch').scrollIntoView({ behavior: 'smooth', block: 'center' });
             return;
         }
+        if (!category) { toast('Bitte wähle aus, was für ein Schaden es ist.', 'error', '#damageKinds'); return; }
+        if (!files.length) { toast('Bitte mach ein Foto vom Schaden. Ohne Foto kann der Schaden nicht gemeldet werden.', 'error', '#damagePhoto'); return; }
         button.disabled = true;
         try {
-            const files = [...($('damagePhoto').files || [])].slice(0, 3);
             const paths = [];
             for (const file of files) paths.push(await TerminCloud.uploadPhoto(file, profile.id));
             const { error } = await client.from('tt_damages').insert({
                 vehicle_id: myHandover.vehicle_id, reporter_id: profile.id, reporter_name: profile.full_name || profile.email,
-                description, pos_x: damagePosition.x, pos_y: damagePosition.y,
+                category, description: description || category, pos_x: damagePosition.x, pos_y: damagePosition.y,
                 zone: CarSketch.zoneLabel(damagePosition.x, damagePosition.y),
                 photo_path: paths[0] || '', photo_paths: paths
             });
             if (error) throw error;
             $('damageDescription').value = '';
             $('damagePhoto').value = '';
+            document.querySelectorAll('input[name="damageKind"]').forEach(input => { input.checked = false; });
             damagePosition = null;
             sketch.setPicked(null);
             $('damagePosition').textContent = NO_POSITION;
@@ -1120,7 +1216,7 @@
         const file = $('receiptPhoto').files?.[0];
         const amount = Number($('receiptAmount').value);
         if (!file || !(amount > 0)) return;
-        if ($('receiptDate').value > TerminCloud.todayIso()) { toast('Das Datum liegt in der Zukunft.', 'error'); return; }
+        if ($('receiptDate').value > TerminCloud.todayIso()) { toast('Das Datum liegt in der Zukunft.', 'error', '#receiptDate'); return; }
         button.disabled = true;
         try {
             const kind = radioValue('receiptKind');
@@ -1137,7 +1233,7 @@
             $('receiptDate').value = TerminCloud.todayIso();
             toast('Beleg eingereicht. Danke!', 'success');
             await loadReceipts();
-            goTo(isFest() ? 'receiptsHome' : 'statement');
+            goTo(receiptOrigin || (isFest() ? 'receiptsHome' : 'statement'));
         } catch (error) {
             toast(TerminCloud.germanError(error), 'error');
         } finally {
@@ -1234,11 +1330,14 @@
     // ---------- Überstunden (Festangestellte) ----------
     const toMinutes = time => { const match = String(time || '').match(/^(\d{1,2}):(\d{2})/); return match ? Number(match[1]) * 60 + Number(match[2]) : null; };
 
+    // Überstunden werden auf volle 10 Minuten aufgerundet: 1 Std 13 Min → 1 Std 20 Min (die Datenbank rechnet genauso).
+    const roundUp = minutes => Math.ceil(minutes / 10) * 10;
+
     function overtimeMinutes() {
         const start = toMinutes($('overtimeStart').value);
         const end = toMinutes($('overtimeEnd').value);
-        const before = start != null && start < toMinutes(WORK_START) ? toMinutes(WORK_START) - start : 0;
-        const after = end != null && end > toMinutes(WORK_END) ? end - toMinutes(WORK_END) : 0;
+        const before = start != null && start < toMinutes(WORK_START) ? roundUp(toMinutes(WORK_START) - start) : 0;
+        const after = end != null && end > toMinutes(WORK_END) ? roundUp(end - toMinutes(WORK_END)) : 0;
         return { before, after, total: before + after, hasInput: start != null || end != null };
     }
 
@@ -1248,7 +1347,7 @@
         if (!result.hasInput) { box.dataset.kind = 'empty'; box.textContent = 'Trag eine Uhrzeit ein.'; return; }
         if (!result.total) { box.dataset.kind = 'warn'; box.textContent = `Das liegt in der normalen Arbeitszeit (${WORK_START} bis ${WORK_END} Uhr) – keine Überstunden.`; return; }
         box.dataset.kind = 'ok';
-        box.textContent = `Überstunden: ${duration(result.total)}` + (result.before && result.after ? ` (${duration(result.before)} vorher, ${duration(result.after)} danach)` : '');
+        box.textContent = `Überstunden: ${duration(result.total)}` + (result.before && result.after ? ` (${duration(result.before)} vorher, ${duration(result.after)} danach)` : '') + ' · auf volle 10 Minuten aufgerundet';
     }
     $('overtimeStart').addEventListener('input', updateOvertimeResult);
     $('overtimeEnd').addEventListener('input', updateOvertimeResult);
@@ -1579,6 +1678,12 @@
         });
         window.addEventListener('appinstalled', () => { card.hidden = true; });
     })();
+
+    // Schnittstelle für portalDocs.js (Unterlagen und Bericht über den Tag).
+    window.PortalCore = {
+        client, config, toast, showSuccess, goTo, el, emptyItem, makeWizard, choiceButtons, parseJobMessage, isoDate, svgSpan,
+        profile: () => profile, jobs: () => jobsData, view: () => currentView
+    };
 
     refresh();
 })();

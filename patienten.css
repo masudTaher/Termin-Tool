@@ -1,0 +1,98 @@
+/* Patienten und Unterlagen – nur, was style.css noch nicht kann.
+   Alle Farben kommen aus den Variablen dort, damit Hell und Dunkel gleich funktionieren. */
+
+/* ---------- Filterkacheln: die langen Wörter brauchen Platz, deshalb früher umbrechen ---------- */
+.patient-filter { margin-top: 0; }
+.patient-filter .overview-label { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 1000px) {
+    .patient-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+    .patient-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .patient-filter .overview-card:first-child { grid-column: 1 / -1; }
+}
+
+/* ---------- Aufbau: Ist die Seite breit genug, steht links der Eingang und rechts – immer im Blick – Suche und Akte.
+   Gemessen wird der Inhalt, nicht das Fenster: Die Seitenleiste ist je nach Bildschirm schmal oder breit. ---------- */
+#patientApp { container-type: inline-size; }
+.patient-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.patient-side { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
+.patient-file { scroll-margin-top: 12px; }
+#searchTitle { scroll-margin-top: 34px; }
+@container (min-width: 1060px) {
+    .patient-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    /* Die rechte Spalte bleibt beim Rollen stehen: Die Suche ist immer zu sehen, die Akte rollt in ihrer Karte. */
+    .patient-side { position: sticky; top: 14px; max-height: calc(100vh - 28px); }
+    .patient-side > .directory-card { flex: 0 0 auto; }
+    .patient-side > .patient-file { min-height: 0; flex: 0 1 auto; overflow-y: auto; scrollbar-width: thin; }
+    .patient-side #patientResults { max-height: 232px; overflow-y: auto; scrollbar-width: thin; }
+    /* Der Sprung zur Suche ist nur nötig, wenn sie unter der Liste steht (Handy). */
+    .jump-search { display: none; }
+}
+.doc-more { margin-top: 10px; }
+
+/* ---------- Eine Unterlage: Auswahl und Angaben, darunter die Aktionen ---------- */
+.doc-entry { flex-wrap: wrap; align-items: flex-start; padding: 11px 13px; }
+.doc-entry.is-selected { border-color: var(--brand); background: var(--brand-soft); }
+.doc-check { display: grid; width: 28px; height: 28px; flex: 0 0 auto; margin: -3px -4px 0 -4px; place-items: center; cursor: pointer; }
+.doc-check input { width: 19px; height: 19px; cursor: pointer; }
+.doc-meta { display: flex; min-width: 0; flex: 1 1 0; flex-direction: column; gap: 1px; }
+.doc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.doc-entry .doc-head strong { font-size: .95rem; letter-spacing: 0; overflow-wrap: anywhere; }
+/* Die Zeile mit dem Patienten öffnet die Akte – ein Knopf, der wie ein Link aussieht. */
+.doc-patient, :root[data-theme="dark"] .doc-patient { display: inline; align-self: flex-start; min-height: 0; padding: 2px 0; border: 0; border-radius: 4px; background: none; color: var(--brand-dark); font-size: .84rem; font-weight: 650; line-height: 1.4; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 35%, transparent); text-underline-offset: 3px; overflow-wrap: anywhere; }
+.doc-patient:hover, :root[data-theme="dark"] .doc-patient:hover { background: none; color: var(--brand); text-decoration-color: currentColor; }
+.doc-entry small { overflow-wrap: anywhere; }
+.doc-note { margin-top: 3px; color: var(--ink-soft); font-size: .84rem; line-height: 1.45; overflow-wrap: anywhere; }
+.doc-warnings { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.doc-warnings .status-pill { max-width: 100%; border-radius: 9px; overflow-wrap: anywhere; white-space: normal; }
+.doc-entry .vehicle-entry-actions { flex: 1 1 100%; justify-content: flex-start; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
+.doc-entry .vehicle-entry-actions button { padding-inline: 9px; }
+.doc-entry .vehicle-entry-actions .button-quiet-danger { margin-left: auto; }
+
+/* ---------- Patientenkarten (Suche und Kachel „Patienten“) ---------- */
+.patient-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.patient-grid:empty { display: none; }
+.patient-grid .directory-empty { grid-column: 1 / -1; }
+.fleet-form + .patient-grid { margin-top: 10px; }
+.patient-card, :root[data-theme="dark"] .patient-card { display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); font-weight: 400; text-align: left; }
+.patient-card:hover, :root[data-theme="dark"] .patient-card:hover { border-color: var(--brand); background: var(--surface-hover); }
+.patient-card.is-active, :root[data-theme="dark"] .patient-card.is-active { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 1px var(--brand); }
+.patient-card strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; letter-spacing: .01em; overflow-wrap: anywhere; }
+.patient-card span { max-width: 100%; font-size: .88rem; font-weight: 650; overflow-wrap: anywhere; }
+.patient-card small { color: var(--muted); font-size: .76rem; }
+.patient-card .chip { margin-top: 4px; font-size: .72rem; }
+
+/* ---------- Patientenakte ---------- */
+.patient-file .directory-card-heading h2 { font-size: 1.25rem; font-weight: 800; overflow-wrap: anywhere; }
+.file-date { margin: 12px 0 6px; color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.file-date:first-child { margin-top: 0; }
+/* Termine: Auf schmalen Bildschirmen rutschen die Angaben unter den Status, statt gequetscht zu werden. */
+.visit-entry { flex-wrap: wrap; justify-content: flex-start; }
+.vehicle-entry.visit-entry > span:not(.status-pill) { flex: 1 1 170px; }
+
+/* ---------- Dialoge: Weiterleiten und Bericht ---------- */
+.forward-dialog { width: min(94vw, 640px); }
+.report-dialog { width: min(94vw, 720px); }
+.forward-dialog h2, .report-dialog h2 { margin-bottom: 12px; font-size: 1.15rem; }
+/* Beim Öffnen liegt der Fokus auf der Überschrift – so klappt auf dem Handy nicht gleich die Tastatur auf. */
+.forward-dialog h2:focus, .report-dialog h2:focus { outline: none; }
+.forward-dialog .fleet-form { margin-bottom: 14px; }
+.forward-dialog textarea { width: 100%; min-height: 220px; line-height: 1.45; resize: vertical; }
+.forward-dialog .field-hint { margin: 0; }
+.forward-dialog .workflow-status, .report-dialog .workflow-status { margin: 0 0 14px; }
+.forward-dialog .fleet-form .workflow-status { margin: 0; }
+.forward-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); color: var(--ink-soft); font-size: .86rem; list-style: none; }
+.forward-items li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; overflow-wrap: anywhere; }
+.recipient-checks { display: flex; flex-direction: column; gap: 4px; list-style: none; }
+.recipient-checks li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.recipient-checks .recipient-empty { padding: 10px 12px; border-style: dashed; border-color: var(--line-strong); background: transparent; color: var(--muted); font-size: .84rem; }
+.recipient-checks label { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 9px; color: var(--ink); font-size: .88rem; cursor: pointer; }
+.recipient-checks input { width: 17px; flex: 0 0 auto; }
+.recipient-checks small { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; overflow-wrap: anywhere; }
+.recipient-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; margin-bottom: 6px; }
+.report-text { max-height: 46vh; margin: 12px 0 14px; padding: 12px 14px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: .95rem; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 560px) {
+    .recipient-form { grid-template-columns: minmax(0, 1fr); }
+    .forward-dialog, .report-dialog { padding: 16px; }
+}

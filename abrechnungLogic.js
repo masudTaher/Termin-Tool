@@ -56,7 +56,7 @@ const Abrechnung = (() => {
                 found.set(id, {
                     id: null, person_name: name, date: day.date, amount: round(amount), counts: 'Ja', source: 'tracking',
                     job: [String(record.Termin_Uhrzeit || '').slice(0, 5), record['Arzt Nr::Name'], record['Arzt Nr::Ort'] || record.Ort].filter(Boolean).join(' · '),
-                    mark: 'aus dem Live-Tracking', hint: ''
+                    mark: 'aus dem Live-Tracking', hint: String(record.Sondergrund || '').trim()
                 });
             });
         });

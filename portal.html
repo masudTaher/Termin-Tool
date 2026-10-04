@@ -109,6 +109,7 @@
             <section data-panel="vehicle" class="portal-page" aria-labelledby="helloTitle">
                <div class="portal-hello"><h1 id="helloTitle">Hallo</h1><p id="helloDate"></p></div>
                <ul id="startNotices" class="start-notices"></ul>
+               <p id="fuelCardBanner" class="fuel-card-banner" hidden></p>
 
                <!-- Ohne Fahrzeug -->
                <section id="noVehicle" class="empty-hero">
@@ -243,7 +244,7 @@
                <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
                <h2 id="damageTitle" class="wizard-title">Schaden melden</h2>
                <p class="wizard-hint" id="damageVehicleLabel">Schau zuerst, ob der Schaden schon markiert ist.</p>
-               <form id="damageForm" class="fleet-form">
+               <form id="damageForm" class="fleet-form" novalidate>
                   <span class="field-label"><b class="step-dot">1</b> Tippe auf die Stelle des Schadens</span>
                   <div class="sketch-wrap">
                      <div id="damageSketch"></div>
@@ -256,10 +257,12 @@
                   </div>
                   <p id="damagePosition" class="field-hint">Noch keine Stelle gewählt.</p>
                   <ul id="knownDamages" class="directory-list portal-list"></ul>
-                  <label for="damageDescription"><b class="step-dot">2</b> Was ist passiert?</label>
-                  <textarea id="damageDescription" rows="3" maxlength="600" required placeholder="Zum Beispiel: Kratzer an der Stoßstange, beim Einparken bemerkt"></textarea>
-                  <label for="damagePhoto"><b class="step-dot">3</b> Fotos <span class="optional-label">bis zu 3</span></label>
+                  <span class="field-label" id="damageKindLabel"><b class="step-dot">2</b> Was für ein Schaden ist es?</span>
+                  <div id="damageKinds" class="segmented segmented-wrap" role="radiogroup" aria-labelledby="damageKindLabel"></div>
+                  <label for="damagePhoto"><b class="step-dot">3</b> Foto vom Schaden <span class="optional-label">Pflicht · bis zu 3 Fotos</span></label>
                   <input id="damagePhoto" type="file" accept="image/*" multiple>
+                  <label for="damageDescription"><b class="step-dot">4</b> Was ist passiert? <span class="optional-label">optional</span></label>
+                  <textarea id="damageDescription" rows="3" maxlength="600" placeholder="Zum Beispiel: beim Einparken bemerkt"></textarea>
                   <button type="submit" class="button-primary big-button">Schaden melden</button>
                </form>
             </section>
@@ -292,7 +295,111 @@
                </details>
             </section>
 
-            <!-- ===== Bereich 3 (temporär): Arbeitstage ===== -->
+            <!-- ===== Bereich 3: Unterlagen (Arztbericht, Rezept, Überweisung als PDF) und Bericht über den Tag ===== -->
+            <div data-panel="docs" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="docsTitle">
+                  <h2 id="docsTitle" class="wizard-title">Unterlagen</h2>
+                  <p class="wizard-hint" id="docsSummary">Arztbericht, Rezept oder Überweisung fotografieren – daraus wird automatisch ein PDF für das Büro.</p>
+                  <div class="action-grid">
+                     <button type="button" class="action-tile action-tile-primary" data-go="docNew">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
+                        <strong>Unterlage fotografieren</strong><small>Arztbericht, Rezept, Überweisung</small>
+                     </button>
+                     <button type="button" class="action-tile" data-go="docReport">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.500V16L15.500 5.500l3.500 3.500L8.500 19.500z"/><path d="M13.500 7.500l3.500 3.500"/></svg>
+                        <strong>Bericht über den Tag</strong><small>kurz aufschreiben, was war</small>
+                     </button>
+                     <button type="button" class="action-tile" data-go="receipts">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.500h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.500h6M9 12.500h6"/></svg>
+                        <strong>Parkticket / Beleg</strong><small>Betrag wird automatisch gelesen</small>
+                     </button>
+                  </div>
+               </section>
+               <section class="directory-card" aria-labelledby="docListTitle">
+                  <h2 id="docListTitle" class="card-title">Zuletzt gesendet</h2>
+                  <ul id="docList" class="directory-list portal-list doc-list"></ul>
+               </section>
+            </div>
+
+            <!-- ===== Unterlage in 4 Schritten: Termin · Art · Seiten · Senden ===== -->
+            <section class="directory-card wizard" data-panel="docNew" aria-labelledby="docTitle" hidden>
+               <div class="wizard-head">
+                  <button type="button" class="back-button" id="docBack">← Zurück</button>
+                  <span class="wizard-count" id="docCount">Schritt 1 von 4</span>
+               </div>
+               <div class="wizard-progress" aria-hidden="true"><i id="docProgress"></i></div>
+
+               <div data-doc-step="1">
+                  <h2 id="docTitle" class="wizard-title">Zu welchem Termin gehört die Unterlage?</h2>
+                  <p class="wizard-hint">Tippe den Termin an. Patient und Arzt werden dann automatisch eingetragen.</p>
+                  <div id="docJobs" class="car-list"></div>
+                  <form id="docManualForm" class="fleet-form" hidden novalidate>
+                     <label for="docPatientNr">Patientennummer</label>
+                     <input id="docPatientNr" type="text" inputmode="numeric" maxlength="30" autocomplete="off" placeholder="Zum Beispiel 4103">
+                     <label for="docPatientName">Name des Patienten</label>
+                     <input id="docPatientName" type="text" maxlength="120" autocomplete="off">
+                     <label for="docDoctor">Arzt oder Praxis <span class="optional-label">optional</span></label>
+                     <input id="docDoctor" type="text" maxlength="120" autocomplete="off">
+                     <label for="docDate">Datum des Termins</label>
+                     <input id="docDate" type="date">
+                     <button type="submit" class="button-primary big-button">Weiter</button>
+                  </form>
+               </div>
+
+               <div data-doc-step="2" hidden>
+                  <h2 class="wizard-title">Was ist es?</h2>
+                  <p class="wizard-hint" id="docPatientLine"></p>
+                  <div id="docKinds" class="choice-list doc-kinds"></div>
+               </div>
+
+               <div data-doc-step="3" hidden>
+                  <h2 class="wizard-title">Seiten fotografieren</h2>
+                  <p class="wizard-hint">Leg das Blatt auf einen dunklen, glatten Untergrund und halte das Handy gerade darüber. Jede Seite einzeln.</p>
+                  <div class="doc-capture">
+                     <label class="button-primary big-button doc-capture-button" for="docCamera">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
+                        <span id="docCameraLabel">Seite fotografieren</span>
+                     </label>
+                     <input id="docCamera" class="visually-hidden" type="file" accept="image/*" capture="environment">
+                     <label class="button-secondary doc-gallery-button" for="docGallery">Fotos aus der Galerie wählen</label>
+                     <input id="docGallery" class="visually-hidden" type="file" accept="image/*" multiple>
+                  </div>
+                  <p id="docBusy" class="scan-status" data-kind="busy" hidden></p>
+                  <ol id="docPages" class="doc-pages"></ol>
+                  <button type="button" class="button-primary big-button" id="docPagesNext" disabled>Weiter</button>
+               </div>
+
+               <div data-doc-step="4" hidden>
+                  <h2 class="wizard-title">Stimmt alles?</h2>
+                  <dl id="docSummary" class="vehicle-state"></dl>
+                  <ul id="docWarnings" class="doc-alerts" hidden></ul>
+                  <p id="docOcrState" class="field-hint" hidden></p>
+                  <div class="fleet-form">
+                     <label for="docNote">Hinweis an das Büro <span class="optional-label">optional</span></label>
+                     <input id="docNote" type="text" maxlength="300" placeholder="Zum Beispiel: Original liegt im Auto">
+                  </div>
+                  <button type="button" class="button-primary big-button" id="docSend">Als PDF senden</button>
+                  <button type="button" class="button-quiet doc-skip" id="docSendNow" hidden>Nicht auf die Texterkennung warten – sofort senden</button>
+               </div>
+            </section>
+
+            <!-- ===== Bericht über den Tag ===== -->
+            <section class="directory-card" data-panel="docReport" aria-labelledby="reportTitle" hidden>
+               <button type="button" class="back-button" data-go="docs">← Zurück</button>
+               <h2 id="reportTitle" class="wizard-title">Bericht über den Tag</h2>
+               <p class="wizard-hint">Schreib kurz auf, was heute war: Termine, Besonderheiten, Probleme, was noch offen ist.</p>
+               <form id="reportForm" class="fleet-form" novalidate>
+                  <label for="reportDate">Datum</label>
+                  <input id="reportDate" type="date" required>
+                  <p id="reportJobs" class="field-hint" hidden></p>
+                  <label for="reportBody">Dein Bericht</label>
+                  <textarea id="reportBody" rows="9" maxlength="6000" placeholder="Zum Beispiel: 09:30 Uhr Dr. Müller mit Patient 4103 – neues Rezept für Physiotherapie, nächster Termin in zwei Wochen …"></textarea>
+                  <p id="reportState" class="field-hint"></p>
+                  <button type="submit" class="button-primary big-button" id="reportSubmit">Bericht senden</button>
+               </form>
+            </section>
+
+            <!-- ===== Bereich 4 (temporär): Arbeitstage ===== -->
             <div data-panel="workdays" class="portal-page" hidden>
                <section class="directory-card" aria-labelledby="workdaysTitle">
                   <h2 id="workdaysTitle" class="wizard-title">Wann kann ich arbeiten?</h2>
@@ -426,7 +533,7 @@
          </footer>
       </main>
 
-      <!-- Untere Leiste: vier feste Bereiche (je nach Anstellung) -->
+      <!-- Untere Leiste: fünf feste Bereiche (je nach Anstellung) -->
       <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden></nav>
 
       <!-- Bestätigung nach Übernahme / Rückgabe -->
@@ -444,6 +551,9 @@
       <script src="cloudClient.js"></script>
       <script src="carSketch.js"></script>
       <script src="receiptReader.js"></script>
+      <script src="docScan.js"></script>
+      <script src="docPdf.js"></script>
       <script src="portalApp.js"></script>
+      <script src="portalDocs.js"></script>
    </body>
 </html>

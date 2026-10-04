@@ -101,9 +101,10 @@
             info.textContent = 'Für dieses Konto gibt es hier nichts zu erledigen.';
             return;
         }
-        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0);
+        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
+            todoItem('Neue Unterlagen und Berichte der Dolmetscher', countsOnline.documents || 0, 'patienten.html'),
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),
             todoItem('Neue Schäden', countsOnline.damages, 'fahrzeugakte.html'),
             todoItem('Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html'),

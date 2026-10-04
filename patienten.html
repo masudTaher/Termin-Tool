@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Patienten · Medical Office Bonn</title>
+      <link rel="stylesheet" href="style.css">
+      <link rel="stylesheet" href="patienten.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="patienten">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · PATIENTEN</p><h1>Patienten und Unterlagen</h1><p>Arztberichte, Rezepte, Überweisungen und Berichte der Dolmetscher – nach Patient geordnet.</p></div>
+            <div class="fleet-heading-actions"><button type="button" id="patientReload" class="button-secondary">Aktualisieren</button></div>
+         </div>
+         <p id="patientStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="patientApp" hidden>
+            <div class="fleet-filter patient-filter" id="patientFilter" role="group" aria-label="Unterlagen filtern">
+               <button type="button" class="overview-card overview-card-cancelled is-active" data-doc-filter="neu" aria-pressed="true"><span class="overview-label">Neu</span><strong id="countNew">0</strong></button>
+               <button type="button" class="overview-card overview-card-departed" data-doc-filter="geprüft" aria-pressed="false"><span class="overview-label">Geprüft</span><strong id="countChecked">0</strong></button>
+               <button type="button" class="overview-card overview-card-done" data-doc-filter="weitergeleitet" aria-pressed="false"><span class="overview-label">Weitergeleitet</span><strong id="countForwarded">0</strong></button>
+               <button type="button" class="overview-card overview-card-alert" data-doc-filter="berichte" aria-pressed="false"><span class="overview-label">Tagesberichte</span><strong id="countReports">0</strong></button>
+               <button type="button" class="overview-card overview-card-open" data-doc-filter="patienten" aria-pressed="false"><span class="overview-label">Patienten</span><strong id="countPatients">0</strong></button>
+            </div>
+
+            <div class="patient-layout">
+               <section class="directory-card" aria-labelledby="docTitle">
+                  <div class="fleet-log-heading">
+                     <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="docTitle">Unterlagen</h2><p id="docSummary">Wird geladen …</p></div></div>
+                     <div class="fleet-log-controls"><button type="button" id="forwardSelected" class="button-primary fleet-end-button" data-forward-selected disabled>Auswahl weiterleiten (0)</button><button type="button" id="jumpSearch" class="button-quiet jump-search">Patient suchen ↓</button></div>
+                  </div>
+                  <ul id="docList" class="directory-list file-list"></ul>
+                  <div id="patientList" class="patient-grid" hidden></div>
+                  <button type="button" id="docMore" class="button-secondary fleet-end-button doc-more" hidden>Weitere anzeigen</button>
+               </section>
+
+               <div class="patient-side">
+                  <section class="directory-card" aria-labelledby="searchTitle">
+                     <div class="directory-card-heading"><span class="directory-step directory-step-teal">02</span><div><h2 id="searchTitle">Patient suchen</h2><p>Nach Nummer oder Name – gefunden wird auch Text aus den Unterlagen.</p></div></div>
+                     <div class="fleet-form">
+                        <label for="patientSearch">Patientennummer oder Name</label>
+                        <input id="patientSearch" type="search" autocomplete="off" placeholder="Patientennummer oder Name">
+                        <p id="searchInfo" class="field-hint" role="status" aria-live="polite"></p>
+                     </div>
+                     <div id="patientResults" class="patient-grid"></div>
+                  </section>
+
+                  <section id="patientFile" class="directory-card patient-file" aria-labelledby="fileTitle" aria-live="polite" hidden>
+                     <div class="fleet-log-heading">
+                        <div class="directory-card-heading"><span class="directory-step directory-step-dark">03</span><div><h2 id="fileTitle"></h2><p id="fileSubtitle"></p></div></div>
+                        <div class="fleet-log-controls"><button type="button" id="fileForwardSelected" class="button-primary fleet-end-button" data-forward-selected disabled>Auswahl weiterleiten (0)</button><button type="button" id="fileClose" class="button-quiet">Akte schließen</button></div>
+                     </div>
+                     <h3 class="file-heading">Unterlagen nach Termin</h3>
+                     <div id="fileDocuments"></div>
+                     <h3 class="file-heading">Berichte der Dolmetscher</h3>
+                     <ul id="fileReports" class="directory-list file-list"></ul>
+                     <h3 class="file-heading">Termine</h3>
+                     <ul id="fileAppointments" class="directory-list file-list"></ul>
+                  </section>
+               </div>
+            </div>
+         </div>
+      </main>
+
+      <dialog id="forwardDialog" class="confirm-dialog forward-dialog" aria-labelledby="forwardTitle">
+         <h2 id="forwardTitle" tabindex="-1" autofocus>Unterlagen weiterleiten</h2>
+         <ul id="forwardItems" class="forward-items"></ul>
+         <div class="fleet-form">
+            <span class="field-label" id="recipientLabel">Empfänger</span>
+            <ul id="recipientList" class="recipient-checks" aria-labelledby="recipientLabel"></ul>
+            <form id="recipientForm" class="recipient-form" novalidate>
+               <input id="recipientName" type="text" maxlength="80" autocomplete="off" placeholder="Name" aria-label="Name des neuen Empfängers">
+               <input id="recipientEmail" type="email" maxlength="120" autocomplete="off" placeholder="E-Mail-Adresse" aria-label="E-Mail-Adresse des neuen Empfängers">
+               <button type="submit" class="button-secondary fleet-end-button">Empfänger speichern</button>
+            </form>
+            <p id="recipientStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+            <label for="forwardExtra">Weitere E-Mail-Adressen (mit Komma getrennt)</label>
+            <input id="forwardExtra" type="text" autocomplete="off" placeholder="z. B. praxis@example.de, klinik@example.de">
+            <label for="forwardSubject">Betreff</label>
+            <input id="forwardSubject" type="text" maxlength="200">
+            <label for="forwardMessage">Nachricht</label>
+            <textarea id="forwardMessage" rows="11"></textarea>
+            <p id="forwardHint" class="field-hint"></p>
+         </div>
+         <p id="forwardStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+         <div class="modal-buttons">
+            <button type="button" id="forwardMail" class="button-primary">E-Mail-Programm öffnen</button>
+            <button type="button" id="forwardShare" class="button-secondary" hidden>PDF teilen</button>
+            <button type="button" id="forwardWhatsApp" class="button-secondary">WhatsApp</button>
+            <button type="button" id="forwardCopy" class="button-secondary">Text kopieren</button>
+            <button type="button" id="forwardClose" class="button-quiet">Schließen</button>
+         </div>
+      </dialog>
+
+      <dialog id="reportDialog" class="confirm-dialog report-dialog" aria-labelledby="reportTitle">
+         <h2 id="reportTitle" tabindex="-1" autofocus>Bericht des Dolmetschers</h2>
+         <dl id="reportMeta" class="vehicle-state"></dl>
+         <div id="reportBody" class="report-text" tabindex="0"></div>
+         <p id="reportStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+         <div class="modal-buttons">
+            <button type="button" id="reportFile" class="button-secondary" hidden>Datei öffnen</button>
+            <button type="button" id="reportPdf" class="button-primary">Als PDF speichern</button>
+            <button type="button" id="reportClose" class="button-secondary">Schließen</button>
+         </div>
+      </dialog>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="workflowStorage.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="docPdf.js"></script>
+      <script src="patientenApp.js"></script>
+   </body>
+</html>

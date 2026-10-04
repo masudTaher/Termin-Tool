@@ -15,7 +15,8 @@ const TerminCloud = (() => {
         if (/email not confirmed/i.test(message)) return 'Die E-Mail-Adresse ist noch nicht bestätigt.';
         if (/failed to fetch|networkerror|load failed/i.test(message)) return 'Keine Verbindung zur Datenbank. Prüfe das Internet.';
         if (/same password|different from the old/i.test(message)) return 'Das neue Passwort muss sich vom alten unterscheiden.';
-        if (/relation .* does not exist|could not find the (table|function)|schema cache/i.test(message)) return 'Diese Funktion ist in der Datenbank noch nicht eingerichtet (Update 8 fehlt).';
+        if (/relation .* does not exist|could not find the (table|function)|schema cache/i.test(message)) return 'Diese Funktion ist in der Datenbank noch nicht eingerichtet (ein Datenbank-Update fehlt).';
+        if (/row-level security/i.test(message)) return 'Das ist für dein Konto nicht erlaubt.';
         return message || 'Unbekannter Fehler.';
     };
 
@@ -116,7 +117,9 @@ const TerminCloud = (() => {
         const festIds = new Set((staffList.data || []).filter(item => item.employment === 'fest').map(item => item.id));
         const openReceipts = newReceipts.error ? [] : newReceipts.data;
         const festReceipts = openReceipts.filter(item => festIds.has(item.profile_id)).length;
-        return { damages: damages.data.length, alerts: alerts.data.length + openNotes,
+        // Neue Unterlagen und Berichte der Dolmetscher (Seite „Patienten“). Fehlt die Tabelle noch, zählt es als 0.
+        const newDocuments = await client.from('tt_documents').select('id').eq('status', 'neu');
+        return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length,
             accounts: isAdmin(profile) ? accounts.data.length + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
             fest: festReceipts + (overtime.error ? 0 : overtime.data.length) };
@@ -201,7 +204,7 @@ const TerminCloud = (() => {
         if (error || !data) return null;
         const limits = config.storageLimits || { databaseMb: 500, photosMb: 1024 };
         const mb = bytes => Math.round(Number(bytes || 0) / 1048576 * 10) / 10;
-        return { databaseMb: mb(data.database_bytes), photosMb: mb(data.storage_bytes), photos: Number(data.photos || 0),
+        return { databaseMb: mb(data.database_bytes), photosMb: mb(data.storage_bytes), photos: Number(data.photos || 0), documents: Number(data.documents || 0),
             databaseLimitMb: limits.databaseMb, photosLimitMb: limits.photosMb };
     }
 

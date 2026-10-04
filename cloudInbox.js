@@ -4,7 +4,7 @@
 (function () {
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     const SEEN_KEY = 'terminTool.cloudInbox.seen.v1';
-    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest'];
+    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten'];
 
     function setBadge(page, count) {
         // Seitenleiste und – auf dem Handy – die untere Leiste bekommen dasselbe Zählerschild.
@@ -71,7 +71,7 @@
         if (!usage) return;
         box.replaceChildren(
             meter('Datenbank', usage.databaseMb, usage.databaseLimitMb),
-            meter('Fotos', usage.photosMb, usage.photosLimitMb, `${usage.photos} ${usage.photos === 1 ? 'Foto' : 'Fotos'}`)
+            meter('Fotos & Unterlagen', usage.photosMb, usage.photosLimitMb, `${usage.photos} ${usage.photos === 1 ? 'Foto' : 'Fotos'}, ${usage.documents || 0} ${usage.documents === 1 ? 'Unterlage' : 'Unterlagen'}`)
         );
         if (usage.databaseMb / usage.databaseLimitMb >= 0.9 || usage.photosMb / usage.photosLimitMb >= 0.9) {
             if (typeof showToast === 'function' && !refreshUsage.warned) showToast('Der Online-Speicher ist fast voll. Bitte alte Fotos löschen oder den Tarif erhöhen.', 'error', { duration: 12000 });
@@ -91,6 +91,7 @@
         setBadge('fahrzeugakte', counts.damages + counts.alerts);
         setBadge('team', counts.accounts);
         setBadge('fest', counts.fest);
+        setBadge('patienten', counts.documents || 0);
         refreshUsage(false);
 
         let seen = null;
@@ -102,6 +103,7 @@
             if (counts.accounts > seen.accounts) messages.push('Ein Konto wartet: neue Anmeldung oder Passwort vergessen');
             if (counts.payroll > (seen.payroll || 0)) messages.push('Abrechnung: neuer Beleg oder Einwand');
             if (counts.fest > (seen.fest || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
+            if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage oder neuer Bericht eines Dolmetschers');
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
         messages.forEach(message => {
