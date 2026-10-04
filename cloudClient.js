@@ -126,7 +126,13 @@ const TerminCloud = (() => {
     async function callFunction(body) {
         if (!client?.functions) return { ok: false, reason: 'nicht eingerichtet' };
         try {
-            const { data, error } = await client.functions.invoke(config.pushFunction || 'tt-push', { body });
+            // Die Anmeldung reist in einem eigenen Kopf mit. So arbeitet die Funktion,
+            // egal ob in Supabase der Schalter „Verify JWT“ an oder aus ist.
+            const session = await getSession();
+            const headers = session?.access_token
+                ? { Authorization: `Bearer ${config.publishableKey}`, 'x-tt-auth': session.access_token }
+                : undefined;
+            const { data, error } = await client.functions.invoke(config.pushFunction || 'tt-push', { body, headers });
             if (error) {
                 let detail = '';
                 try { detail = (await error.context?.json?.())?.error || ''; } catch (parseError) { /* keine lesbare Antwort */ }

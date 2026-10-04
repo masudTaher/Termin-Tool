@@ -5,13 +5,13 @@
 //   remind         – ab 16 Uhr an die Rückgabe des Fahrzeugs erinnern (ruft die Datenbank automatisch auf)
 //   resetPassword  – neues vorläufiges Passwort für ein Konto vergeben (nur Admin)
 // Einrichtung: Supabase → Edge Functions → neue Funktion "tt-push" → diesen Text einfügen → Deploy.
-// Wichtig: Bei der Funktion "Verify JWT" ausschalten – die Funktion prüft die Anmeldung selbst.
+// Der Schalter "Verify JWT" darf an oder aus sein – die Funktion prüft die Anmeldung selbst.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tt-auth',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (body: unknown, status = 200) =>
@@ -37,7 +37,8 @@ async function vapidKeys() {
 
 // Wer ruft auf? Liefert das Profil der angemeldeten Person oder null.
 async function caller(req: Request) {
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  // Die App schickt die Anmeldung im Kopf "x-tt-auth"; "Authorization" bleibt als zweiter Weg erlaubt.
+  const token = (req.headers.get('x-tt-auth') ?? req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token || token.startsWith('sb_')) return null;
   const { data, error } = await admin.auth.getUser(token);
   if (error || !data?.user) return null;

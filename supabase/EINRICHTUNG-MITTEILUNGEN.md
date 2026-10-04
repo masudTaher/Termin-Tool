@@ -19,8 +19,7 @@ Ohne diese Einrichtung läuft die App ganz normal weiter – nur diese beiden Di
 2. Name der Funktion: `tt-push` (genau so schreiben).
 3. Den ganzen Text im Editor löschen und den Inhalt der Datei `functions/tt-push/index.ts` einfügen.
 4. **Deploy function** klicken.
-5. Danach in der Funktion auf **Details** (oder **Settings**) gehen und **„Verify JWT with legacy secret“ ausschalten** → speichern.
-   Die Funktion prüft die Anmeldung selbst.
+5. Fertig. Am Schalter „Verify JWT with legacy secret“ muss nichts geändert werden – die Funktion prüft die Anmeldung selbst und läuft in beiden Stellungen.
 
 ## Schritt 3 – Automatische Erinnerung nach 16 Uhr
 
