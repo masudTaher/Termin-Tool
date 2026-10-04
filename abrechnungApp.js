@@ -59,7 +59,9 @@
         statements = statementResult.error ? [] : statementResult.data;
         const failed = [receiptResult, specialResult, payrollResult, monthResult].find(item => item.error);
         if (failed) { setStatus(`${TerminCloud.germanError(failed.error)} Falls Tabellen fehlen: supabase/update-5.sql im SQL Editor ausführen.`, 'error'); return; }
-        receipts = receiptResult.data;
+        // Belege der Festangestellten gehören nicht in die Abrechnung der Temporären – sie stehen unter „Überstunden & Belege“.
+        const festIds = new Set((profileResult.data || []).filter(item => item.employment === 'fest').map(item => item.id));
+        receipts = receiptResult.data.filter(item => !festIds.has(item.profile_id));
         specialDays = specialResult.data;
         payroll = payrollResult.data;
         rate = Number(monthResult.data?.daily_rate ?? 80);

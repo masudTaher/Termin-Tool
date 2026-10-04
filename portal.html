@@ -23,17 +23,23 @@
    <body data-page="portal">
       <header class="portal-header">
          <span class="app-brand"><span class="app-brand-mark" aria-hidden="true">BD</span><span class="app-brand-copy"><strong>Dolmetscher-Portal</strong><small id="portalUser">Botschaft · Dolmetscher und Transport</small></span></span>
-         <button type="button" id="portalSignOut" class="button-secondary" hidden>Abmelden</button>
+         <span class="portal-header-actions" id="portalHeaderActions" hidden>
+            <button type="button" class="icon-button" id="openMessages" aria-label="Nachrichten">
+               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.500 2 6.500H4c0-1 2-2 2-6.500z"/><path d="M10 19.500a2 2 0 0 0 4 0"/></svg>
+               <em id="messagesBadge" class="tab-badge" hidden></em>
+            </button>
+            <button type="button" class="icon-button icon-button-avatar" id="openAccount" aria-label="Mein Konto"><span id="accountInitials">?</span></button>
+         </span>
       </header>
 
       <main class="portal-main">
          <p id="portalStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
-         <!-- Anmeldung / Registrierung -->
+         <!-- ================= Anmeldung / Registrierung ================= -->
          <section id="portalAuth" class="directory-card" hidden>
             <div class="portal-welcome">
                <h1>Willkommen</h1>
-               <p>Botschaft Dolmetscher und Transport-App – hier übernimmst du dein Fahrzeug, trägst Arbeitstage ein und prüfst deine Abrechnung.</p>
+               <p>Botschaft Dolmetscher und Transport-App – Fahrzeug übernehmen, Aufträge beantworten, Zeiten und Belege eintragen.</p>
             </div>
             <div class="portal-tabs" role="tablist">
                <button type="button" role="tab" id="tabSignIn" class="is-active" aria-selected="true">Anmelden</button>
@@ -45,6 +51,15 @@
                <label for="signInPassword">Passwort</label>
                <input id="signInPassword" type="password" autocomplete="current-password" required>
                <button type="submit" class="button-primary">Anmelden</button>
+               <button type="button" class="link-button" id="forgotToggle">Passwort vergessen?</button>
+            </form>
+            <form id="forgotForm" class="fleet-form forgot-form" hidden>
+               <h2 class="card-title">Passwort vergessen</h2>
+               <p class="portal-text">Gib deine E-Mail ein. Die Einsatzleitung bekommt deine Anfrage und gibt dir ein neues Passwort – per Telefon oder WhatsApp.</p>
+               <label for="forgotEmail">E-Mail</label>
+               <input id="forgotEmail" type="email" autocomplete="email" required>
+               <button type="submit" class="button-primary">Neues Passwort anfragen</button>
+               <button type="button" class="link-button" id="forgotBack">← Zurück zur Anmeldung</button>
             </form>
             <form id="signUpForm" class="fleet-form" hidden>
                <label for="signUpName">Vor- und Nachname</label>
@@ -67,50 +82,42 @@
 
          <!-- Konto wartet auf Freischaltung -->
          <section id="portalPending" class="directory-card" hidden>
-            <h2>Dein Konto wartet auf Freischaltung</h2>
+            <h2 class="card-title">Dein Konto wartet auf Freischaltung</h2>
             <p class="portal-text">Die Einsatzleitung muss dein Konto einmal freischalten. Sag kurz Bescheid und tippe danach auf „Erneut prüfen“.</p>
-            <button type="button" id="portalRecheck" class="button-primary">Erneut prüfen</button>
+            <button type="button" id="portalRecheck" class="button-primary portal-wide-button">Erneut prüfen</button>
+            <button type="button" class="link-button" id="pendingSignOut">Abmelden</button>
          </section>
 
-         <!-- Portal -->
+         <!-- Neues Passwort festlegen (nach „Passwort vergessen“) -->
+         <section id="portalNewPassword" class="directory-card" hidden>
+            <h2 class="card-title">Lege jetzt dein eigenes Passwort fest</h2>
+            <p class="portal-text">Du hast dich mit einem vorläufigen Passwort angemeldet. Wähle ein neues – mindestens 8 Zeichen.</p>
+            <form id="newPasswordForm" class="fleet-form" novalidate>
+               <label for="newPassword">Neues Passwort</label>
+               <input id="newPassword" type="password" autocomplete="new-password" minlength="8" required>
+               <label for="newPasswordRepeat">Neues Passwort wiederholen</label>
+               <input id="newPasswordRepeat" type="password" autocomplete="new-password" minlength="8" required>
+               <button type="submit" class="button-primary">Passwort speichern</button>
+            </form>
+         </section>
+
+         <!-- ================= Portal ================= -->
          <div id="portalApp" hidden>
 
-            <!-- ================= Seite 1: Fahrzeug ================= -->
+            <!-- ===== Bereich 1: Fahrzeug (Startseite) ===== -->
             <section data-panel="vehicle" class="portal-page" aria-labelledby="helloTitle">
                <div class="portal-hello"><h1 id="helloTitle">Hallo</h1><p id="helloDate"></p></div>
                <ul id="startNotices" class="start-notices"></ul>
 
-               <!-- Ohne Fahrzeug: nur übernehmen ist möglich -->
-               <div id="noVehicle" class="portal-page">
-                  <section class="directory-card" aria-labelledby="takeVehicleTitle">
-                     <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="takeVehicleTitle">Fahrzeug übernehmen</h2><p id="myVehicleInfo">Wähle ein freies Fahrzeug.</p></div></div>
-                     <form id="takeVehicleForm" class="fleet-form">
-                        <label for="takeVehicleSelect">Fahrzeug</label>
-                        <select id="takeVehicleSelect" required></select>
-                        <div id="takeLastState" class="last-state" hidden>
-                           <span class="field-label">So wurde das Auto zuletzt abgegeben</span>
-                           <dl id="takeStateList" class="vehicle-state"></dl>
-                           <details id="takeDamages" class="known-damages">
-                              <summary id="takeDamagesSummary">Bekannte Schäden ansehen</summary>
-                              <div class="sketch-wrap"><div id="takeSketch"></div></div>
-                              <ul id="takeDamageList" class="directory-list portal-list"></ul>
-                           </details>
-                        </div>
-                        <label for="takeVehicleMileage">Kilometerstand jetzt</label>
-                        <input id="takeVehicleMileage" type="number" inputmode="numeric" min="0" step="1" placeholder="km" required>
-                        <p id="takeMileageHint" class="field-hint"></p>
-                        <div id="takeNoteRow" hidden>
-                           <label for="takeStartNote">Stimmt etwas nicht? <span class="optional-label">optional – geht an die Einsatzleitung und den letzten Fahrer</span></label>
-                           <textarea id="takeStartNote" rows="2" maxlength="500" placeholder="Zum Beispiel: Tank ist fast leer, innen nicht sauber"></textarea>
-                        </div>
-                        <label id="takeEmergencyRow" class="whatsapp-note-option" hidden><input type="checkbox" id="takeEmergency"><span>Notdienst / Bereitschaft – das Auto bleibt über Nacht bei mir</span></label>
-                        <button type="submit" class="button-primary">Fahrzeug übernehmen</button>
-                     </form>
-                     <p class="fleet-footnote">Schäden und Meldungen kannst du eintragen, sobald du ein Fahrzeug übernommen hast.</p>
-                  </section>
-               </div>
+               <!-- Ohne Fahrzeug -->
+               <section id="noVehicle" class="empty-hero">
+                  <svg class="empty-hero-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16.5V12l1.8-5a2 2 0 0 1 1.9-1.3h6.6A2 2 0 0 1 17.2 7L19 12v4.5"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4"/></svg>
+                  <h2>Du hast gerade kein Fahrzeug</h2>
+                  <p id="myVehicleInfo">Übernimm ein Auto, bevor du losfährst.</p>
+                  <button type="button" class="button-primary big-button" id="startTake" data-go="take">Fahrzeug übernehmen</button>
+               </section>
 
-               <!-- Mit Fahrzeug: Schaden, Meldung, Rückgabe -->
+               <!-- Mit Fahrzeug -->
                <div id="hasVehicle" class="portal-page" hidden>
                   <section class="vehicle-hero" aria-label="Dein Fahrzeug">
                      <span class="vehicle-hero-label">Dein Fahrzeug</span>
@@ -120,9 +127,18 @@
                   </section>
                   <p id="returnReminder" class="reminder-banner" hidden></p>
                   <div class="action-grid">
-                     <button type="button" class="action-tile" data-go="damage"><strong>Schaden melden</strong><small>mit Skizze und Foto</small></button>
-                     <button type="button" class="action-tile" data-go="alert"><strong>Meldung im Auto</strong><small>Reifendruck, AdBlue, Service</small></button>
-                     <button type="button" class="action-tile action-tile-primary" data-go="return"><strong>Fahrzeug zurückgeben</strong><small>Kilometer, Tank, Parkort, Sauberkeit</small></button>
+                     <button type="button" class="action-tile" data-go="damage">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17h.01"/></svg>
+                        <strong>Schaden melden</strong><small>mit Skizze und Foto</small>
+                     </button>
+                     <button type="button" class="action-tile" data-go="alert">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.500"/><path d="M12 7.500V12l3 2"/></svg>
+                        <strong>Meldung im Auto</strong><small>Reifendruck, AdBlue, Service</small>
+                     </button>
+                     <button type="button" class="action-tile action-tile-primary" data-go="return">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/></svg>
+                        <strong>Fahrzeug zurückgeben</strong><small>Kilometer, Tank, Parkort, Sauberkeit</small>
+                     </button>
                   </div>
                   <section class="directory-card" aria-labelledby="lastDriverTitle">
                      <h2 id="lastDriverTitle" class="card-title">So hast du das Auto bekommen</h2>
@@ -132,19 +148,102 @@
                </div>
 
                <ul id="returnNotes" class="directory-list portal-list"></ul>
-
-               <details id="installCard" class="install-card" hidden>
-                  <summary>Portal als App auf das Handy legen</summary>
-                  <button type="button" id="installButton" class="button-primary" hidden>App installieren</button>
-                  <ol id="installSteps" class="install-steps"></ol>
-               </details>
             </section>
 
-            <!-- Unterseite: Schaden -->
+            <!-- ===== Übernahme in 3 Schritten ===== -->
+            <section class="directory-card wizard" data-panel="take" aria-labelledby="takeTitle" hidden>
+               <div class="wizard-head">
+                  <button type="button" class="back-button" id="takeBack">← Zurück</button>
+                  <span class="wizard-count" id="takeCount">Schritt 1 von 3</span>
+               </div>
+               <div class="wizard-progress" aria-hidden="true"><i id="takeProgress"></i></div>
+
+               <div data-take-step="1">
+                  <h2 id="takeTitle" class="wizard-title">Welches Auto nimmst du?</h2>
+                  <p class="wizard-hint">Es werden nur freie Fahrzeuge angezeigt.</p>
+                  <div id="takeCars" class="car-list"></div>
+               </div>
+
+               <div data-take-step="2" hidden>
+                  <h2 class="wizard-title">Ist das Auto in Ordnung?</h2>
+                  <p class="wizard-hint" id="takeCarLabel"></p>
+                  <span class="field-label">So wurde es zuletzt abgegeben</span>
+                  <dl id="takeStateList" class="vehicle-state"></dl>
+                  <span class="field-label" id="takeDamagesSummary">Bekannte Schäden</span>
+                  <div class="sketch-wrap" id="takeSketchWrap"><div id="takeSketch"></div></div>
+                  <ul id="takeDamageList" class="directory-list portal-list"></ul>
+                  <div class="choice-row">
+                     <button type="button" class="choice-button choice-ok" id="takeAllFine">Ja, alles in Ordnung</button>
+                     <button type="button" class="choice-button choice-warn" id="takeNotFine">Nein, etwas stimmt nicht</button>
+                  </div>
+                  <div id="takeNoteRow" class="fleet-form" hidden>
+                     <label for="takeStartNote">Was stimmt nicht? <span class="optional-label">geht an die Einsatzleitung und den letzten Fahrer</span></label>
+                     <textarea id="takeStartNote" rows="3" maxlength="500" placeholder="Zum Beispiel: Tank ist fast leer, innen nicht sauber"></textarea>
+                     <button type="button" class="button-primary big-button" id="takeNoteNext">Weiter</button>
+                  </div>
+               </div>
+
+               <form data-take-step="3" id="takeVehicleForm" class="fleet-form" hidden novalidate>
+                  <h2 class="wizard-title">Kilometerstand jetzt</h2>
+                  <p class="wizard-hint" id="takeMileageHint">Lies den Stand vom Tacho ab.</p>
+                  <input id="takeVehicleMileage" class="big-input" type="number" inputmode="numeric" min="0" step="1" placeholder="km" aria-label="Kilometerstand" required>
+                  <p id="takeMileageError" class="field-error" role="alert" hidden></p>
+                  <label id="takeEmergencyRow" class="whatsapp-note-option" hidden><input type="checkbox" id="takeEmergency"><span>Notdienst / Bereitschaft – das Auto bleibt über Nacht bei mir</span></label>
+                  <button type="submit" class="button-primary big-button">Fahrzeug übernehmen</button>
+               </form>
+            </section>
+
+            <!-- ===== Rückgabe in 5 Schritten ===== -->
+            <section class="directory-card wizard" data-panel="return" aria-labelledby="returnTitle" hidden>
+               <div class="wizard-head">
+                  <button type="button" class="back-button" id="returnBack">← Zurück</button>
+                  <span class="wizard-count" id="returnCount">Schritt 1 von 5</span>
+               </div>
+               <div class="wizard-progress" aria-hidden="true"><i id="returnProgress"></i></div>
+
+               <form data-return-step="1" id="returnMileageForm" class="fleet-form" novalidate>
+                  <h2 id="returnTitle" class="wizard-title">Kilometerstand bei Rückgabe</h2>
+                  <p class="wizard-hint" id="returnMileageHint"></p>
+                  <input id="returnVehicleMileage" class="big-input" type="number" inputmode="numeric" min="0" step="1" placeholder="km" aria-label="Kilometerstand" required>
+                  <p id="returnMileageError" class="field-error" role="alert" hidden></p>
+                  <button type="submit" class="button-primary big-button">Weiter</button>
+               </form>
+               <div data-return-step="2" hidden>
+                  <h2 class="wizard-title">Wie voll ist der Tank?</h2>
+                  <div id="returnFuel" class="choice-list"></div>
+               </div>
+               <div data-return-step="3" hidden>
+                  <h2 class="wizard-title">Wo steht das Auto?</h2>
+                  <div id="returnParking" class="choice-list"></div>
+               </div>
+               <div data-return-step="4" hidden>
+                  <h2 class="wizard-title">Ist das Auto sauber?</h2>
+                  <span class="field-label">Innen</span>
+                  <div class="choice-row" data-clean="inside">
+                     <button type="button" class="choice-button" data-value="yes">Sauber</button>
+                     <button type="button" class="choice-button" data-value="no">Nicht sauber</button>
+                  </div>
+                  <span class="field-label">Außen</span>
+                  <div class="choice-row" data-clean="outside">
+                     <button type="button" class="choice-button" data-value="yes">Sauber</button>
+                     <button type="button" class="choice-button" data-value="no">Nicht sauber</button>
+                  </div>
+                  <button type="button" class="button-primary big-button" id="returnCleanNext" disabled>Weiter</button>
+               </div>
+               <div data-return-step="5" hidden>
+                  <h2 class="wizard-title">Stimmt alles?</h2>
+                  <dl id="returnSummary" class="vehicle-state"></dl>
+                  <button type="button" class="button-primary big-button" id="returnSubmit">Jetzt zurückgeben</button>
+               </div>
+            </section>
+
+            <!-- ===== Schaden ===== -->
             <section class="directory-card" data-panel="damage" aria-labelledby="damageTitle" hidden>
                <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
-               <div class="directory-card-heading"><span class="directory-step directory-step-teal">!</span><div><h2 id="damageTitle">Schaden melden</h2><p id="damageVehicleLabel">Schau zuerst, ob der Schaden schon markiert ist.</p></div></div>
+               <h2 id="damageTitle" class="wizard-title">Schaden melden</h2>
+               <p class="wizard-hint" id="damageVehicleLabel">Schau zuerst, ob der Schaden schon markiert ist.</p>
                <form id="damageForm" class="fleet-form">
+                  <span class="field-label"><b class="step-dot">1</b> Tippe auf die Stelle des Schadens</span>
                   <div class="sketch-wrap">
                      <div id="damageSketch"></div>
                      <ul class="sketch-legend">
@@ -154,20 +253,21 @@
                         <li><i data-status="picked"></i>Deine neue Markierung</li>
                      </ul>
                   </div>
-                  <p id="damagePosition" class="field-hint">Tippe in der Skizze auf die Stelle des neuen Schadens.</p>
+                  <p id="damagePosition" class="field-hint">Noch keine Stelle gewählt.</p>
                   <ul id="knownDamages" class="directory-list portal-list"></ul>
-                  <label for="damageDescription">Was ist passiert?</label>
+                  <label for="damageDescription"><b class="step-dot">2</b> Was ist passiert?</label>
                   <textarea id="damageDescription" rows="3" maxlength="600" required placeholder="Zum Beispiel: Kratzer an der Stoßstange, beim Einparken bemerkt"></textarea>
-                  <label for="damagePhoto">Fotos <span class="optional-label">bis zu 3</span></label>
+                  <label for="damagePhoto"><b class="step-dot">3</b> Fotos <span class="optional-label">bis zu 3</span></label>
                   <input id="damagePhoto" type="file" accept="image/*" multiple>
-                  <button type="submit" class="button-primary">Schaden melden</button>
+                  <button type="submit" class="button-primary big-button">Schaden melden</button>
                </form>
             </section>
 
-            <!-- Unterseite: Meldung im Auto -->
+            <!-- ===== Meldung im Auto ===== -->
             <section class="directory-card" data-panel="alert" aria-labelledby="alertTitle" hidden>
                <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
-               <div class="directory-card-heading"><span class="directory-step directory-step-dark">i</span><div><h2 id="alertTitle">Meldung im Auto</h2><p id="alertVehicleLabel">Warnleuchte oder Hinweis im Display.</p></div></div>
+               <h2 id="alertTitle" class="wizard-title">Meldung im Auto</h2>
+               <p class="wizard-hint" id="alertVehicleLabel">Warnleuchte oder Hinweis im Display.</p>
                <form id="alertForm" class="fleet-form">
                   <span class="field-label" id="alertKindLabel">Was wird angezeigt?</span>
                   <div id="alertKinds" class="segmented segmented-wrap" role="radiogroup" aria-labelledby="alertKindLabel"></div>
@@ -175,40 +275,15 @@
                   <input id="alertNote" type="text" maxlength="200" placeholder="Zum Beispiel: Reifen hinten links">
                   <label for="alertPhoto">Foto vom Display <span class="optional-label">optional</span></label>
                   <input id="alertPhoto" type="file" accept="image/*">
-                  <button type="submit" class="button-primary">Meldung senden</button>
+                  <button type="submit" class="button-primary big-button">Meldung senden</button>
                </form>
                <ul id="openAlerts" class="directory-list portal-list"></ul>
             </section>
 
-            <!-- Unterseite: Rückgabe -->
-            <section class="directory-card" data-panel="return" aria-labelledby="returnTitle" hidden>
-               <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
-               <div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="returnTitle">Fahrzeug zurückgeben</h2><p id="returnVehicleLabel">Bitte alle Angaben ausfüllen.</p></div></div>
-               <form id="returnVehicleForm" class="fleet-form">
-                  <label for="returnVehicleMileage">Kilometerstand</label>
-                  <input id="returnVehicleMileage" type="number" inputmode="numeric" min="0" step="1" placeholder="km" required>
-                  <p id="returnMileageHint" class="field-hint"></p>
-                  <span class="field-label" id="fuelLabel">Tankstand</span>
-                  <div id="returnFuel" class="segmented" role="radiogroup" aria-labelledby="fuelLabel"></div>
-                  <label for="returnParking">Wo steht das Auto?</label>
-                  <select id="returnParking" required></select>
-                  <span class="field-label" id="cleanInsideLabel">Innen sauber?</span>
-                  <div class="segmented" role="radiogroup" aria-labelledby="cleanInsideLabel">
-                     <label><input type="radio" name="cleanInside" value="yes" required><span>Sauber</span></label>
-                     <label><input type="radio" name="cleanInside" value="no"><span>Nicht sauber</span></label>
-                  </div>
-                  <span class="field-label" id="cleanOutsideLabel">Außen sauber?</span>
-                  <div class="segmented" role="radiogroup" aria-labelledby="cleanOutsideLabel">
-                     <label><input type="radio" name="cleanOutside" value="yes" required><span>Sauber</span></label>
-                     <label><input type="radio" name="cleanOutside" value="no"><span>Nicht sauber</span></label>
-                  </div>
-                  <button type="submit" class="button-primary">Fahrzeug zurückgeben</button>
-               </form>
-            </section>
-
-            <!-- ================= Seite 2: Aufträge ================= -->
+            <!-- ===== Bereich 2: Aufträge ===== -->
             <section class="directory-card" data-panel="jobs" aria-labelledby="jobsTitle" hidden>
-               <div class="directory-card-heading"><span class="directory-step">✓</span><div><h2 id="jobsTitle">Meine Aufträge</h2><p id="jobsSummary">Wird geladen …</p></div></div>
+               <h2 id="jobsTitle" class="wizard-title">Meine Aufträge</h2>
+               <p class="wizard-hint" id="jobsSummary">Wird geladen …</p>
                <ul id="jobList" class="job-list"></ul>
                <details class="job-history">
                   <summary>Verlauf: was ich angenommen und gearbeitet habe</summary>
@@ -216,89 +291,154 @@
                </details>
             </section>
 
-            <!-- ================= Seite 3: Arbeitstage ================= -->
+            <!-- ===== Bereich 3 (temporär): Arbeitstage ===== -->
             <div data-panel="workdays" class="portal-page" hidden>
                <section class="directory-card" aria-labelledby="workdaysTitle">
-                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">1</span><div><h2 id="workdaysTitle">Wann kann ich arbeiten?</h2><p>Tippe für jeden Tag an, ob du kannst. Wird sofort gespeichert.</p></div></div>
+                  <h2 id="workdaysTitle" class="wizard-title">Wann kann ich arbeiten?</h2>
+                  <p class="wizard-hint">Tippe für jeden Tag an, ob du kannst. Wird sofort gespeichert.</p>
                   <ul id="workdayList" class="workday-list"></ul>
                </section>
                <section class="directory-card" aria-labelledby="workedTitle">
-                  <div class="directory-card-heading"><span class="directory-step directory-step-dark">2</span><div><h2 id="workedTitle">Meine gearbeiteten Tage</h2><p id="workedSummary">Wird geladen …</p></div></div>
+                  <h2 id="workedTitle" class="card-title">Meine gearbeiteten Tage</h2>
+                  <p class="wizard-hint" id="workedSummary">Wird geladen …</p>
                   <div class="portal-tabs" id="workedMonths"></div>
                   <ul id="workedList" class="directory-list portal-list"></ul>
                </section>
             </div>
 
-            <!-- ================= Seite 4: Abrechnung ================= -->
-            <div data-panel="statement" class="portal-page" hidden>
-               <section class="directory-card" aria-labelledby="statementTitle">
-                  <div class="directory-card-heading"><span class="directory-step">€</span><div><h2 id="statementTitle">Meine Abrechnung</h2><p>Prüfe den Monat, sobald er freigegeben ist, und bestätige ihn.</p></div></div>
-                  <div class="fleet-form"><label for="statementMonth">Monat</label><select id="statementMonth"></select></div>
-                  <div id="statementBody" class="statement-body"></div>
+            <!-- ===== Bereich 3 (fest): Überstunden ===== -->
+            <div data-panel="overtime" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="overtimeTitle">
+                  <h2 id="overtimeTitle" class="wizard-title">Überstunden melden</h2>
+                  <p class="wizard-hint" id="overtimeHint">Arbeitszeit ist 9 bis 16 Uhr. Alles davor oder danach zählt.</p>
+                  <form id="overtimeForm" class="fleet-form" novalidate>
+                     <label for="overtimeDate"><b class="step-dot">1</b> An welchem Tag?</label>
+                     <input id="overtimeDate" type="date" required>
+                     <label for="overtimeJob"><b class="step-dot">2</b> Wegen welchem Termin?</label>
+                     <select id="overtimeJob" required></select>
+                     <input id="overtimeJobText" type="text" maxlength="200" placeholder="Zum Beispiel: Abholung Flughafen, Patient Müller" aria-label="Termin oder Grund" hidden>
+                     <span class="field-label"><b class="step-dot">3</b> Wann hast du gearbeitet?</span>
+                     <div class="time-pair">
+                        <label class="time-box" for="overtimeStart"><span>Angefangen um</span><input id="overtimeStart" type="time"><small id="overtimeStartHint">nur wenn vor 9 Uhr</small></label>
+                        <label class="time-box" for="overtimeEnd"><span>Fertig um</span><input id="overtimeEnd" type="time"><small id="overtimeEndHint">nur wenn nach 16 Uhr</small></label>
+                     </div>
+                     <p id="overtimeResult" class="overtime-result" data-kind="empty">Trag eine Uhrzeit ein.</p>
+                     <label for="overtimeNote">Bemerkung <span class="optional-label">optional</span></label>
+                     <input id="overtimeNote" type="text" maxlength="200" placeholder="Zum Beispiel: Arzt hatte Verspätung">
+                     <button type="submit" class="button-primary big-button">Überstunden melden</button>
+                  </form>
                </section>
-               <section class="directory-card" aria-labelledby="receiptsTitle">
-                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">+</span><div><h2 id="receiptsTitle">Park- und Tankbelege</h2><p id="receiptsSummary">Beleg fotografieren und eintragen.</p></div></div>
-                  <button type="button" class="button-primary portal-wide-button" data-go="receipts">Beleg einreichen</button>
-                  <ul id="receiptList" class="directory-list portal-list"></ul>
-               </section>
-               <section class="directory-card" aria-labelledby="statementVehiclesTitle">
-                  <h2 id="statementVehiclesTitle" class="card-title">Meine Fahrzeuge in diesem Monat</h2>
-                  <ul id="statementVehicles" class="directory-list portal-list"></ul>
+               <section class="directory-card" aria-labelledby="overtimeListTitle">
+                  <h2 id="overtimeListTitle" class="card-title">Meine Überstunden</h2>
+                  <p class="wizard-hint" id="overtimeSummary">Wird geladen …</p>
+                  <div class="portal-tabs" id="overtimeMonths"></div>
+                  <ul id="overtimeList" class="directory-list portal-list"></ul>
                </section>
             </div>
 
-            <!-- Unterseite: Beleg -->
+            <!-- ===== Bereich 4 (temporär): Abrechnung ===== -->
+            <section class="directory-card" data-panel="statement" aria-labelledby="statementTitle" hidden>
+               <h2 id="statementTitle" class="wizard-title">Meine Abrechnung</h2>
+               <p class="wizard-hint">Prüfe den Monat, sobald er freigegeben ist, und bestätige ihn.</p>
+               <div class="fleet-form"><label for="statementMonth">Monat</label><select id="statementMonth"></select></div>
+               <div id="statementBody" class="statement-body"></div>
+            </section>
+
+            <!-- Belege: Teil der Abrechnung (temporär) und eigener Bereich (fest) -->
+            <section class="directory-card" data-panel="statement receiptsHome" aria-labelledby="receiptsTitle" hidden>
+               <h2 id="receiptsTitle" class="card-title">Park- und Tankbelege</h2>
+               <p class="wizard-hint" id="receiptsSummary">Beleg fotografieren – Betrag und Datum werden automatisch gelesen.</p>
+               <button type="button" class="button-primary big-button" data-go="receipts">Beleg einreichen</button>
+               <ul id="receiptList" class="directory-list portal-list"></ul>
+            </section>
+
+            <section class="directory-card" data-panel="statement" aria-labelledby="statementVehiclesTitle" hidden>
+               <h2 id="statementVehiclesTitle" class="card-title">Meine Fahrzeuge in diesem Monat</h2>
+               <ul id="statementVehicles" class="directory-list portal-list"></ul>
+            </section>
+
+            <!-- ===== Beleg einreichen ===== -->
             <section class="directory-card" data-panel="receipts" aria-labelledby="receiptFormTitle" hidden>
-               <button type="button" class="back-button" data-go="statement">← Zurück</button>
-               <div class="directory-card-heading"><span class="directory-step directory-step-teal">+</span><div><h2 id="receiptFormTitle">Beleg einreichen</h2><p>Er landet direkt in der Monatsabrechnung.</p></div></div>
+               <button type="button" class="back-button" id="receiptBack">← Zurück</button>
+               <h2 id="receiptFormTitle" class="wizard-title">Beleg einreichen</h2>
                <form id="receiptForm" class="fleet-form">
-                  <span class="field-label" id="receiptKindLabel">Art</span>
+                  <label for="receiptPhoto"><b class="step-dot">1</b> Foto vom Beleg</label>
+                  <input id="receiptPhoto" type="file" accept="image/*" required>
+                  <p id="receiptScan" class="scan-status" role="status" hidden></p>
+                  <span class="field-label" id="receiptKindLabel"><b class="step-dot">2</b> Angaben prüfen</span>
                   <div class="segmented" role="radiogroup" aria-labelledby="receiptKindLabel">
                      <label><input type="radio" name="receiptKind" value="Parken" checked required><span>Parken</span></label>
                      <label><input type="radio" name="receiptKind" value="Tanken"><span>Tanken</span></label>
                      <label><input type="radio" name="receiptKind" value="Sonstiges"><span>Sonstiges</span></label>
                   </div>
+                  <label for="receiptAmount">Betrag in Euro</label>
+                  <input id="receiptAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00" required>
                   <label for="receiptDate">Datum auf dem Beleg</label>
                   <input id="receiptDate" type="date" required>
                   <label for="receiptPlace">Ort (Parkhaus, Klinik, Tankstelle)</label>
                   <input id="receiptPlace" type="text" maxlength="120" placeholder="Zum Beispiel: Parkhaus Uniklinik Bonn" required>
-                  <label for="receiptAmount">Betrag in Euro</label>
-                  <input id="receiptAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00" required>
                   <label for="receiptNote">Bemerkung <span class="optional-label">optional</span></label>
                   <input id="receiptNote" type="text" maxlength="200" placeholder="Zum Beispiel: 14:44–15:35 Uhr, EC-Karte">
-                  <label for="receiptPhoto">Foto vom Beleg</label>
-                  <input id="receiptPhoto" type="file" accept="image/*" required>
-                  <button type="submit" class="button-primary">Beleg einreichen</button>
+                  <button type="submit" class="button-primary big-button">Beleg einreichen</button>
                </form>
             </section>
+
+            <!-- ===== Nachrichten ===== -->
+            <section class="directory-card" data-panel="messages" aria-labelledby="messagesTitle" hidden>
+               <button type="button" class="back-button" id="messagesBack">← Zurück</button>
+               <h2 id="messagesTitle" class="wizard-title">Nachrichten</h2>
+               <p class="wizard-hint" id="messagesSummary">Von der Einsatzleitung.</p>
+               <ul id="messageList" class="message-list"></ul>
+            </section>
+
+            <!-- ===== Mein Konto ===== -->
+            <div data-panel="account" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="accountTitle">
+                  <button type="button" class="back-button" id="accountBack">← Zurück</button>
+                  <h2 id="accountTitle" class="wizard-title">Mein Konto</h2>
+                  <dl id="accountInfo" class="vehicle-state"></dl>
+               </section>
+               <section class="directory-card" aria-labelledby="pushTitle">
+                  <h2 id="pushTitle" class="card-title">Mitteilungen aufs Handy</h2>
+                  <p class="portal-text" id="pushInfo">Du bekommst eine Mitteilung bei neuen Aufträgen, Nachrichten und wenn das Auto nach 16 Uhr noch nicht zurück ist.</p>
+                  <button type="button" class="button-primary big-button" id="pushToggle">Mitteilungen einschalten</button>
+               </section>
+               <section class="directory-card" aria-labelledby="installTitle" id="installCard" hidden>
+                  <h2 id="installTitle" class="card-title">Als App auf das Handy legen</h2>
+                  <button type="button" id="installButton" class="button-primary big-button" hidden>App installieren</button>
+                  <ol id="installSteps" class="install-steps"></ol>
+               </section>
+               <section class="directory-card" aria-labelledby="changePasswordTitle">
+                  <h2 id="changePasswordTitle" class="card-title">Passwort ändern</h2>
+                  <form id="changePasswordForm" class="fleet-form">
+                     <label for="changePassword">Neues Passwort (mindestens 8 Zeichen)</label>
+                     <input id="changePassword" type="password" autocomplete="new-password" minlength="8" required>
+                     <button type="submit" class="button-secondary portal-wide-button">Passwort speichern</button>
+                  </form>
+               </section>
+               <button type="button" id="portalSignOut" class="button-secondary portal-wide-button">Abmelden</button>
+            </div>
          </div>
       </main>
 
-      <!-- Untere Leiste: vier feste Bereiche -->
-      <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden>
-         <button type="button" data-view="vehicle" class="is-active">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16.5V12l1.8-5a2 2 0 0 1 1.9-1.3h6.6A2 2 0 0 1 17.2 7L19 12v4.5"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4"/></svg>
-            <span>Fahrzeug</span>
-         </button>
-         <button type="button" data-view="jobs">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 12.5l2.3 2.3 4.7-4.8"/></svg>
-            <span>Aufträge</span><em id="jobsBadge" class="tab-badge" hidden></em>
-         </button>
-         <button type="button" data-view="workdays">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg>
-            <span>Arbeitstage</span>
-         </button>
-         <button type="button" data-view="statement">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 6.5a6.5 6.5 0 1 0 0 11"/><path d="M4 10.5h9M4 13.5h9"/></svg>
-            <span>Abrechnung</span><em id="statementBadge" class="tab-badge" hidden></em>
-         </button>
-      </nav>
+      <!-- Untere Leiste: vier feste Bereiche (je nach Anstellung) -->
+      <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden></nav>
+
+      <!-- Bestätigung nach Übernahme / Rückgabe -->
+      <div id="successOverlay" class="success-overlay" role="status" aria-live="assertive" hidden>
+         <div class="success-card">
+            <svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l8 8 14-16"/></svg>
+            <strong id="successTitle"></strong>
+            <span id="successText"></span>
+         </div>
+      </div>
 
       <div id="toastRegion" class="toast-region" role="status" aria-live="polite"></div>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="cloudClient.js"></script>
       <script src="carSketch.js"></script>
+      <script src="receiptReader.js"></script>
       <script src="portalApp.js"></script>
    </body>
 </html>

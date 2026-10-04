@@ -101,14 +101,18 @@
             info.textContent = 'Für dieses Konto gibt es hier nichts zu erledigen.';
             return;
         }
-        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts;
+        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),
             todoItem('Neue Schäden', countsOnline.damages, 'fahrzeugakte.html'),
-            todoItem('Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html')
+            todoItem('Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html'),
+            todoItem('Festangestellte: Überstunden und Belege prüfen', countsOnline.fest || 0, 'festangestellte.html')
         );
-        if (TerminCloud.isAdmin(profile)) list.append(todoItem('Konten warten auf Freischaltung', countsOnline.accounts, 'team.html'));
+        if (TerminCloud.isAdmin(profile)) list.append(todoItem('Konten: Freischaltung oder Passwort vergessen', countsOnline.accounts, 'team.html'));
+        const write = todoItem('Nachricht an die Dolmetscher schreiben', 0, 'nachrichten.html');
+        write.querySelector('b').textContent = '→';
+        list.append(write);
     }
     loadTodo();
 })();

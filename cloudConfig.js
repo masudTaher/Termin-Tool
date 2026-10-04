@@ -11,5 +11,13 @@ window.TERMIN_CLOUD_CONFIG = {
     // Auswahllisten im Portal – hier lassen sich Begriffe ändern oder ergänzen.
     parkingOptions: ['Rechts', 'Links', 'Rechts weit', 'Links weit', 'Botschaft'],
     alertKinds: ['Reifendruck', 'AdBlue nachfüllen', 'Serviceanzeige', 'Ölstand', 'Motorkontrollleuchte', 'Wischwasser', 'Sonstiges'],
-    fuelLabels: ['Leer', '1/4', '1/2', '3/4', 'Voll']
+    fuelLabels: ['Leer', '1/4', '1/2', '3/4', 'Voll'],
+    // Arbeitszeit der Festangestellten – alles davor oder danach zählt als Überstunden.
+    workStart: '09:00',
+    workEnd: '16:00',
+    // Speicherplatz des Supabase-Tarifs für die Anzeige unten links (in MB).
+    // Kostenloser Tarif: 500 MB Datenbank, 1 GB Fotos.  Pro-Tarif: 8000 MB Datenbank, 100000 MB Fotos.
+    storageLimits: { databaseMb: 500, photosMb: 1024 },
+    // Name der Server-Funktion für Mitteilungen aufs Handy und „Passwort neu vergeben“.
+    pushFunction: 'tt-push'
 };

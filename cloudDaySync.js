@@ -214,6 +214,8 @@
         persistTerminRecords(records(), 'tracking');
         window.refreshTrackingRows?.();
         showToast(`Auftrag an ${target.full_name} gesendet`, 'success');
+        // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', record['Arzt Nr::Name'], getAppointmentLocation(record)].filter(Boolean).join(' · ') });
         syncDay();
     };
 

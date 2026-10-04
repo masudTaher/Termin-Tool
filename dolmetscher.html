@@ -50,10 +50,15 @@
                   <label class="button-secondary import-name-button" for="importInterpreterFile">Liste importieren</label>
                   <input id="importInterpreterFile" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
                </div>
-               <p class="directory-storage-note">Die Namensliste wird in diesem Browser auf diesem Gerät gespeichert. Für eine Kollegin oder ein anderes Gerät kannst du die Liste exportieren und dort importieren.</p>
+               <p class="directory-storage-note">Die Namensliste wird auf diesem Gerät gespeichert – und zusätzlich in der Datenbank, sobald du unter „Team“ angemeldet bist. Dann hat auch das Sekretariat dieselbe Liste.</p>
             </section>
          </div>
       </main>
       <script src="teamDirectory.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
    </body>
 </html>

@@ -51,6 +51,7 @@
         const sync = await TerminCloud.syncFleet();
         if (!sync.ok && sync.reason && !['offline', 'not-admin'].includes(sync.reason)) setStatus(`Fuhrpark-Abgleich: ${sync.reason}`, 'error');
         await loadAccounts();
+        checkServer();
         window.refreshCloudInbox?.();
     }
 
@@ -58,12 +59,16 @@
     async function loadAccounts() {
         const { data: accounts, error } = await client.from('tt_profiles').select('*').order('full_name');
         if (error) { setStatus(TerminCloud.germanError(error), 'error'); return; }
+        // Wer hat im Portal „Passwort vergessen“ getippt? (nur für den Admin sichtbar)
+        const resetResult = TerminCloud.isAdmin(profile) ? await client.from('tt_reset_requests').select('*').is('done_at', null) : { data: [] };
+        const resetIds = new Set((resetResult.data || []).map(item => item.profile_id));
         const waiting = accounts.filter(account => !account.active).length;
-        $('accountsSummary').textContent = `${accounts.length} ${accounts.length === 1 ? 'Konto' : 'Konten'}${waiting ? `, ${waiting} warten auf Freischaltung` : ''}`;
+        $('accountsSummary').textContent = `${accounts.length} ${accounts.length === 1 ? 'Konto' : 'Konten'}${waiting ? `, ${waiting} warten auf Freischaltung` : ''}${resetIds.size ? `, ${resetIds.size} ${resetIds.size === 1 ? 'Person hat' : 'Personen haben'} das Passwort vergessen` : ''}`;
         const list = $('accountList');
         list.replaceChildren();
-        // Wartende Konten zuerst.
-        [...accounts].sort((left, right) => Number(left.active) - Number(right.active)).forEach(account => {
+        // Wartende Konten und Passwort-Anfragen zuerst.
+        const rank = account => !account.active ? 0 : resetIds.has(account.id) ? 1 : 2;
+        [...accounts].sort((left, right) => rank(left) - rank(right)).forEach(account => {
             const item = document.createElement('li');
             item.className = 'vehicle-entry';
             const meta = document.createElement('span');
@@ -75,9 +80,23 @@
             state.className = account.active ? 'vehicle-driver' : 'account-waiting';
             state.textContent = account.active ? 'Freigeschaltet' : 'Wartet auf Freischaltung';
             meta.append(name, details, state);
+            if (resetIds.has(account.id)) {
+                const forgot = document.createElement('small');
+                forgot.className = 'account-waiting';
+                forgot.textContent = 'Hat das Passwort vergessen';
+                meta.append(forgot);
+            }
             const actions = document.createElement('span');
             actions.className = 'vehicle-entry-actions';
             const canManage = TerminCloud.isAdmin(profile);
+            if (canManage && account.active && account.id !== profile.id) {
+                const reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = resetIds.has(account.id) ? 'button-primary account-approve account-reset' : 'button-quiet account-reset';
+                reset.textContent = 'Neues Passwort';
+                reset.addEventListener('click', () => resetPassword(account));
+                actions.append(reset);
+            }
             if (canManage && account.active && account.role === 'dolmetscher') {
                 const employment = document.createElement('button');
                 employment.type = 'button';
@@ -114,6 +133,38 @@
             accounts.filter(account => account.active && account.full_name).forEach(account => addInterpreterName(account.full_name));
         }
         await loadWorkdays(accounts);
+    }
+
+    // Neues vorläufiges Passwort vergeben – läuft über die Server-Funktion, weil nur sie Passwörter setzen darf.
+    async function resetPassword(account) {
+        const name = account.full_name || 'dieses Konto';
+        if (!await confirmDialog(`Für ${name} ein neues vorläufiges Passwort vergeben? Das alte Passwort gilt dann nicht mehr.`, 'Neues Passwort vergeben')) return;
+        const result = await TerminCloud.callFunction({ action: 'resetPassword', profileId: account.id });
+        if (!result.ok || !result.data?.password) {
+            showToast(`Das Passwort konnte nicht vergeben werden: ${result.reason || 'unbekannter Fehler'}`, 'error', { duration: 12000 });
+            return;
+        }
+        $('passwordDialogText').textContent = `Vorläufiges Passwort für ${name}:`;
+        $('passwordDialogValue').textContent = result.data.password;
+        $('passwordDialog').showModal();
+        await loadAccounts();
+        window.refreshCloudInbox?.();
+    }
+    $('passwordDialogClose').addEventListener('click', () => { $('passwordDialogValue').textContent = ''; $('passwordDialog').close(); });
+    $('passwordDialogCopy').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText($('passwordDialogValue').textContent); showToast('Passwort kopiert.', 'success'); }
+        catch (error) { showToast('Bitte das Passwort von Hand abschreiben.', 'info'); }
+    });
+
+    // Ist die Server-Funktion eingerichtet? (für Mitteilungen aufs Handy und neue Passwörter)
+    async function checkServer() {
+        if (!TerminCloud.isAdmin(profile)) return;
+        $('serverCard').hidden = false;
+        const result = await TerminCloud.callFunction({ action: 'publicKey' });
+        $('serverState').textContent = result.ok
+            ? 'Eingerichtet. Dolmetscher schalten Mitteilungen im Portal unter „Mein Konto“ ein; die Erinnerung nach 16 Uhr läuft automatisch.'
+            : 'Noch nicht eingerichtet. Anleitung: Datei „supabase/EINRICHTUNG-MITTEILUNGEN.md“ – dauert etwa 5 Minuten. Bis dahin funktionieren Nachrichten im Portal, aber ohne Mitteilung aufs Handy.';
+        $('serverCard').dataset.state = result.ok ? 'ok' : 'todo';
     }
 
     async function updateAccount(account, changes) {

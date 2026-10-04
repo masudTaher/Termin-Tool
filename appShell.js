@@ -23,7 +23,7 @@
         const button = document.getElementById('themeToggle');
         if (button) {
             button.setAttribute('aria-pressed', String(theme === 'dark'));
-            button.querySelector('span').textContent = theme === 'dark' ? 'Heller Modus' : 'Dunkler Modus';
+            button.querySelector('span').textContent = theme === 'dark' ? 'Hell' : 'Dunkel';
         }
     }
 
@@ -43,7 +43,9 @@
         euro: icon('<path d="M17.5 6.5a6.5 6.5 0 1 0 0 11"/><path d="M4 10.5h9M4 13.5h9"/>'),
         cloud: icon('<path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 5.5 5.5 0 0 1 10.7 1.1A3.9 3.9 0 0 1 17 18.5z"/>'),
         moon: icon('<path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/>'),
-        home: icon('<path d="M4 11.5 12 5l8 6.500"/><path d="M6 10.500V19h4.500v-5h3v5H18v-8.500"/>')
+        home: icon('<path d="M4 11.5 12 5l8 6.500"/><path d="M6 10.500V19h4.500v-5h3v5H18v-8.500"/>'),
+        clock: icon('<circle cx="12" cy="12.500" r="8"/><path d="M12 8v4.500l3 2M9.500 2.500h5"/>'),
+        message: icon('<path d="M4.500 6.500a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.500 3.500v-3.500a2 2 0 0 1-2-2z"/><path d="M8.500 9h7M8.500 12h4.500"/>')
     };
 
     const NAV = [
@@ -62,6 +64,8 @@
             { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fahrzeugakten', icon: ICONS.folder },
             { page: 'archiv', href: 'archiv.html', label: 'Online-Archiv', icon: ICONS.archive },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
+            { page: 'fest', href: 'festangestellte.html', label: 'Überstunden', icon: ICONS.clock },
+            { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message },
             { page: 'team', href: 'team.html', label: 'Team', icon: ICONS.cloud }
         ] }
     ];
@@ -85,11 +89,16 @@
                 `).join('')}
             </nav>
             <div class="app-nav-footer">
-                <button type="button" class="app-nav-link" id="exportMasterData" title="Dolmetscher, Fahrzeuge, Übergaben und Filterregeln in eine Datei sichern">${ICONS.save}<span>Alles sichern</span></button>
-                <button type="button" class="app-nav-link" id="importMasterDataButton" title="Sicherungsdatei laden">${ICONS.load}<span>Alles laden</span></button>
+                <div class="app-nav-tools">
+                    <button type="button" class="app-nav-link" id="exportMasterData" title="Dolmetscher, Fahrzeuge, Übergaben und Filterregeln in eine Datei sichern">${ICONS.save}<span>Sichern</span></button>
+                    <button type="button" class="app-nav-link" id="importMasterDataButton" title="Sicherungsdatei laden">${ICONS.load}<span>Laden</span></button>
+                    <button type="button" class="app-nav-link" id="themeToggle" aria-pressed="false" title="Hell / Dunkel umschalten">${ICONS.moon}<span>Dunkel</span></button>
+                </div>
                 <input type="file" id="importMasterDataFile" accept=".json,application/json" hidden>
-                <button type="button" class="app-nav-link" id="themeToggle" aria-pressed="false" title="Hell / Dunkel umschalten">${ICONS.moon}<span>Dunkler Modus</span></button>
-                <p class="app-nav-note"><i aria-hidden="true"></i><span>Lokal gespeichert; mit Anmeldung unter „Team“ auch online</span></p>
+                <div class="app-nav-cloud" id="navCloud">
+                    <a class="app-nav-note" id="navCloudState" href="team.html"><i aria-hidden="true"></i><span>Lokal gespeichert; mit Anmeldung unter „Team“ auch online</span></a>
+                    <div id="navStorage" class="nav-storage" hidden></div>
+                </div>
             </div>`;
         document.body.prepend(nav);
 

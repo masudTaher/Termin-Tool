@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Nachrichten · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="nachrichten">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · NACHRICHTEN</p><h1>Nachricht an die Dolmetscher</h1><p>An alle, an eine Gruppe oder an einzelne Personen. Die Nachricht erscheint im Portal und – wenn eingeschaltet – als Mitteilung auf dem Handy.</p></div>
+            <div class="fleet-heading-actions"><button type="button" id="messageReload" class="button-secondary">Aktualisieren</button></div>
+         </div>
+         <p id="messageStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="messageApp" class="fleet-layout" hidden>
+            <section class="directory-card" aria-labelledby="composeTitle">
+               <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="composeTitle">Neue Nachricht</h2><p>In drei Schritten: Empfänger wählen, Text schreiben, senden.</p></div></div>
+               <form id="messageForm" class="fleet-form">
+                  <span class="field-label" id="audienceLabel">An wen?</span>
+                  <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="audienceLabel">
+                     <label><input type="radio" name="audience" value="alle" checked><span>Alle</span></label>
+                     <label><input type="radio" name="audience" value="fest"><span>Alle Festangestellten</span></label>
+                     <label><input type="radio" name="audience" value="temporär"><span>Alle Temporären</span></label>
+                     <label><input type="radio" name="audience" value="einzeln"><span>Einzelne Personen</span></label>
+                  </div>
+                  <div id="recipientBox" hidden>
+                     <span class="field-label">Personen antippen</span>
+                     <div id="recipientList" class="recipient-list"></div>
+                  </div>
+                  <p id="audienceInfo" class="field-hint"></p>
+                  <label for="messageBody">Nachricht</label>
+                  <textarea id="messageBody" rows="5" maxlength="1000" required placeholder="Zum Beispiel: Morgen bitte alle um 8:30 Uhr im Büro sein."></textarea>
+                  <p class="field-hint" id="messageCount">0 von 1000 Zeichen</p>
+                  <button type="submit" class="button-primary">Nachricht senden</button>
+               </form>
+            </section>
+
+            <section class="directory-card" aria-labelledby="sentTitle">
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">2</span><div><h2 id="sentTitle">Gesendete Nachrichten</h2><p id="sentSummary">Wird geladen …</p></div></div>
+               <ul id="sentList" class="directory-list file-list"></ul>
+            </section>
+         </div>
+      </main>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
+      <script src="nachrichtenApp.js"></script>
+   </body>
+</html>

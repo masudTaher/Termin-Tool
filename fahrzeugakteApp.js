@@ -145,7 +145,17 @@
             const open = el('button', 'button-quiet', 'Akte');
             open.type = 'button';
             open.addEventListener('click', () => selectVehicle(item.vehicle_id));
-            actions.append(open);
+            // Erinnerung direkt aufs Handy der Person (wenn sie Mitteilungen eingeschaltet hat).
+            const remind = el('button', 'button-secondary fleet-end-button', 'Erinnern');
+            remind.type = 'button';
+            remind.addEventListener('click', async () => {
+                remind.disabled = true;
+                const result = await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [item.driver_id], title: 'Fahrzeug zurückgeben', body: `Bitte gib ${vehicleOf(item)?.plate || 'dein Fahrzeug'} zurück und trag Kilometer, Tank und Parkort ein.` });
+                remind.disabled = false;
+                if (!result.ok) showToast(`Erinnerung nicht gesendet: ${result.reason}`, 'error');
+                else showToast(result.data.sent ? `Erinnerung an ${item.driver_name} gesendet.` : `${item.driver_name} hat Mitteilungen noch nicht eingeschaltet – bitte anrufen.`, result.data.sent ? 'success' : 'info');
+            });
+            actions.append(remind, open);
             row.append(pill('offen', 'Nicht zurückgegeben'), meta, actions);
             list.append(row);
         });

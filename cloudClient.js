@@ -14,6 +14,8 @@ const TerminCloud = (() => {
         if (/password should be at least/i.test(message)) return 'Das Passwort ist zu kurz (mindestens 8 Zeichen).';
         if (/email not confirmed/i.test(message)) return 'Die E-Mail-Adresse ist noch nicht bestätigt.';
         if (/failed to fetch|networkerror|load failed/i.test(message)) return 'Keine Verbindung zur Datenbank. Prüfe das Internet.';
+        if (/same password|different from the old/i.test(message)) return 'Das neue Passwort muss sich vom alten unterscheiden.';
+        if (/relation .* does not exist|could not find the (table|function)|schema cache/i.test(message)) return 'Diese Funktion ist in der Datenbank noch nicht eingerichtet (Update 8 fehlt).';
         return message || 'Unbekannter Fehler.';
     };
 
@@ -105,8 +107,96 @@ const TerminCloud = (() => {
             client.from('tt_receipts').select('id').eq('status', 'eingereicht'),
             client.from('tt_statements').select('month').eq('response', 'einwand')
         ]);
-        return { damages: damages.data.length, alerts: alerts.data.length + openNotes, accounts: isAdmin(profile) ? accounts.data.length : 0,
-            payroll: (newReceipts.error ? 0 : newReceipts.data.length) + (objections.error ? 0 : objections.data.length) };
+        // Belege und Überstunden der Festangestellten haben eine eigene Seite.
+        const [staffList, overtime, resets] = await Promise.all([
+            client.from('tt_profiles').select('id, employment'),
+            client.from('tt_overtime').select('id').eq('status', 'eingereicht'),
+            client.from('tt_reset_requests').select('id').is('done_at', null)
+        ]);
+        const festIds = new Set((staffList.data || []).filter(item => item.employment === 'fest').map(item => item.id));
+        const openReceipts = newReceipts.error ? [] : newReceipts.data;
+        const festReceipts = openReceipts.filter(item => festIds.has(item.profile_id)).length;
+        return { damages: damages.data.length, alerts: alerts.data.length + openNotes,
+            accounts: isAdmin(profile) ? accounts.data.length + (resets.error ? 0 : resets.data.length) : 0,
+            payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
+            fest: festReceipts + (overtime.error ? 0 : overtime.data.length) };
+    }
+
+    // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------
+    async function callFunction(body) {
+        if (!client?.functions) return { ok: false, reason: 'nicht eingerichtet' };
+        try {
+            const { data, error } = await client.functions.invoke(config.pushFunction || 'tt-push', { body });
+            if (error) {
+                let detail = '';
+                try { detail = (await error.context?.json?.())?.error || ''; } catch (parseError) { /* keine lesbare Antwort */ }
+                return { ok: false, reason: detail || 'Die Server-Funktion ist noch nicht eingerichtet.' };
+            }
+            if (data?.error) return { ok: false, reason: data.error };
+            return { ok: true, data };
+        } catch (error) {
+            return { ok: false, reason: germanError(error) };
+        }
+    }
+
+    // ---------- Mitteilungen aufs Handy (Web-Push) ----------
+    const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    const keyToBytes = key => {
+        const padded = (key + '='.repeat((4 - key.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+        return Uint8Array.from(atob(padded), character => character.charCodeAt(0));
+    };
+
+    // 'unsupported' | 'blocked' | 'on' | 'off'
+    async function pushState() {
+        if (!pushSupported()) return 'unsupported';
+        if (Notification.permission === 'denied') return 'blocked';
+        try {
+            const registration = await navigator.serviceWorker.getRegistration();
+            const subscription = await registration?.pushManager.getSubscription();
+            return subscription && Notification.permission === 'granted' ? 'on' : 'off';
+        } catch (error) {
+            return 'off';
+        }
+    }
+
+    async function enablePush() {
+        if (!pushSupported()) throw new Error('Dieses Handy unterstützt Mitteilungen nur, wenn das Portal als App installiert ist.');
+        const profile = await getProfile();
+        if (!profile) throw new Error('Bitte zuerst anmelden.');
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt. Du kannst das in den Einstellungen des Handys ändern.');
+        const key = await callFunction({ action: 'publicKey' });
+        if (!key.ok || !key.data?.publicKey) throw new Error('Mitteilungen sind noch nicht eingerichtet. Bitte sag der Einsatzleitung Bescheid.');
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key.data.publicKey) });
+        const raw = subscription.toJSON();
+        const { error } = await client.from('tt_push_subscriptions').upsert({
+            endpoint: raw.endpoint, profile_id: profile.id, p256dh: raw.keys?.p256dh || '', auth: raw.keys?.auth || '',
+            user_agent: navigator.userAgent.slice(0, 200)
+        }, { onConflict: 'endpoint' });
+        if (error) throw new Error(germanError(error));
+        return true;
+    }
+
+    async function disablePush() {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+        if (!subscription) return;
+        await client.from('tt_push_subscriptions').delete().eq('endpoint', subscription.endpoint);
+        await subscription.unsubscribe();
+    }
+
+    // ---------- Speicherplatz ----------
+    async function usage() {
+        const profile = await getProfile().catch(() => null);
+        if (!isStaff(profile)) return null;
+        const { data, error } = await client.rpc('tt_usage');
+        if (error || !data) return null;
+        const limits = config.storageLimits || { databaseMb: 500, photosMb: 1024 };
+        const mb = bytes => Math.round(Number(bytes || 0) / 1048576 * 10) / 10;
+        return { databaseMb: mb(data.database_bytes), photosMb: mb(data.storage_bytes), photos: Number(data.photos || 0),
+            databaseLimitMb: limits.databaseMb, photosLimitMb: limits.photosMb };
     }
 
     const todayIso = () => {
@@ -216,5 +306,6 @@ const TerminCloud = (() => {
         return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length };
     }
 
-    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey };
+    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey,
+        callFunction, pushSupported, pushState, enablePush, disablePush, usage };
 })();

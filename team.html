@@ -34,6 +34,10 @@
                <div class="directory-input-row"><input id="portalLink" type="text" readonly aria-label="Portal-Link"><button type="button" id="copyPortalLink" class="button-secondary">Link kopieren</button></div>
             </section>
 
+            <section class="directory-card team-link-card" id="serverCard" hidden>
+               <div class="directory-card-heading"><span class="directory-step directory-step-dark">⚙</span><div><h2>Mitteilungen aufs Handy und „Passwort neu vergeben“</h2><p id="serverState">Wird geprüft …</p></div></div>
+            </section>
+
             <div class="fleet-layout">
                <section class="directory-card" aria-labelledby="accountsTitle">
                   <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="accountsTitle">Dolmetscher-Konten</h2><p id="accountsSummary">Wird geladen …</p></div></div>
@@ -48,6 +52,12 @@
 
          </div>
       </main>
+      <dialog id="passwordDialog" class="confirm-dialog">
+         <p id="passwordDialogText"></p>
+         <output id="passwordDialogValue" class="password-output"></output>
+         <p class="fleet-footnote">Sag das Passwort der Person am Telefon oder schick es per WhatsApp. Beim ersten Anmelden muss sie ein eigenes Passwort festlegen. Dieses Fenster zeigt das Passwort nur einmal.</p>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="passwordDialogCopy">Kopieren</button><button type="button" class="button-primary" id="passwordDialogClose">Fertig</button></div>
+      </dialog>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="workflowStorage.js"></script>
@@ -56,6 +66,7 @@
       <script src="cloudClient.js"></script>
       <script src="cloudFleetSync.js"></script>
       <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
       <script src="teamApp.js"></script>
    </body>
 </html>

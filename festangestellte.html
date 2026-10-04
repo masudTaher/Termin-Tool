@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Überstunden und Belege · Botschaft Dolmetscher und Transport-App</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="fest">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · FESTANGESTELLTE</p><h1>Überstunden und Belege</h1><p>Was die Festangestellten im Portal melden: Überstunden vor 9 und nach 16 Uhr – mit dem Termin dazu – und ihre Park- und Tankbelege.</p></div>
+            <div class="fleet-heading-actions">
+               <button type="button" id="festExport" class="button-secondary">Excel exportieren</button>
+               <button type="button" id="festReload" class="button-secondary">Aktualisieren</button>
+            </div>
+         </div>
+         <p id="festStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="festApp" hidden>
+            <section class="directory-card payroll-settings">
+               <div class="fleet-field"><label for="festMonth">Monat</label><input id="festMonth" type="month"></div>
+               <p id="festCheck" class="payroll-check" role="status"></p>
+            </section>
+
+            <div class="fleet-summary payroll-summary">
+               <article class="overview-card overview-card-done"><span class="overview-label">Überstunden bestätigt</span><strong id="sumConfirmed">0 Min</strong><small id="sumConfirmedPeople"></small></article>
+               <article class="overview-card overview-card-departed"><span class="overview-label">Noch zu prüfen</span><strong id="sumOpen">0 Min</strong><small id="sumOpenCount"></small></article>
+               <article class="overview-card"><span class="overview-label">Belege</span><strong id="sumFestReceipts">0 €</strong><small id="sumFestReceiptCount"></small></article>
+            </div>
+
+            <section class="directory-card">
+               <div class="fleet-log-heading">
+                  <div class="portal-tabs payroll-tabs fest-tabs"><button type="button" data-fest-tab="overtime" class="is-active">Überstunden</button><button type="button" data-fest-tab="receipts">Belege</button></div>
+               </div>
+
+               <div data-fest-panel="overtime">
+                  <h2 class="card-title fest-subtitle">Summe pro Person</h2>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Bestätigt</th><th>Noch zu prüfen</th><th>Abgelehnt</th><th>Einträge</th></tr></thead><tbody id="personBody"></tbody></table></div>
+                  <h2 class="card-title fest-subtitle">Alle Meldungen</h2>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Termin</th><th>Zeiten</th><th>Überstunden</th><th>Bemerkung</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="overtimeBody"></tbody></table></div>
+               </div>
+
+               <div data-fest-panel="receipts" hidden>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Ort</th><th>Art</th><th>Betrag</th><th>Bemerkung</th><th>Foto</th><th>Status</th></tr></thead><tbody id="festReceiptBody"></tbody></table></div>
+               </div>
+            </section>
+         </div>
+      </main>
+      <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto des Belegs"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
+      <dialog id="rejectDialog" class="confirm-dialog">
+         <form id="rejectForm" class="fleet-form" method="dialog">
+            <p id="rejectText">Überstunden ablehnen?</p>
+            <label for="rejectNote">Grund – sieht die Person im Portal</label>
+            <input id="rejectNote" type="text" maxlength="200" required placeholder="Zum Beispiel: Termin war um 15:30 Uhr beendet">
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="rejectCancel">Abbrechen</button><button type="submit" class="button-primary">Ablehnen</button></div>
+         </form>
+      </dialog>
+      <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
+      <script src="festApp.js"></script>
+   </body>
+</html>

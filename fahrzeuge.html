@@ -13,7 +13,7 @@
             <div><p class="page-kicker">FAHRDIENST · FUHRPARK</p><h1>Fahrzeugübergaben</h1><p>Sieh auf einen Blick, wer welches Fahrzeug übernommen hat und wann es weitergegeben wurde.</p></div>
             <div class="fleet-heading-actions"><button id="undoFleetChange" type="button" class="button-secondary" disabled>Rückgängig</button><a href="termineTracking.html" class="button-secondary back-to-tracking">Zum Live-Tracking</a></div>
          </div>
-         <p id="fleetStatus" class="workflow-status" role="status" aria-live="polite">Fahrzeuge und Übergaben werden nur auf diesem Gerät gespeichert.</p>
+         <p id="fleetStatus" class="workflow-status" role="status" aria-live="polite">Fahrzeuge und Übergaben werden auf diesem Gerät gespeichert – und in der Datenbank, sobald du unter „Team“ angemeldet bist.</p>
 
          <div class="fleet-summary">
             <article class="overview-card"><span class="overview-label">Fahrzeuge</span><strong id="fleetVehicleCount">0</strong><small>im Fuhrpark erfasst</small></article>
@@ -85,5 +85,6 @@
       <script src="cloudClient.js"></script>
       <script src="cloudFleetSync.js"></script>
       <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
    </body>
 </html>
