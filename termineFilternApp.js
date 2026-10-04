@@ -390,7 +390,7 @@ function renderTables() {
 
     const renderRows = (termine, source) => termine.map((termin, index) => `
       <tr draggable="true" ondragstart="drag(event, '${source}', ${index})">
-        <td>${escapeHtml(formatExcelTime(termin['Termin_Uhrzeit']))}</td>
+        <td>${escapeHtml(String(formatExcelTime(termin['Termin_Uhrzeit'])).replace(/^(\d{1,2}:\d{2}):\d{2}$/, '$1'))}</td>
         <td>${escapeHtml([termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']].filter(value => String(value || '').trim()).join(' '))}</td>
         <td>${escapeHtml(termin['Arzt Nr::Name'] ?? '')}</td>
         <td>${escapeHtml(termin['Bemerkung'] || '')}${filterReasons.get(termin) ? `<span class="filter-reason" data-kind="${source === 'gefiltert' ? 'keep' : 'drop'}">${escapeHtml(filterReasons.get(termin))}</span>` : ''}</td>

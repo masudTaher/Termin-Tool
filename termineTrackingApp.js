@@ -241,6 +241,12 @@ function renderTrackingTable(data) {
     document.getElementById('savePdfButton').disabled = false;
 
     const columnLabels = ['Nr.', 'Start', 'Pat.-Nr.', 'Patient', 'Bemerkung', 'Arzt', 'Ort', 'Dolmetscher / Auto', 'Status', 'Aktion'];
+    const rowIcon = paths => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    const ROW_ICONS = {
+        chat: rowIcon('<path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.7-5.1A8.5 8.5 0 1 1 21 11.5z"/>'),
+        send: rowIcon('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'),
+        trash: rowIcon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>')
+    };
     const cloudReady = typeof window.sendTrackingAssignment === 'function';
     const statusOptions = [['offen', 'Offen'], ['losgefahren', 'Losgefahren'], ['beendet', 'Beendet'], ['alleine', 'Alleine'], ['storniert', 'Storniert']];
 
@@ -270,9 +276,9 @@ function renderTrackingTable(data) {
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>` : ''),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`,
             `<div class="tracking-row-actions">`
-                + `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">WhatsApp</button>`
-                + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="Auftrag ins Dolmetscher-Portal senden">${termin['Rückmeldung'] ? 'Neu senden' : 'Auftrag'}</button>` : '')
-                + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">Löschen</button>`
+                + `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`
+                + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="${termin['Rückmeldung'] ? 'Auftrag erneut ins Dolmetscher-Portal senden' : 'Auftrag ins Dolmetscher-Portal senden'}">${ROW_ICONS.send}<span>${termin['Rückmeldung'] ? 'Erneut' : 'Auftrag'}</span></button>` : '')
+                + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">${ROW_ICONS.trash}<span class="visually-hidden">Löschen</span></button>`
                 + `</div>`
         ];
         return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
