@@ -4,7 +4,7 @@
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
       <meta name="robots" content="noindex">
-      <title>Dolmetscher-Portal · Botschaft Dolmetscher und Transport-App</title>
+      <title>Dolmetscher-Portal · Medical Office Bonn</title>
       <!-- Als App auf dem Handy: Android nutzt das Manifest, iPhone die apple-Angaben. -->
       <link rel="manifest" href="manifest.json">
       <meta name="theme-color" content="#1769aa">
@@ -22,7 +22,7 @@
    </head>
    <body data-page="portal">
       <header class="portal-header">
-         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true">BD</span><span class="app-brand-copy"><strong>Dolmetscher-Portal</strong><small id="portalUser">Botschaft · Dolmetscher und Transport</small></span></span>
+         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true">MO</span><span class="app-brand-copy"><strong>Dolmetscher-Portal</strong><small id="portalUser">Medical Office Bonn · Transport und Dolmetscher</small></span></span>
          <span class="portal-header-actions" id="portalHeaderActions" hidden>
             <button type="button" class="icon-button" id="openMessages" aria-label="Nachrichten">
                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.500 2 6.500H4c0-1 2-2 2-6.500z"/><path d="M10 19.500a2 2 0 0 0 4 0"/></svg>
@@ -39,7 +39,8 @@
          <section id="portalAuth" class="directory-card" hidden>
             <div class="portal-welcome">
                <h1>Willkommen</h1>
-               <p>Botschaft Dolmetscher und Transport-App – Fahrzeug übernehmen, Aufträge beantworten, Zeiten und Belege eintragen.</p>
+               <p class="portal-org">Botschaft Katar · Medical Office Bonn<br>Abteilung Transport und Dolmetscher</p>
+               <p>Fahrzeug übernehmen, Aufträge beantworten, Zeiten und Belege eintragen.</p>
             </div>
             <div class="portal-tabs" role="tablist">
                <button type="button" role="tab" id="tabSignIn" class="is-active" aria-selected="true">Anmelden</button>
@@ -419,6 +420,10 @@
                <button type="button" id="portalSignOut" class="button-secondary portal-wide-button">Abmelden</button>
             </div>
          </div>
+         <footer class="portal-credit">
+            <span>Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher</span>
+            <span>Entwickelt von Abdulrahman Allam</span>
+         </footer>
       </main>
 
       <!-- Untere Leiste: vier feste Bereiche (je nach Anstellung) -->

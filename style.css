@@ -213,7 +213,7 @@ button:disabled { border-color: var(--line); background: var(--surface-soft); co
   letter-spacing: .04em;
 }
 .app-brand-copy { display: grid; line-height: 1.2; }
-.app-brand-copy strong { font-size: .98rem; }
+.app-brand-copy strong { font-size: .94rem; letter-spacing: -.005em; white-space: nowrap; }
 .app-brand-copy small { margin-top: 3px; color: var(--nav-muted); font-size: .72rem; }
 .app-nav-group { margin: 14px 10px 4px; color: color-mix(in srgb, var(--nav-muted) 78%, transparent); font-size: .66rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .app-nav-link, :root[data-theme="dark"] .app-nav-link {
@@ -273,15 +273,32 @@ button:disabled { border-color: var(--line); background: var(--surface-soft); co
   .app-nav-link { justify-content: center; padding: 8px 0; }
   .app-nav-footer { width: 100%; }
 }
+/* Handy: unten eine feste Leiste wie in einer App; „Mehr“ schiebt das ganze Menü herein. */
+.app-tabbar, .app-nav-close { display: none; }
 @media (max-width: 760px) {
-  body { padding-left: 0; }
-  .app-nav { position: sticky; inset: 0 0 auto 0; width: 100%; flex-direction: row; align-items: center; gap: 4px; padding: 8px 10px; overflow-x: auto; }
-  .app-brand { padding: 0 6px 0 0; }
-  .app-brand-mark { width: 34px; height: 34px; }
-  .app-nav nav { width: auto; flex-direction: row; }
-  .app-nav-link { width: 40px; flex: 0 0 auto; }
-  .app-nav-footer { width: auto; flex-direction: row; margin: 0 0 0 auto; padding: 0; border: 0; }
-  .container { width: calc(100% - 24px); padding-top: 18px; }
+  :root { --nav-w: 0px; }
+  body { padding-left: 0; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .app-nav { inset: 0; z-index: 60; width: 100%; align-items: stretch; gap: 6px; padding: 18px 16px calc(88px + env(safe-area-inset-bottom, 0px)); visibility: hidden; transform: translateX(-104%); transition: transform .22s ease, visibility .22s; }
+  body.nav-open .app-nav { visibility: visible; transform: none; }
+  body.nav-open { overflow: hidden; }
+  .app-brand { padding: 2px 8px 14px; }
+  .app-brand-copy { display: grid; }
+  .app-nav-group { display: block; }
+  .app-nav nav { gap: 2px; }
+  .app-nav-link, :root[data-theme="dark"] .app-nav-link { min-height: 48px; justify-content: flex-start; padding: 8px 12px; font-size: 1rem; }
+  .app-nav-link span { display: inline; }
+  .app-nav-link em { display: grid; }
+  .app-nav-note { display: flex; }
+  .app-nav-footer { width: 100%; }
+  .app-nav-close, :root[data-theme="dark"] .app-nav-close { position: absolute; top: 12px; right: 12px; display: grid; width: 44px; min-height: 44px; padding: 0; place-items: center; border: 0; border-radius: 12px; background: var(--nav-hover); color: #fff; font-size: 1.6rem; font-weight: 400; line-height: 1; }
+  .app-tabbar { position: fixed; inset: auto 0 0 0; z-index: 70; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--nav-line); background: var(--nav-bg-2); }
+  .app-tab, :root[data-theme="dark"] .app-tab { position: relative; display: flex; min-width: 0; min-height: 54px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px 2px; border: 0; border-radius: 12px; background: transparent; color: var(--nav-muted); font-size: .68rem; font-weight: 650; line-height: 1.1; text-decoration: none; }
+  .app-tab svg { width: 23px; height: 23px; }
+  .app-tab[aria-current="page"], body.nav-open #appMenuToggle, :root[data-theme="dark"] .app-tab[aria-current="page"] { background: var(--nav-active); color: #fff; }
+  .app-tab .nav-badge { position: absolute; top: 3px; left: calc(50% + 6px); min-width: 18px; height: 18px; margin: 0; padding: 0 5px; font-size: .64rem; }
+  .container { width: calc(100% - 24px); padding-top: 16px; padding-bottom: 28px; }
+  .page-heading h1 { font-size: 1.5rem; }
+  .toast-region { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ---------- 4 Bausteine ---------- */
@@ -690,17 +707,41 @@ body[data-page="portal"] { padding-left: 0; }
 .file-heading { margin: 18px 0 8px; color: var(--ink-soft); font-size: .9rem; }
 .file-heading:first-child { margin-top: 0; }
 
-.vehicle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-.vehicle-card, :root[data-theme="dark"] .vehicle-card { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-height: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 400; text-align: left; }
-.vehicle-card:hover { border-color: var(--brand); background: var(--surface); }
-.vehicle-card.is-active { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+/* Fuhrpark: Filterkacheln oben, darunter jedes Fahrzeug als Karte mit Bild und Status. */
+.fleet-filter { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 18px 0 14px; }
+.vehicle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.vehicle-card, :root[data-theme="dark"] .vehicle-card { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-height: 0; padding: 0 0 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 400; text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.vehicle-card > :not(.vehicle-art):not(.vehicle-state-chip) { margin-inline: 16px; }
+.vehicle-card:hover, :root[data-theme="dark"] .vehicle-card:hover { border-color: var(--brand); background: var(--surface); box-shadow: var(--shadow); transform: translateY(-1px); }
+.vehicle-card.is-active { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand); }
+/* Bildfläche: immer hell, damit das schwarze Auto auch im dunklen Design gut zu sehen ist. */
+.vehicle-art { display: grid; aspect-ratio: 16 / 7.6; place-items: center; padding: 14px 18px 6px; background: linear-gradient(180deg, #f4f7fb, #dbe4ee); }
+.vehicle-art svg { width: 100%; max-width: 300px; height: auto; }
+.vehicle-art.has-photo { padding: 0; }
+.vehicle-art img { width: 100%; height: 100%; object-fit: cover; }
+.vehicle-state-chip { position: absolute; top: 10px; left: 10px; max-width: calc(100% - 20px); padding: 3px 11px; overflow: hidden; border-radius: 999px; background: #18794e; color: #fff; font-size: .76rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; box-shadow: 0 2px 6px rgba(16, 36, 61, .2); }
+.vehicle-state-chip[data-state="unterwegs"] { background: #b7791f; }
 .vehicle-card-head, .vehicle-card-people { display: flex; flex-direction: column; gap: 1px; }
-.vehicle-card-head strong { font-size: 1.05rem; letter-spacing: .02em; }
-.vehicle-card small { color: var(--muted); font-size: .78rem; }
-.vehicle-card .vehicle-driver { color: var(--accent); font-weight: 650; }
+.vehicle-card-head { margin-top: 4px; }
+.vehicle-card-head strong { font-size: 1.2rem; font-weight: 800; letter-spacing: .03em; }
+.vehicle-card small { color: var(--muted); font-size: .8rem; }
+.vehicle-card .vehicle-reserved { color: var(--brand); font-weight: 700; }
+.vehicle-card-people:empty { display: none; }
 .vehicle-card-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .vehicle-card-facts small { color: var(--ink-soft); font-weight: 600; }
 .vehicle-card-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.file-hero { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 16px; align-items: center; min-width: 0; }
+.file-hero .vehicle-art { border-radius: 14px; overflow: hidden; }
+.file-hero h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: .01em; }
+.file-hero p { margin: 2px 0 8px; color: var(--muted); font-size: .88rem; }
+.field-hint { margin-top: -2px; color: var(--muted); font-size: .76rem; line-height: 1.4; }
+.file-photo { padding-top: 12px; border-top: 1px solid var(--line); }
+.file-photo input[type="file"] { width: 100%; }
+@media (max-width: 760px) {
+  .fleet-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .fleet-filter .overview-card { min-height: 58px; padding: 8px 10px; }
+  .file-hero { grid-template-columns: 1fr; }
+}
 
 .vehicle-file { margin-top: 16px; }
 .file-tabs { margin: 0; min-width: 220px; }
@@ -768,15 +809,51 @@ body[data-page="portal"] .toast-region { top: 66px; right: 12px; bottom: auto; l
 .response-pill[data-response="Absage"] { background: #b4393c; }
 .response-pill[data-response="gesendet"] { background: #64748b; }
 .job-list { display: flex; flex-direction: column; gap: 10px; list-style: none; }
-.job-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-left: 4px solid #c98a1b; border-radius: 11px; background: var(--surface-soft); }
-.job-card[data-response="zugesagt"] { border-left-color: #18794e; }
-.job-card[data-response="abgesagt"] { border-left-color: #b4393c; }
-.job-card[data-response="vorbehalt"] { border-left-color: #64748b; }
-.job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.job-card summary, .job-history summary { color: var(--brand); cursor: pointer; font-size: .86rem; font-weight: 650; }
-.job-message { margin-top: 8px; padding: 10px 12px; border-radius: 9px; background: var(--surface); font-size: .9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Auftragskarte: oben Tag, Uhrzeit und Ort – darunter Patient, Praxis und Hinweise in klaren Blöcken. */
+.job-list { display: flex; flex-direction: column; gap: 14px; list-style: none; }
+.job-card { --job: #c98a1b; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.job-card[data-response="zugesagt"] { --job: #18794e; }
+.job-card[data-response="abgesagt"] { --job: #b4393c; }
+.job-card[data-response="vorbehalt"] { --job: #64748b; }
+.job-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 14px; border-top: 4px solid var(--job); background: color-mix(in srgb, var(--job) 7%, var(--surface)); }
+.job-top .status-pill { grid-column: 1 / -1; justify-self: start; }
+.job-date { display: grid; width: 58px; padding: 6px 0 7px; place-items: center; border: 1px solid color-mix(in srgb, var(--job) 30%, var(--line)); border-radius: 12px; background: var(--surface); line-height: 1.05; text-align: center; }
+.job-date-weekday { color: var(--job); font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.job-date strong { font-size: 1.5rem; font-weight: 800; }
+.job-date-month { color: var(--muted); font-size: .72rem; font-weight: 700; text-transform: uppercase; }
+.job-main { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.job-time { font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.job-place { font-size: 1.02rem; line-height: 1.3; overflow-wrap: anywhere; }
+.job-city { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: .9rem; }
+.job-city-icon svg, .job-section-icon svg, .job-phone-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.job-city-icon { width: 15px; height: 15px; flex: 0 0 auto; }
+.job-details > summary { padding: 11px 14px; border-top: 1px solid var(--line); color: var(--brand); cursor: pointer; font-size: .9rem; font-weight: 700; }
+.job-details[open] > summary { border-bottom: 1px solid var(--line); }
+.job-history summary { color: var(--brand); cursor: pointer; font-size: .86rem; font-weight: 650; }
+.job-body { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+.job-section { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 11px; }
+.job-section-icon { display: grid; width: 36px; height: 36px; padding: 8px; border-radius: 11px; background: var(--brand-soft); color: var(--brand); }
+.job-section-content { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
+.job-section-title { color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.job-patient, .job-doctor { font-size: 1.08rem; line-height: 1.3; overflow-wrap: anywhere; }
+.job-chip { align-self: flex-start; padding: 2px 9px; border-radius: 999px; background: var(--surface-hover); color: var(--ink-soft); font-size: .8rem; font-weight: 700; }
+.job-field { display: flex; flex-direction: column; gap: 3px; }
+.job-field-label { color: var(--muted); font-size: .78rem; font-weight: 650; }
+.job-field-value { font-size: .98rem; line-height: 1.4; overflow-wrap: anywhere; }
+/* Jede Telefonnummer in einer eigenen, großen Zeile – ein Tipp ruft an. */
+.job-phones { display: flex; flex-direction: column; gap: 6px; }
+.job-phone { display: flex; min-height: 46px; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--ok) 8%, var(--surface)); color: var(--ink); font-size: 1.08rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .01em; text-decoration: none; overflow-wrap: anywhere; }
+.job-phone-icon { width: 20px; height: 20px; flex: 0 0 auto; color: var(--ok); }
+.job-address { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.job-map { color: var(--brand); font-size: .88rem; font-weight: 700; }
+.job-cost { padding: 10px 12px; border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: .92rem; font-weight: 650; line-height: 1.4; }
+.job-notes { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; font-size: .98rem; line-height: 1.4; }
+.job-entered { color: var(--muted); font-size: .8rem; }
+.job-message { padding: 10px 12px; border-radius: 12px; background: var(--surface-soft); font-size: .98rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.job-answer { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--line); background: var(--surface-soft); }
+.job-answer-title { color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .job-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.job-buttons .workday-button { padding-inline: 4px; }
+.job-buttons .workday-button, :root[data-theme="dark"] .job-buttons .workday-button { min-height: 48px; padding-inline: 4px; font-size: .9rem; font-weight: 700; }
 .workday-button[aria-pressed="true"][data-response="zugesagt"] { border-color: #18794e; background: #18794e; color: #fff; }
 .workday-button[aria-pressed="true"][data-response="vorbehalt"] { border-color: #64748b; background: #64748b; color: #fff; }
 .workday-button[aria-pressed="true"][data-response="abgesagt"] { border-color: #b4393c; background: #b4393c; color: #fff; }
@@ -1085,6 +1162,7 @@ a.app-nav-note:hover span { color: #fff; text-decoration: underline; }
   .nav-meter small { display: none; }
 }
 @media (max-width: 1320px) { .app-nav-cloud { display: none; } }
+@media (max-width: 760px) { .app-nav-cloud { display: flex; } }
 
 .recipient-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .recipient-chip, :root[data-theme="dark"] .recipient-chip { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: .84rem; }
@@ -1113,5 +1191,19 @@ a.app-nav-note:hover span { color: #fff; text-decoration: underline; }
 .app-nav-tools .app-nav-link, :root[data-theme="dark"] .app-nav-tools .app-nav-link { min-height: 50px; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 2px; font-size: .7rem; font-weight: 600; }
 .fleet-table td:first-child { white-space: nowrap; }
 @media (max-width: 1320px) { .app-nav-tools { grid-template-columns: 1fr; } .app-nav-tools .app-nav-link, :root[data-theme="dark"] .app-nav-tools .app-nav-link { min-height: 40px; } }
-@media (max-width: 760px) { .app-nav-tools { display: flex; } }
+@media (max-width: 760px) { .app-nav-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); } .app-nav-tools .app-nav-link, :root[data-theme="dark"] .app-nav-tools .app-nav-link { min-height: 54px; justify-content: center; font-size: .74rem; } }
 @media (max-height: 820px) and (min-width: 1321px) { .app-nav-tools .app-nav-link, :root[data-theme="dark"] .app-nav-tools .app-nav-link { min-height: 44px; } }
+
+/* ---------- 20 Portal: größere Symbole, Absender und Entwickler-Zeile ---------- */
+.portal-tabbar { grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
+.portal-tabbar button, :root[data-theme="dark"] .portal-tabbar button { min-height: 60px; gap: 4px; font-size: .7rem; font-weight: 700; }
+.portal-tabbar svg { width: 27px; height: 27px; stroke-width: 1.9; }
+.portal-tabbar button.is-active svg { stroke-width: 2.2; }
+.action-tile svg { width: 46px; height: 46px; margin-bottom: 6px; padding: 10px; border-radius: 13px; background: var(--brand-soft); stroke-width: 2; }
+.action-tile-primary svg, :root[data-theme="dark"] .action-tile-primary svg { background: rgba(255, 255, 255, .18); }
+.icon-button, :root[data-theme="dark"] .icon-button { width: 46px; min-height: 46px; }
+.icon-button svg { width: 24px; height: 24px; stroke-width: 1.9; }
+.portal-org { margin-top: 2px; color: var(--brand); font-size: .82rem; font-weight: 700; letter-spacing: .01em; line-height: 1.45; }
+.portal-welcome .portal-org + p { margin-top: 8px; }
+.portal-credit { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 26px 0 6px; color: var(--muted); font-size: .72rem; line-height: 1.5; text-align: center; }
+.portal-credit span:last-child { font-weight: 700; }

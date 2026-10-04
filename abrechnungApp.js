@@ -427,7 +427,7 @@
         ]), 'Endliste');
         XLSX.utils.book_append_sheet(book, sheet([['Name', 'Datum', 'Einsatz', 'Betrag für den Tag', 'Zählt', 'Vermerk auf dem Tagesblatt', 'Hinweis'], ...[...specialDays, ...trackingSpecial].map(item => [item.person_name, date(item.date), item.job, Number(item.amount), item.counts, item.mark, item.hint])]), 'Sondertage');
         XLSX.utils.book_append_sheet(book, sheet([['Name', 'Datum', 'Ort', 'Betrag', 'Nachweis', 'Bemerkung', 'Art', 'Status'], ...receipts.filter(item => item.status !== 'abgelehnt').map(item => [item.person_name, date(item.date), item.place, Number(item.amount), item.proof, item.note, item.kind, item.status])]), 'Belege');
-        XLSX.writeFile(book, `${range.label.split(' ')[0]} Temporär ${range.label.split(' ')[1]} (Botschaft-App).xlsx`);
+        XLSX.writeFile(book, `${range.label.split(' ')[0]} Temporär ${range.label.split(' ')[1]} (Medical Office Bonn).xlsx`);
     });
 
     // ---------- Druck ----------

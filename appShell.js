@@ -30,6 +30,19 @@
     // Sofort setzen, damit die Seite nicht erst hell aufblitzt.
     applyTheme(readTheme());
 
+    // Die Einsatzleitung lässt sich wie das Portal als App aufs Handy legen.
+    (function addAppMeta() {
+        const add = (tag, attributes) => { const node = document.createElement(tag); Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value)); document.head.append(node); };
+        add('link', { rel: 'manifest', href: 'manifest-admin.json' });
+        add('meta', { name: 'theme-color', content: '#10243d' });
+        add('meta', { name: 'mobile-web-app-capable', content: 'yes' });
+        add('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
+        add('meta', { name: 'apple-mobile-web-app-title', content: 'Einsatzleitung' });
+        add('meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' });
+        add('link', { rel: 'apple-touch-icon', href: 'icon-admin-180.png' });
+        add('link', { rel: 'icon', type: 'image/png', sizes: '192x192', href: 'icon-admin-192.png' });
+    })();
+
     const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
     const ICONS = {
         filter: icon('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
@@ -44,6 +57,7 @@
         cloud: icon('<path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96 5.5 5.5 0 0 1 10.7 1.1A3.9 3.9 0 0 1 17 18.5z"/>'),
         moon: icon('<path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/>'),
         home: icon('<path d="M4 11.5 12 5l8 6.500"/><path d="M6 10.500V19h4.500v-5h3v5H18v-8.500"/>'),
+        menu: icon('<path d="M4 7h16M4 12h16M4 17h16"/>'),
         clock: icon('<circle cx="12" cy="12.500" r="8"/><path d="M12 8v4.500l3 2M9.500 2.500h5"/>'),
         message: icon('<path d="M4.500 6.500a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.500 3.500v-3.500a2 2 0 0 1-2-2z"/><path d="M8.500 9h7M8.500 12h4.500"/>')
     };
@@ -61,7 +75,7 @@
             { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Fahrzeuge', icon: ICONS.car }
         ] },
         { group: 'Online', items: [
-            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fahrzeugakten', icon: ICONS.folder },
+            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.folder },
             { page: 'archiv', href: 'archiv.html', label: 'Online-Archiv', icon: ICONS.archive },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
             { page: 'fest', href: 'festangestellte.html', label: 'Überstunden', icon: ICONS.clock },
@@ -75,9 +89,9 @@
         const nav = document.createElement('aside');
         nav.className = 'app-nav';
         nav.innerHTML = `
-            <a class="app-brand" href="index.html" aria-label="Botschaft Dolmetscher und Transport-App – Übersicht">
-                <span class="app-brand-mark" aria-hidden="true">BD</span>
-                <span class="app-brand-copy"><strong>Botschaft</strong><small>Dolmetscher und Transport-App</small></span>
+            <a class="app-brand" href="index.html" aria-label="Medical Office Bonn – Übersicht">
+                <span class="app-brand-mark" aria-hidden="true">MO</span>
+                <span class="app-brand-copy"><strong>Medical Office Bonn</strong><small>Transport und Dolmetscher</small></span>
             </a>
             <nav aria-label="Hauptnavigation">
                 ${NAV.map(section => `
@@ -101,6 +115,34 @@
                 </div>
             </div>`;
         document.body.prepend(nav);
+
+        // Handy: unten eine feste Leiste mit den wichtigsten Seiten, „Mehr“ öffnet das ganze Menü.
+        const tabs = [
+            { page: 'start', href: 'index.html', label: 'Übersicht', icon: ICONS.home },
+            { page: 'tracking', href: 'termineTracking.html', label: 'Tag', icon: ICONS.tracking },
+            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
+            { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }
+        ];
+        const tabbar = document.createElement('nav');
+        tabbar.className = 'app-tabbar';
+        tabbar.setAttribute('aria-label', 'Schnellzugriff');
+        tabbar.innerHTML = tabs.map(item => `<a class="app-tab" data-tab="${item.page}" href="${item.href}"${item.page === current ? ' aria-current="page"' : ''}>${item.icon}<span>${item.label}</span></a>`).join('')
+            + `<button type="button" class="app-tab" id="appMenuToggle" aria-expanded="false" aria-controls="appNavDrawer">${ICONS.menu}<span>Mehr</span></button>`;
+        nav.id = 'appNavDrawer';
+        document.body.append(tabbar);
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'app-nav-close';
+        closeButton.setAttribute('aria-label', 'Menü schließen');
+        closeButton.textContent = '×';
+        nav.prepend(closeButton);
+        const setMenu = open => {
+            document.body.classList.toggle('nav-open', open);
+            document.getElementById('appMenuToggle').setAttribute('aria-expanded', String(open));
+        };
+        document.getElementById('appMenuToggle').addEventListener('click', () => setMenu(!document.body.classList.contains('nav-open')));
+        closeButton.addEventListener('click', () => setMenu(false));
+        document.addEventListener('keydown', event => { if (event.key === 'Escape') setMenu(false); });
 
         const toasts = document.createElement('div');
         toasts.id = 'toastRegion';
@@ -189,7 +231,7 @@
         const blob = new Blob([JSON.stringify({ app: 'termin-tool', version: 1, exportedAt: now.toISOString(), data }, null, 2)], { type: 'application/json' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `Botschaft-App_Stammdaten_${stamp}.json`;
+        link.download = `Medical-Office-Bonn_Stammdaten_${stamp}.json`;
         link.click();
         URL.revokeObjectURL(link.href);
         showToast('Dolmetscher, Fahrzeuge, Übergaben und Filterregeln wurden in eine Datei gesichert.', 'success');

@@ -431,6 +431,43 @@ function getAppointmentContactValues(termin, person, kind) {
     return getAppointmentContactEntries(termin, person, kind).map(entry => entry.value);
 }
 
+// Mehrere Telefonnummern in einem Feld einzeln aufführen – egal ob sie mit „/“, „;“, Komma,
+// „oder“ getrennt sind oder einfach hintereinander stehen. So steht jede Nummer in einer eigenen Zeile.
+// „0170/1234567“ bleibt eine Nummer (Vorwahl/Nummer), „0170 1234567 / 0228 123456“ sind zwei.
+function splitPhoneNumbers(value) {
+    const digits = text => (String(text).match(/\d/g) || []).length;
+    const numbers = [];
+    String(value || '').split(/\s*(?:[;|\n\r]+|,\s|\s+oder\s+|\s+und\s+)\s*/iu).forEach(chunk => {
+        const tokens = chunk.trim().split(/\s+/).filter(Boolean);
+        let current = '';
+        let slashPending = false;
+        const flush = () => { if (current) numbers.push(current); current = ''; };
+        tokens.forEach((token, index) => {
+            token.split('/').forEach((part, partIndex) => {
+                if (partIndex > 0) slashPending = true;
+                if (!part) return;
+                let joiner = ' ';
+                if (slashPending) {
+                    if (digits(current) >= 7) flush(); else joiner = '/';
+                    slashPending = false;
+                } else if (partIndex === 0 && digits(current) >= 7
+                    && (/^(?:\+|00)\d/.test(part) || (/^0\d/.test(part) && digits(current) >= 10 && digits(tokens.slice(index).join('')) >= 8))) {
+                    flush();
+                }
+                current = current ? `${current}${joiner}${part}` : part;
+            });
+        });
+        flush();
+    });
+    const seen = new Set();
+    return numbers.map(number => number.replace(/[,;.\s]+$/g, '').trim()).filter(number => {
+        const key = number.replace(/\D/g, '') || number.toLocaleLowerCase('de-DE');
+        if (!number || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 function getPatientAddressFields(termin) {
     return getAppointmentContactEntries(termin, 'patient', 'address').map(({ key, value }) => {
         const normalized = normalizeAppointmentColumnName(key);
@@ -829,9 +866,14 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
         isCompanionAppointment ? `${label} (Hauptpatient)` : label,
         value
     ]);
-    const patientPhone = getAppointmentContactValues(termin, 'patient', 'phone').join(' / ');
+    // Jede Telefonnummer bekommt eine eigene Zeile („Telefon 1“, „Telefon 2“ …).
+    const phoneFields = (label, values) => {
+        const numbers = [...new Set(values.flatMap(splitPhoneNumbers))];
+        return numbers.map((number, index) => [numbers.length > 1 ? `${label} ${index + 1}` : label, number]);
+    };
+    const patientPhones = getAppointmentContactValues(termin, 'patient', 'phone');
     const doctorAddress = formatWhatsAppAddress(remark.doctorAddress || getDoctorAddress(termin));
-    const doctorPhone = remark.doctorPhone || getAppointmentContactValues(termin, 'doctor', 'phone').join(' / ');
+    const doctorPhones = remark.doctorPhone ? [remark.doctorPhone] : getAppointmentContactValues(termin, 'doctor', 'phone');
     const appointmentDate = formatWhatsAppDate(termin.Termin_Datum);
     const appointmentTime = formatWhatsAppTime(termin.Termin_Uhrzeit);
     // In the supplied FileMaker export the separate yes/no column conflicts
@@ -859,7 +901,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             title: 'PATIENTENKONTAKT',
             fields: [
                 ...patientAddressFields,
-                [isCompanionAppointment ? 'Telefon Hauptpatient' : 'Telefon', patientPhone]
+                ...phoneFields(isCompanionAppointment ? 'Telefon Hauptpatient' : 'Telefon', patientPhones)
             ]
         },
         {
@@ -867,7 +909,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             fields: [
                 ['Name', doctorName],
                 ['Adresse', doctorAddress],
-                ['Telefon', doctorPhone]
+                ...phoneFields('Telefon', doctorPhones)
             ]
         },
         ...(includeNote && remark.noteLines.length

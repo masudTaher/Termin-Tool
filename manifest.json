@@ -1,7 +1,8 @@
 {
-  "name": "Botschaft Dolmetscher und Transport-App",
+  "name": "Dolmetscher-Portal · Medical Office Bonn",
   "short_name": "Dolmetscher",
-  "description": "Portal für Dolmetscher: Fahrzeug übernehmen, Aufträge, Arbeitstage und Abrechnung.",
+  "id": "portal",
+  "description": "Medical Office Bonn, Abteilung Transport und Dolmetscher: Fahrzeug übernehmen, Aufträge, Zeiten und Belege.",
   "lang": "de",
   "start_url": "portal.html",
   "scope": "./",

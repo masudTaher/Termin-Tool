@@ -3,14 +3,14 @@
    <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Fahrzeugakten · Botschaft Dolmetscher und Transport-App</title>
+      <title>Fuhrpark · Medical Office Bonn</title>
       <link rel="stylesheet" href="style.css">
       <script src="appShell.js"></script>
    </head>
    <body data-page="fahrzeugakte">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fahrzeugakten</h1><p>Zustand, Schäden mit Skizze, Meldungen und Verlauf – für jedes Auto einzeln, mit Archiv.</p></div>
+            <div><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fuhrpark und Schäden</h1><p>Alle Fahrzeuge auf einen Blick. Ein Tipp auf ein Auto zeigt Zustand, Schäden und Reparaturen.</p></div>
             <div class="fleet-heading-actions"><button type="button" id="enableNotifications" class="button-secondary" hidden>Benachrichtigungen einschalten</button><button type="button" id="fileReload" class="button-secondary">Aktualisieren</button></div>
          </div>
          <p id="fileStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
@@ -21,12 +21,18 @@
                <ul id="inboxList" class="directory-list inbox-list"></ul>
             </section>
 
-            <h2 class="section-title">Fahrzeuge</h2>
+            <div class="fleet-filter" id="fleetFilter" role="group" aria-label="Fahrzeuge filtern">
+               <button type="button" class="overview-card is-active" data-fleet-filter="alle" aria-pressed="true"><span class="overview-label">Alle Fahrzeuge</span><strong id="fleetCountAll">0</strong></button>
+               <button type="button" class="overview-card overview-card-done" data-fleet-filter="frei" aria-pressed="false"><span class="overview-label">Frei</span><strong id="fleetCountFree">0</strong></button>
+               <button type="button" class="overview-card overview-card-departed" data-fleet-filter="unterwegs" aria-pressed="false"><span class="overview-label">Unterwegs</span><strong id="fleetCountOut">0</strong></button>
+               <button type="button" class="overview-card overview-card-cancelled" data-fleet-filter="schaeden" aria-pressed="false"><span class="overview-label">Mit Schäden</span><strong id="fleetCountDamage">0</strong></button>
+               <button type="button" class="overview-card overview-card-alert" data-fleet-filter="reparatur" aria-pressed="false"><span class="overview-label">In Reparatur</span><strong id="fleetCountRepair">0</strong></button>
+            </div>
             <div id="vehicleGrid" class="vehicle-grid"></div>
 
             <section id="vehicleFile" class="directory-card vehicle-file" aria-live="polite" hidden>
                <div class="fleet-log-heading">
-                  <div class="directory-card-heading"><span class="directory-step directory-step-teal">Akte</span><div><h2 id="fileTitle"></h2><p id="fileSubtitle"></p></div></div>
+                  <div class="file-hero"><span id="fileArt" class="vehicle-art"></span><div><h2 id="fileTitle"></h2><p id="fileSubtitle"></p><div id="fileBadges" class="vehicle-card-badges"></div></div></div>
                   <div class="portal-tabs file-tabs"><button type="button" data-file-tab="current" class="is-active">Aktuell</button><button type="button" data-file-tab="archive">Archiv</button></div>
                </div>
 
@@ -38,16 +44,22 @@
                            <li><i data-status="offen"></i>Neu gemeldet</li>
                            <li><i data-status="bekannt"></i>Altschaden</li>
                            <li><i data-status="in Arbeit"></i>In Reparatur</li>
-                           <li><i data-status="erledigt"></i>Behoben (Archiv)</li>
+                           <li><i data-status="erledigt"></i>Repariert (Archiv)</li>
                         </ul>
                      </div>
                      <dl id="fileState" class="vehicle-state"></dl>
                      <form id="fileSettings" class="fleet-form">
-                        <label for="fileAssigned">Fester Fahrer</label>
+                        <label for="fileAssigned">Reserviert für (fester Fahrer)</label>
                         <select id="fileAssigned"></select>
+                        <p class="field-hint">Ein reserviertes Fahrzeug sehen andere Dolmetscher im Portal nicht.</p>
                         <label for="fileMileage">Kilometerstand korrigieren</label>
                         <div class="directory-input-row"><input id="fileMileage" type="number" min="0" step="1" placeholder="km"><button type="submit" class="button-secondary">Speichern</button></div>
                      </form>
+                     <div class="fleet-form file-photo">
+                        <label for="filePhoto">Eigenes Foto vom Fahrzeug</label>
+                        <input id="filePhoto" type="file" accept="image/*">
+                        <button type="button" id="filePhotoRemove" class="button-quiet-danger" hidden>Foto entfernen</button>
+                     </div>
                   </div>
                   <div class="file-main">
                      <div data-file-panel="current">
@@ -57,7 +69,7 @@
                         <ul id="fileAlerts" class="directory-list file-list"></ul>
                      </div>
                      <div data-file-panel="archive" hidden>
-                        <h3 class="file-heading">Behobene Schäden</h3>
+                        <h3 class="file-heading">Reparierte Schäden</h3>
                         <ul id="fileDamagesArchive" class="directory-list file-list"></ul>
                         <h3 class="file-heading">Erledigte Meldungen</h3>
                         <ul id="fileAlertsArchive" class="directory-list file-list"></ul>
@@ -79,6 +91,7 @@
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
       <script src="carSketch.js"></script>
+      <script src="carArt.js"></script>
       <script src="fahrzeugakteApp.js"></script>
    </body>
 </html>

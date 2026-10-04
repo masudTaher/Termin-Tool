@@ -46,7 +46,7 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push', event => {
     let payload = {};
     try { payload = event.data ? event.data.json() : {}; } catch (error) { payload = { body: event.data ? event.data.text() : '' }; }
-    const title = payload.title || 'Botschaft Dolmetscher und Transport-App';
+    const title = payload.title || 'Medical Office Bonn';
     event.waitUntil(self.registration.showNotification(title, {
         body: payload.body || '',
         icon: 'icon-192.png',

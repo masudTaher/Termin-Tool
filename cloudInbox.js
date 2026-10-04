@@ -7,17 +7,18 @@
     const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest'];
 
     function setBadge(page, count) {
-        const link = document.querySelector(`.app-nav-link[data-nav="${page}"]`);
-        if (!link) return;
-        let badge = link.querySelector('.nav-badge');
-        if (!count) { badge?.remove(); return; }
-        if (!badge) {
-            badge = document.createElement('b');
-            badge.className = 'nav-badge';
-            link.append(badge);
-        }
-        badge.textContent = String(count);
-        badge.title = `${count} offen`;
+        // Seitenleiste und – auf dem Handy – die untere Leiste bekommen dasselbe Zählerschild.
+        document.querySelectorAll(`.app-nav-link[data-nav="${page}"], .app-tab[data-tab="${page}"]`).forEach(link => {
+            let badge = link.querySelector('.nav-badge');
+            if (!count) { badge?.remove(); return; }
+            if (!badge) {
+                badge = document.createElement('b');
+                badge.className = 'nav-badge';
+                link.append(badge);
+            }
+            badge.textContent = String(count);
+            badge.title = `${count} offen`;
+        });
     }
 
     // ---------- Anmeldestatus ----------
@@ -106,7 +107,7 @@
         messages.forEach(message => {
             if (typeof showToast === 'function') showToast(message, 'info', { duration: 10000 });
             if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-                try { new Notification('Botschaft Dolmetscher und Transport-App', { body: message }); } catch (error) { /* manche Browser erlauben das nur mit Service Worker */ }
+                try { new Notification('Medical Office Bonn', { body: message }); } catch (error) { /* manche Browser erlauben das nur mit Service Worker */ }
             }
         });
     }

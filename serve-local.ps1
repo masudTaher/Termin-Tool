@@ -9,7 +9,7 @@ try {
     exit 1
 }
 
-Write-Host 'Botschaft Dolmetscher und Transport-App läuft nur auf diesem Computer: http://127.0.0.1:8765/' -ForegroundColor Cyan
+Write-Host 'Medical Office Bonn (Transport und Dolmetscher) läuft nur auf diesem Computer: http://127.0.0.1:8765/' -ForegroundColor Cyan
 Write-Host 'Zum Beenden hier Strg+C drücken.'
 try {
     Start-Process 'http://127.0.0.1:8765/'

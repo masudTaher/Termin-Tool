@@ -3,7 +3,7 @@
     const $ = id => document.getElementById(id);
     const client = TerminCloud.client;
     const FUEL = window.TERMIN_CLOUD_CONFIG?.fuelLabels || ['Leer', '1/4', '1/2', '3/4', 'Voll'];
-    const DAMAGE_STATUS = [['offen', 'Neu gemeldet'], ['bekannt', 'Altschaden'], ['in Arbeit', 'In Reparatur'], ['erledigt', 'Behoben (Archiv)']];
+    const DAMAGE_STATUS = [['offen', 'Neu gemeldet'], ['bekannt', 'Altschaden'], ['in Arbeit', 'In Reparatur'], ['erledigt', 'Repariert (Archiv)']];
     let profile = null;
     let vehicles = [];
     let profiles = [];
@@ -14,6 +14,8 @@
     let selectedId = null;
     let fileTab = 'current';
     let sketch = null;
+    let fleetFilter = 'alle';
+    const photoUrls = new Map();   // Fahrzeugfoto: Pfad → zeitlich begrenzte Adresse
 
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -73,6 +75,7 @@
         $('enableNotifications').hidden = !('Notification' in window) || Notification.permission !== 'default';
         renderInbox();
         renderGrid();
+        loadPhotoUrls();
         if (selectedId && vehicles.some(vehicle => vehicle.id === selectedId)) await renderFile();
         else { selectedId = null; $('vehicleFile').hidden = true; }
         window.refreshCloudInbox?.();
@@ -103,7 +106,7 @@
     async function setDamageStatus(item, status) {
         const { error } = await client.from('tt_damages').update({ status, resolved_at: status === 'erledigt' ? new Date().toISOString() : null }).eq('id', item.id);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast(status === 'erledigt' ? 'Schaden ins Archiv verschoben' : 'Status gespeichert', 'success');
+        showToast(status === 'erledigt' ? 'Repariert – der Schaden liegt jetzt im Archiv' : status === 'in Arbeit' ? 'In Reparatur gegeben' : 'Status gespeichert', 'success');
         await refresh();
     }
 
@@ -210,6 +213,63 @@
         });
     }
 
+    // ---------- Fahrzeugbild: eigenes Foto, sonst die schwarze Zeichnung passend zur Bauart ----------
+    function fillArt(node, vehicle) {
+        const url = vehicle.photo_path ? photoUrls.get(vehicle.photo_path) : '';
+        node.classList.toggle('has-photo', Boolean(url));
+        if (url) {
+            const image = el('img');
+            image.src = url;
+            image.alt = `Foto ${vehicle.plate}`;
+            image.loading = 'lazy';
+            node.replaceChildren(image);
+        } else {
+            node.innerHTML = CarArt.svg([vehicle.body, vehicle.brand].filter(Boolean).join(' '));
+        }
+    }
+
+    async function loadPhotoUrls() {
+        const missing = vehicles.filter(vehicle => vehicle.photo_path && !photoUrls.has(vehicle.photo_path));
+        if (!missing.length) return;
+        await Promise.all(missing.map(async vehicle => { photoUrls.set(vehicle.photo_path, await TerminCloud.photoUrl(vehicle.photo_path)); }));
+        renderGrid();
+        if (selectedId) { const vehicle = vehicles.find(item => item.id === selectedId); if (vehicle) fillArt($('fileArt'), vehicle); }
+    }
+
+    // Was ist mit diesem Fahrzeug los? Eine Stelle für Karten, Filter und Akte.
+    function vehicleFacts(vehicle) {
+        const own = damages.filter(item => item.vehicle_id === vehicle.id);
+        return {
+            holder: openHandovers.find(item => item.vehicle_id === vehicle.id) || null,
+            newDamages: own.filter(item => item.status === 'offen').length,
+            knownDamages: own.filter(item => item.status === 'bekannt').length,
+            inRepair: own.filter(item => item.status === 'in Arbeit').length,
+            repaired: own.filter(item => item.status === 'erledigt').length,
+            openAlerts: alerts.filter(item => item.vehicle_id === vehicle.id && item.status === 'offen').length
+        };
+    }
+
+    function vehicleBadges(vehicle, facts) {
+        const badges = el('span', 'vehicle-card-badges');
+        if (facts.holder?.emergency) badges.append(pill('in Arbeit', 'Notdienst'));
+        if (facts.newDamages) badges.append(pill('offen', `${facts.newDamages} ${facts.newDamages === 1 ? 'neuer Schaden' : 'neue Schäden'}`));
+        if (facts.inRepair) badges.append(pill('in Arbeit', `${facts.inRepair} in Reparatur`));
+        if (facts.knownDamages) badges.append(pill('bekannt', `${facts.knownDamages} ${facts.knownDamages === 1 ? 'Altschaden' : 'Altschäden'}`));
+        if (facts.openAlerts) badges.append(pill('in Arbeit', `${facts.openAlerts} ${facts.openAlerts === 1 ? 'Meldung' : 'Meldungen'}`));
+        if (vehicle.clean_inside === false || vehicle.clean_outside === false) badges.append(pill('offen', 'nicht sauber'));
+        if (vehicle.fuel != null && vehicle.fuel <= 1) badges.append(pill('in Arbeit', 'Tank niedrig'));
+        if (!badges.children.length) badges.append(pill('erledigt', 'alles in Ordnung'));
+        return badges;
+    }
+
+    const FLEET_FILTERS = {
+        alle: () => true,
+        frei: (vehicle, facts) => !facts.holder,
+        unterwegs: (vehicle, facts) => Boolean(facts.holder),
+        schaeden: (vehicle, facts) => facts.newDamages + facts.knownDamages + facts.inRepair > 0,
+        reparatur: (vehicle, facts) => facts.inRepair > 0
+    };
+
     // ---------- Fahrzeugkarten ----------
     function renderGrid() {
         const grid = $('vehicleGrid');
@@ -218,35 +278,38 @@
             grid.append(el('p', 'directory-empty', 'Noch keine Fahrzeuge. Lege sie auf der Seite „Fahrzeuge“ an – sie erscheinen hier automatisch.'));
             return;
         }
-        vehicles.forEach(vehicle => {
-            const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
-            const newDamages = damages.filter(item => item.vehicle_id === vehicle.id && item.status === 'offen').length;
-            const knownDamages = damages.filter(item => item.vehicle_id === vehicle.id && ['bekannt', 'in Arbeit'].includes(item.status)).length;
-            const openAlerts = alerts.filter(item => item.vehicle_id === vehicle.id && item.status === 'offen').length;
+        const all = vehicles.map(vehicle => ({ vehicle, facts: vehicleFacts(vehicle) }));
+        const count = name => all.filter(({ vehicle, facts }) => FLEET_FILTERS[name](vehicle, facts)).length;
+        $('fleetCountAll').textContent = String(all.length);
+        $('fleetCountFree').textContent = String(count('frei'));
+        $('fleetCountOut').textContent = String(count('unterwegs'));
+        $('fleetCountDamage').textContent = String(count('schaeden'));
+        $('fleetCountRepair').textContent = String(count('reparatur'));
+        document.querySelectorAll('[data-fleet-filter]').forEach(button => {
+            const active = button.dataset.fleetFilter === fleetFilter;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+        const shown = all.filter(({ vehicle, facts }) => FLEET_FILTERS[fleetFilter](vehicle, facts));
+        if (!shown.length) grid.append(el('p', 'directory-empty', 'Für diese Auswahl gibt es gerade kein Fahrzeug.'));
+        shown.forEach(({ vehicle, facts }) => {
             const card = el('button', `vehicle-card${vehicle.id === selectedId ? ' is-active' : ''}`);
             card.type = 'button';
+            const art = el('span', 'vehicle-art');
+            fillArt(art, vehicle);
+            const state = el('span', 'vehicle-state-chip', facts.holder ? `Unterwegs · ${facts.holder.driver_name}` : 'Frei');
+            state.dataset.state = facts.holder ? 'unterwegs' : 'frei';
             const head = el('span', 'vehicle-card-head');
             head.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')));
             const people = el('span', 'vehicle-card-people');
-            people.append(
-                el('small', null, `Fest: ${profileName(vehicle.assigned_to) || '–'}`),
-                el('small', holder ? 'vehicle-driver' : null, holder ? `Gerade bei ${holder.driver_name}` : 'Frei')
-            );
-            const facts = el('span', 'vehicle-card-facts');
-            facts.append(
+            if (vehicle.assigned_to) people.append(el('small', 'vehicle-reserved', `Reserviert für ${profileName(vehicle.assigned_to) || '–'}`));
+            const factsRow = el('span', 'vehicle-card-facts');
+            factsRow.append(
                 el('small', null, formatKm(vehicle.mileage)),
                 el('small', null, `Tank ${vehicle.fuel == null ? '–' : FUEL[vehicle.fuel]}`),
-                el('small', null, vehicle.parking || 'Parkort –')
+                el('small', null, vehicle.parking ? `Steht: ${vehicle.parking}` : 'Parkort –')
             );
-            const badges = el('span', 'vehicle-card-badges');
-            if (holder?.emergency) badges.append(pill('in Arbeit', 'Notdienst'));
-            if (openAlerts) badges.append(pill('in Arbeit', `${openAlerts} ${openAlerts === 1 ? 'Meldung' : 'Meldungen'}`));
-            if (newDamages) badges.append(pill('offen', `${newDamages} neu`));
-            if (knownDamages) badges.append(pill('bekannt', `${knownDamages} Altschäden`));
-            if (vehicle.clean_inside === false || vehicle.clean_outside === false) badges.append(pill('offen', 'nicht sauber'));
-            if (vehicle.fuel != null && vehicle.fuel <= 1) badges.append(pill('in Arbeit', 'Tank niedrig'));
-            if (!badges.children.length) badges.append(pill('erledigt', 'alles in Ordnung'));
-            card.append(head, people, facts, badges);
+            card.append(art, state, head, people, factsRow, vehicleBadges(vehicle, facts));
             card.addEventListener('click', () => selectVehicle(vehicle.id));
             grid.append(card);
         });
@@ -272,16 +335,18 @@
         );
         const actions = el('span', 'vehicle-entry-actions');
         actions.append(photoButtons(damagePhotos(item)));
-        const select = el('select');
-        select.setAttribute('aria-label', 'Status des Schadens');
-        DAMAGE_STATUS.forEach(([value, text]) => {
-            const option = el('option', null, text);
-            option.value = value;
-            option.selected = item.status === value;
-            select.append(option);
-        });
-        select.addEventListener('change', () => setDamageStatus(item, select.value));
-        actions.append(select);
+        // Schadenabwicklung in klaren Schritten: neu → (Altschaden) → in Reparatur → repariert (Archiv).
+        const step = (text, status, className = 'button-secondary fleet-end-button') => {
+            const button = el('button', className, text);
+            button.type = 'button';
+            button.addEventListener('click', () => setDamageStatus(item, status));
+            return button;
+        };
+        if (item.status === 'offen') actions.append(step('Als Altschaden', 'bekannt'));
+        if (item.status === 'offen' || item.status === 'bekannt') actions.append(step('In Reparatur', 'in Arbeit'));
+        if (item.status === 'in Arbeit') actions.append(step('Doch nicht in Reparatur', 'bekannt', 'button-quiet'));
+        if (item.status !== 'erledigt') actions.append(step('Repariert ✓', 'erledigt', 'button-primary account-approve'));
+        else actions.append(step('Wieder öffnen', 'bekannt', 'button-quiet'));
         row.append(pill(item.status, CarSketch.STATUS_LABELS[item.status] || item.status), meta, actions);
         return row;
     }
@@ -312,7 +377,11 @@
         $('vehicleFile').hidden = false;
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
         $('fileTitle').textContent = vehicleLabel(vehicle);
-        $('fileSubtitle').textContent = [vehicle.type, `Fest: ${profileName(vehicle.assigned_to) || '–'}`, holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : ''}` : 'frei'].filter(Boolean).join(' · ');
+        $('fileSubtitle').textContent = [vehicle.type, vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : ''}` : 'frei'].filter(Boolean).join(' · ');
+        fillArt($('fileArt'), vehicle);
+        $('fileBadges').replaceChildren(...vehicleBadges(vehicle, vehicleFacts(vehicle)).children);
+        $('filePhotoRemove').hidden = !vehicle.photo_path;
+        $('filePhoto').value = '';
 
         const vehicleDamages = damages.filter(item => item.vehicle_id === vehicle.id);
         const current = vehicleDamages.filter(item => item.status !== 'erledigt');
@@ -409,6 +478,37 @@
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
         showToast('Kilometerstand korrigiert', 'success');
         await refresh();
+    });
+
+    // Filter über den Karten: Alle / Frei / Unterwegs / Mit Schäden / In Reparatur
+    document.querySelectorAll('[data-fleet-filter]').forEach(button => button.addEventListener('click', () => {
+        fleetFilter = button.dataset.fleetFilter;
+        renderGrid();
+    }));
+
+    // Eigenes Foto zum Fahrzeug (ersetzt die Zeichnung). Braucht supabase/update-9.sql.
+    async function saveVehiclePhoto(path) {
+        const { error } = await client.from('tt_vehicles').update({ photo_path: path }).eq('id', selectedId);
+        if (error) {
+            showToast(/photo_path/.test(error.message || '') ? 'Für Fahrzeugfotos fehlt noch das Datenbank-Update 9 (supabase/update-9.sql).' : TerminCloud.germanError(error), 'error');
+            return false;
+        }
+        return true;
+    }
+    $('filePhoto').addEventListener('change', async event => {
+        const file = event.target.files?.[0];
+        if (!file || !selectedId) return;
+        try {
+            const path = await TerminCloud.uploadPhoto(file, profile.id);
+            if (await saveVehiclePhoto(path)) { showToast('Foto gespeichert', 'success'); await refresh(); }
+        } catch (error) {
+            showToast(TerminCloud.germanError(error), 'error');
+        }
+        event.target.value = '';
+    });
+    $('filePhotoRemove').addEventListener('click', async () => {
+        if (!selectedId) return;
+        if (await saveVehiclePhoto(null)) { showToast('Foto entfernt – es wird wieder die Zeichnung gezeigt', 'success'); await refresh(); }
     });
 
     $('fileReload').addEventListener('click', refresh);

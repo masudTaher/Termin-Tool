@@ -10,7 +10,7 @@
     const FUEL = config.fuelLabels || ['Leer', '1/4', '1/2', '3/4', 'Voll'];
     const WORK_START = config.workStart || '09:00';
     const WORK_END = config.workEnd || '16:00';
-    const DEFAULT_USER_LINE = 'Botschaft · Dolmetscher und Transport';
+    const DEFAULT_USER_LINE = 'Medical Office Bonn · Transport und Dolmetscher';
     let profile = null;
     let vehicles = [];
     let openHandovers = [];
@@ -371,6 +371,202 @@
     const WORK_LABEL = { beendet: 'gearbeitet', alleine: 'Patient ging alleine', storniert: 'storniert', losgefahren: 'unterwegs', offen: '' };
     let knownJobIds = null;
 
+    // ---------- Auftrag als Karte: der gesendete Text wird in klare Felder zerlegt ----------
+    function splitPhoneNumbers(value) {
+        const digits = text => (String(text).match(/\d/g) || []).length;
+        const numbers = [];
+        String(value || '').split(/\s*(?:[;|\n\r]+|,\s|\s+oder\s+|\s+und\s+)\s*/iu).forEach(chunk => {
+            const tokens = chunk.trim().split(/\s+/).filter(Boolean);
+            let current = '';
+            let slashPending = false;
+            const flush = () => { if (current) numbers.push(current); current = ''; };
+            tokens.forEach((token, index) => {
+                token.split('/').forEach((part, partIndex) => {
+                    if (partIndex > 0) slashPending = true;
+                    if (!part) return;
+                    let joiner = ' ';
+                    if (slashPending) {
+                        if (digits(current) >= 7) flush(); else joiner = '/';
+                        slashPending = false;
+                    } else if (partIndex === 0 && digits(current) >= 7
+                        && (/^(?:\+|00)\d/.test(part) || (/^0\d/.test(part) && digits(current) >= 10 && digits(tokens.slice(index).join('')) >= 8))) {
+                        flush();
+                    }
+                    current = current ? `${current}${joiner}${part}` : part;
+                });
+            });
+            flush();
+        });
+        const seen = new Set();
+        return numbers.map(number => number.replace(/[,;.\s]+$/g, '').trim()).filter(number => {
+            const key = number.replace(/\D/g, '') || number.toLocaleLowerCase('de-DE');
+            if (!number || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    const JOB_SKIP = [/^guten tag,?$/i, /^bitte übernimm den folgenden dolmetschauftrag:?$/i, /^bitte bestätige kurz den erhalt/i];
+    function parseJobMessage(text) {
+        const lines = String(text || '').split(/\r?\n/).map(line => line.trim());
+        if (!/^\*?DOLMETSCHAUFTRAG\*?$/i.test(lines[0] || '')) return null;
+        const facts = {}; const notices = []; const sections = []; let cost = ''; let section = null;
+        lines.slice(1).forEach(line => {
+            if (!line || JOB_SKIP.some(pattern => pattern.test(line))) return;
+            const starred = line.match(/^\*(.+)\*$/);
+            const inner = starred ? starred[1].trim() : line;
+            if (starred && !inner.includes(':') && inner === inner.toLocaleUpperCase('de-DE')) { section = { title: inner, fields: [] }; sections.push(section); return; }
+            const pair = inner.match(/^([A-Za-zÄÖÜäöüß][^:]{1,40}):\s+(.+)$/);
+            if (section) { section.fields.push(pair ? [pair[1].trim(), pair[2].trim()] : ['', inner]); return; }
+            if (/^(kostenstatus|kostenübernahme|bitte kostenstatus)/i.test(inner)) { cost = inner; return; }
+            if (starred && pair) facts[pair[1].trim()] = pair[2].trim();
+            else notices.push(inner.replace(/^Hinweis:\s*/i, ''));
+        });
+        return { facts, notices, sections, cost };
+    }
+
+    const JOB_ICONS = {
+        phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.500 1.500a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>',
+        pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.200 7-11.500A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>',
+        person: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+        clinic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/><path d="M12 7v5M9.500 9.500h5"/></svg>',
+        note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>'
+    };
+    const svgSpan = (className, markup) => { const node = el('span', className); node.innerHTML = markup; return node; };
+
+    function jobField(label, value) {
+        const row = el('div', 'job-field');
+        if (label) row.append(el('span', 'job-field-label', label));
+        if (/^telefon/i.test(label)) {
+            const numbers = el('span', 'job-phones');
+            splitPhoneNumbers(value).forEach(number => {
+                const link = el('a', 'job-phone');
+                const dial = number.replace(/[^\d+]/g, '');
+                if (dial.length >= 5) link.href = `tel:${dial}`;
+                link.append(svgSpan('job-phone-icon', JOB_ICONS.phone), el('span', '', number));
+                numbers.append(link);
+            });
+            row.append(numbers);
+        } else if (/adresse/i.test(label)) {
+            const wrap = el('span', 'job-address');
+            wrap.append(el('span', 'job-field-value', value));
+            const map = el('a', 'job-map', 'In Karten öffnen');
+            map.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+            map.target = '_blank';
+            map.rel = 'noopener';
+            wrap.append(map);
+            row.append(wrap);
+        } else {
+            row.append(el('span', 'job-field-value', value));
+        }
+        return row;
+    }
+
+    function jobBody(item) {
+        const body = el('div', 'job-body');
+        const parsed = parseJobMessage(item.message);
+        if (!parsed) { body.append(el('p', 'job-message', item.message || '')); return body; }
+        const { facts, notices, sections, cost } = parsed;
+        const patient = facts['Patient/in'] || facts['Hauptpatient/in'];
+        if (patient) {
+            const block = el('div', 'job-section job-section-patient');
+            block.append(svgSpan('job-section-icon', JOB_ICONS.person));
+            const content = el('div', 'job-section-content');
+            content.append(el('span', 'job-section-title', facts['Hauptpatient/in'] ? 'Hauptpatient/in' : 'Patient/in'), el('strong', 'job-patient', patient));
+            if (facts['Aktennummer']) content.append(el('span', 'job-chip', `Aktennummer ${facts['Aktennummer']}`));
+            if (facts['Termin für Begleitperson']) content.append(jobField('Termin für Begleitperson', facts['Termin für Begleitperson']));
+            const contact = sections.find(section => /PATIENTENKONTAKT/.test(section.title));
+            contact?.fields.forEach(([label, value]) => content.append(jobField(label, value)));
+            block.append(content);
+            body.append(block);
+        }
+        const doctor = sections.find(section => /ARZT/.test(section.title));
+        if (doctor?.fields.length) {
+            const block = el('div', 'job-section');
+            block.append(svgSpan('job-section-icon', JOB_ICONS.clinic));
+            const content = el('div', 'job-section-content');
+            content.append(el('span', 'job-section-title', 'Arzt / Praxis'));
+            doctor.fields.forEach(([label, value]) => content.append(label === 'Name' ? el('strong', 'job-doctor', value) : jobField(label, value)));
+            block.append(content);
+            body.append(block);
+        }
+        if (cost) body.append(el('p', 'job-cost', cost));
+        const extra = [...notices, ...sections.filter(section => /HINWEISE/.test(section.title)).flatMap(section => section.fields.map(([label, value]) => label ? `${label}: ${value}` : value))];
+        if (extra.length) {
+            const block = el('div', 'job-section');
+            block.append(svgSpan('job-section-icon', JOB_ICONS.note));
+            const content = el('div', 'job-section-content');
+            content.append(el('span', 'job-section-title', 'Hinweise'));
+            const notes = el('ul', 'job-notes');
+            extra.forEach(text => notes.append(el('li', '', text)));
+            content.append(notes);
+            block.append(content);
+            body.append(block);
+        }
+        const enteredBy = sections.find(section => /EINGETRAGEN/.test(section.title))?.fields.map(([, value]) => value).join(', ');
+        if (enteredBy) body.append(el('p', 'job-entered', `Eingetragen durch ${enteredBy}`));
+        return body;
+    }
+
+    function jobCard(item) {
+        const card = el('li', 'job-card');
+        card.dataset.response = item.response;
+        const date = new Date(`${item.date}T00:00:00`);
+        const parsed = parseJobMessage(item.message);
+        const titleParts = String(item.title || '').split(' · ');
+        const time = String(item.time || '').slice(0, 5);
+        const place = parsed?.sections.find(section => /ARZT/.test(section.title))?.fields.find(([label]) => label === 'Name')?.[1]
+            || titleParts.filter(part => !/^\d{1,2}:\d{2}\s*Uhr$/.test(part))[0] || 'Auftrag';
+        const city = parsed?.facts['Ort'] || titleParts.filter(part => !/^\d{1,2}:\d{2}\s*Uhr$/.test(part)).slice(1).join(' · ');
+
+        const top = el('div', 'job-top');
+        const day = el('div', 'job-date');
+        day.append(
+            el('span', 'job-date-weekday', date.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')),
+            el('strong', '', String(date.getDate()).padStart(2, '0')),
+            el('span', 'job-date-month', date.toLocaleDateString('de-DE', { month: 'short' }).replace('.', ''))
+        );
+        const main = el('div', 'job-main');
+        if (time) main.append(el('span', 'job-time', `${time} Uhr`));
+        main.append(el('strong', 'job-place', place));
+        if (city) { const cityLine = el('span', 'job-city'); cityLine.append(svgSpan('job-city-icon', JOB_ICONS.pin), el('span', '', city)); main.append(cityLine); }
+        const state = el('span', 'status-pill', RESPONSE_LABEL[item.response]);
+        state.dataset.status = { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
+        top.append(day, main, state);
+
+        // Offene Aufträge sind aufgeklappt; beantwortete lassen sich mit einem Tipp wieder öffnen.
+        const details = document.createElement('details');
+        details.className = 'job-details';
+        details.open = item.response === 'offen';
+        details.append(el('summary', '', 'Alle Angaben zum Auftrag'), jobBody(item));
+
+        const answer = el('div', 'job-answer');
+        answer.append(el('span', 'job-answer-title', item.response === 'offen' ? 'Deine Antwort' : 'Antwort ändern'));
+        const note = document.createElement('input');
+        note.type = 'text';
+        note.maxLength = 300;
+        note.placeholder = 'Hinweis an die Einsatzleitung (optional)';
+        note.value = item.response_note || '';
+        note.setAttribute('aria-label', 'Hinweis zur Antwort');
+        const buttons = el('div', 'job-buttons');
+        RESPONSES.forEach(([value, text]) => {
+            const button = el('button', 'workday-button', text);
+            button.type = 'button';
+            button.dataset.response = value;
+            button.setAttribute('aria-pressed', String(item.response === value));
+            button.addEventListener('click', async () => {
+                const { error: rpcError } = await client.rpc('tt_respond_assignment', { p_id: item.id, p_response: value, p_note: note.value.trim() });
+                if (rpcError) { toast(TerminCloud.germanError(rpcError), 'error'); return; }
+                toast(`${text} gesendet`, 'success');
+                await loadJobs();
+            });
+            buttons.append(button);
+        });
+        answer.append(note, buttons);
+        card.append(top, details, answer);
+        return card;
+    }
+
     async function loadJobs() {
         const { data, error } = await client.from('tt_assignments').select('*').eq('interpreter_id', profile.id).order('date', { ascending: false }).limit(200);
         if (error) { $('jobsSummary').textContent = 'Aufträge konnten nicht geladen werden.'; return; }
@@ -390,53 +586,7 @@
 
         const list = $('jobList');
         list.replaceChildren();
-        upcoming.forEach(item => {
-            const card = document.createElement('li');
-            card.className = 'job-card';
-            card.dataset.response = item.response;
-            const head = document.createElement('div');
-            head.className = 'job-head';
-            const title = document.createElement('strong');
-            title.textContent = `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} · ${item.title}`;
-            const state = document.createElement('span');
-            state.className = 'status-pill';
-            state.dataset.status = { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
-            state.textContent = RESPONSE_LABEL[item.response];
-            head.append(title, state);
-            const details = document.createElement('details');
-            details.open = item.response === 'offen';
-            const summary = document.createElement('summary');
-            summary.textContent = 'Auftrag ansehen';
-            const message = document.createElement('p');
-            message.className = 'job-message';
-            message.textContent = item.message;
-            details.append(summary, message);
-            const note = document.createElement('input');
-            note.type = 'text';
-            note.maxLength = 300;
-            note.placeholder = 'Hinweis an die Einsatzleitung (optional)';
-            note.value = item.response_note || '';
-            note.setAttribute('aria-label', 'Hinweis zur Antwort');
-            const buttons = document.createElement('div');
-            buttons.className = 'job-buttons';
-            RESPONSES.forEach(([value, text]) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'workday-button';
-                button.dataset.response = value;
-                button.textContent = text;
-                button.setAttribute('aria-pressed', String(item.response === value));
-                button.addEventListener('click', async () => {
-                    const { error: rpcError } = await client.rpc('tt_respond_assignment', { p_id: item.id, p_response: value, p_note: note.value.trim() });
-                    if (rpcError) { toast(TerminCloud.germanError(rpcError), 'error'); return; }
-                    toast(`${text} gesendet`, 'success');
-                    await loadJobs();
-                });
-                buttons.append(button);
-            });
-            card.append(head, details, note, buttons);
-            list.append(card);
-        });
+        upcoming.forEach(item => list.append(jobCard(item)));
 
         const history = $('jobHistory');
         history.replaceChildren();
@@ -520,7 +670,9 @@
         const taken = new Set(openHandovers.map(item => item.vehicle_id));
         // Das eigene feste Fahrzeug steht oben, danach diplomatische Fahrzeuge, dann Mietwagen.
         const rank = vehicle => vehicle.assigned_to === profile.id ? 0 : vehicle.type === 'Diplomatisch' ? 1 : vehicle.type === 'Mietwagen' ? 2 : 3;
-        return vehicles.filter(vehicle => !taken.has(vehicle.id)).sort((left, right) => rank(left) - rank(right) || String(left.plate).localeCompare(String(right.plate), 'de'));
+        // Fest reservierte Fahrzeuge sieht nur die Person, für die sie reserviert sind.
+        const mine = vehicle => !vehicle.assigned_to || vehicle.assigned_to === profile.id;
+        return vehicles.filter(vehicle => !taken.has(vehicle.id) && mine(vehicle)).sort((left, right) => rank(left) - rank(right) || String(left.plate).localeCompare(String(right.plate), 'de'));
     }
 
     function damageEntry(item, index) {
