@@ -1,8 +1,11 @@
-// Botschaft Dolmetscher und Transport-App · Server-Funktion "tt-push"
+// Medical Office Bonn · Transport und Dolmetscher · Server-Funktion "tt-push"
 // Aufgaben:
 //   publicKey      – öffentlichen Schlüssel für Mitteilungen liefern (legt das Schlüsselpaar beim ersten Mal an)
 //   notify         – Mitteilung aufs Handy senden (nur Einsatzleitung/Sekretariat)
-//   remind         – ab 16 Uhr an die Rückgabe des Fahrzeugs erinnern (ruft die Datenbank automatisch auf)
+//   remind         – Erinnerungen (ruft die Datenbank alle 10 Minuten auf):
+//                    · ab 16 Uhr an die Rückgabe des Fahrzeugs (je Person einmal am Tag)
+//                    · Auftrag gestartet, aber nicht beendet: nach 4 Stunden, danach alle 2 Stunden (Nachtruhe 22–7 Uhr)
+//   progress       – „Losgefahren“ / „Fertig“ eines Dolmetschers an die Einsatzleitung melden
 //   resetPassword  – neues vorläufiges Passwort für ein Konto vergeben (nur Admin)
 // Einrichtung: Supabase → Edge Functions → neue Funktion "tt-push" → diesen Text einfügen → Deploy.
 // Der Schalter "Verify JWT" darf an oder aus sein – die Funktion prüft die Anmeldung selbst.
@@ -71,6 +74,8 @@ function berlinNow() {
   return { date: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) % 24 };
 }
 
+const HOUR = 60 * 60 * 1000;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Nur POST.' }, 405);
@@ -85,24 +90,50 @@ Deno.serve(async (req) => {
 
     if (action === 'remind') {
       const now = berlinNow();
-      if (now.hour < 16) return json({ reminded: 0, reason: 'vor 16 Uhr' });
-      const { data: open } = await admin.from('tt_handovers')
-        .select('id, driver_id, vehicle_id, reminded_at, emergency')
-        .is('end_time', null).eq('emergency', false).not('driver_id', 'is', null);
-      const due = (open ?? []).filter((item) => !item.reminded_at
-        || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date(item.reminded_at)) < now.date);
       let reminded = 0;
-      for (const item of due) {
-        const { data: vehicle } = await admin.from('tt_vehicles').select('plate').eq('id', item.vehicle_id).maybeSingle();
-        const result = await sendTo([item.driver_id], {
-          title: 'Fahrzeug zurückgeben',
-          body: `Bitte gib ${vehicle?.plate ?? 'dein Fahrzeug'} zurück, wenn du fertig bist: Kilometer, Tank, Parkort, Sauberkeit.`,
-          url: 'portal.html', tag: 'rueckgabe',
-        });
-        await admin.from('tt_handovers').update({ reminded_at: new Date().toISOString() }).eq('id', item.id);
-        if (result.sent) reminded += 1;
+      let open = 0;
+      // 1) Fahrzeug zurückgeben: ab 16 Uhr, je Person einmal am Tag (Notdienst ausgenommen)
+      if (now.hour >= 16) {
+        const { data: handovers } = await admin.from('tt_handovers')
+          .select('id, driver_id, vehicle_id, reminded_at, emergency')
+          .is('end_time', null).eq('emergency', false).not('driver_id', 'is', null);
+        open = (handovers ?? []).length;
+        const due = (handovers ?? []).filter((item) => !item.reminded_at
+          || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date(item.reminded_at)) < now.date);
+        for (const item of due) {
+          const { data: vehicle } = await admin.from('tt_vehicles').select('plate').eq('id', item.vehicle_id).maybeSingle();
+          const result = await sendTo([item.driver_id], {
+            title: 'Fahrzeug zurückgeben',
+            body: `Bitte gib ${vehicle?.plate ?? 'dein Fahrzeug'} zurück, wenn du fertig bist: Kilometer, Tank, Parkort, Sauberkeit.`,
+            url: 'portal.html', tag: 'rueckgabe',
+          });
+          await admin.from('tt_handovers').update({ reminded_at: new Date().toISOString() }).eq('id', item.id);
+          if (result.sent) reminded += 1;
+        }
       }
-      return json({ reminded, open: (open ?? []).length });
+      // 2) Auftrag gestartet, aber nicht als fertig gemeldet: erste Erinnerung nach 4 Stunden, danach alle 2 Stunden,
+      //    bis „Fertig“ gemeldet ist. Nachts (22–7 Uhr) ist Ruhe; nach 12 Erinnerungen ist Schluss.
+      let jobs = 0;
+      if (now.hour >= 7 && now.hour < 22) {
+        const { data: running } = await admin.from('tt_assignments')
+          .select('id, interpreter_id, title, started_at, reminded_at, reminder_count')
+          .eq('work_status', 'losgefahren').eq('cancelled', false).is('finished_at', null).not('started_at', 'is', null);
+        for (const job of running ?? []) {
+          const count = Number(job.reminder_count ?? 0);
+          const dueAt = count === 0 || !job.reminded_at
+            ? new Date(job.started_at).getTime() + 4 * HOUR
+            : new Date(job.reminded_at).getTime() + 2 * HOUR;
+          if (Date.now() < dueAt || count >= 12) continue;
+          await sendTo([job.interpreter_id], {
+            title: 'Auftrag noch nicht beendet',
+            body: `${job.title}: Bitte melde im Portal „Fertig“, sobald der Auftrag beendet ist.`,
+            url: 'portal.html?seite=auftraege', tag: `auftrag-${job.id}`,
+          });
+          await admin.from('tt_assignments').update({ reminded_at: new Date().toISOString(), reminder_count: count + 1 }).eq('id', job.id);
+          jobs += 1;
+        }
+      }
+      return json({ reminded, open, jobs });
     }
 
     const profile = await caller(req);
@@ -124,6 +155,21 @@ Deno.serve(async (req) => {
         url: 'portal.html?seite=nachrichten', tag: 'nachricht',
       });
       return json({ ...result, people: (people ?? []).length });
+    }
+
+    if (action === 'progress') {
+      // Ein Dolmetscher hat „Losfahren“ oder „Fertig“ gemeldet: Mitteilung an Einsatzleitung und Sekretariat.
+      const { data: job } = await admin.from('tt_assignments')
+        .select('id, title, interpreter_id, interpreter_name, work_status').eq('id', String(input.assignmentId ?? '')).maybeSingle();
+      if (!job || job.interpreter_id !== profile.id) return json({ error: 'Auftrag nicht gefunden.' }, 404);
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const finished = job.work_status === 'beendet';
+      const result = await sendTo((staff ?? []).map((item) => item.id), {
+        title: finished ? 'Dolmetscher wieder frei' : 'Dolmetscher losgefahren',
+        body: `${job.interpreter_name}${finished ? ' ist fertig' : ' ist unterwegs'}: ${job.title}`,
+        url: 'termineTracking.html', tag: `fortschritt-${job.id}`,
+      });
+      return json(result);
     }
 
     if (action === 'resetPassword') {

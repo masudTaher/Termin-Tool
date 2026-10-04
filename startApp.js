@@ -64,6 +64,50 @@
         }
     });
 
+    // ---------- Mitteilungen auf diesem Gerät (Dolmetscher losgefahren / fertig und wieder frei) ----------
+    const PUSH_WHAT = 'Du bekommst eine Mitteilung, wenn ein Dolmetscher losfährt oder fertig und wieder frei ist – auch wenn die App geschlossen ist.';
+    async function renderPush(profile) {
+        const info = $('startPushInfo');
+        const button = $('startPushToggle');
+        button.hidden = true;
+        if (!profile) {
+            info.textContent = 'Nach der Online-Anmeldung kannst du hier Mitteilungen für dieses Gerät einschalten.';
+            return;
+        }
+        if (!TerminCloud.isStaff(profile)) {
+            info.textContent = 'Mitteilungen gibt es hier nur für Einsatzleitung und Sekretariat.';
+            return;
+        }
+        let state = 'unsupported';
+        try { state = location.protocol.startsWith('http') ? await TerminCloud.pushState() : 'unsupported'; } catch (error) { /* bleibt „nicht möglich“ */ }
+        const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        info.textContent = state === 'on' ? `Eingeschaltet. ${PUSH_WHAT}`
+            : state === 'blocked' ? 'Mitteilungen sind für diese Seite gesperrt. Erlaube sie in den Einstellungen des Browsers oder des Handys und lade die Seite neu.'
+            : state === 'unsupported' ? (isIos
+                ? 'Auf dem iPhone gehen Mitteilungen erst, wenn du die App auf den Home-Bildschirm gelegt hast und sie von dort öffnest.'
+                : 'Auf diesem Gerät sind Mitteilungen nicht möglich. Öffne die App über die Internet-Adresse in Chrome, Edge oder Safari.')
+            : PUSH_WHAT;
+        button.hidden = state === 'unsupported' || state === 'blocked';
+        button.textContent = state === 'on' ? 'Mitteilungen ausschalten' : 'Mitteilungen einschalten';
+        button.className = state === 'on' ? 'button-secondary' : 'button-primary';
+        button.dataset.state = state;
+    }
+    $('startPushToggle').addEventListener('click', async () => {
+        const button = $('startPushToggle');
+        const enable = button.dataset.state !== 'on';
+        button.disabled = true;
+        try {
+            if (enable) { await TerminCloud.enablePush(); showToast('Mitteilungen sind auf diesem Gerät eingeschaltet.', 'success'); }
+            else { await TerminCloud.disablePush(); showToast('Mitteilungen sind auf diesem Gerät ausgeschaltet.', 'info'); }
+        } catch (error) {
+            showToast(error.message || 'Mitteilungen konnten nicht umgeschaltet werden.', 'error', { target: '#startPushToggle' });
+        }
+        button.disabled = false;
+        let profile = null;
+        try { profile = await TerminCloud.getProfile(); } catch (error) { /* wie nicht angemeldet */ }
+        renderPush(profile);
+    });
+
     // ---------- Online: was zu erledigen ist ----------
     function todoItem(text, count, href) {
         const item = document.createElement('li');
@@ -85,10 +129,12 @@
         list.replaceChildren();
         if (typeof TerminCloud === 'undefined' || !TerminCloud.available) {
             info.textContent = 'Die Online-Datenbank ist gerade nicht erreichbar. Lokal kannst du normal weiterarbeiten.';
+            $('startPushInfo').textContent = 'Mitteilungen brauchen die Online-Datenbank. Sie ist gerade nicht erreichbar.';
             return;
         }
         let profile = null;
         try { profile = await TerminCloud.getProfile(); } catch (error) { /* wie nicht angemeldet */ }
+        renderPush(profile);
         if (!profile) {
             info.textContent = 'Du bist nicht online angemeldet. Mit Anmeldung siehst du hier Meldungen, Schäden und die Abrechnung.';
             list.append(todoItem('Online anmelden', 0, 'team.html'));

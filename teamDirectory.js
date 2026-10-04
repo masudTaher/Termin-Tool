@@ -45,6 +45,45 @@ function removeInterpreterName(value) {
     return writeInterpreterDirectory(readInterpreterDirectory().filter(name => name.toLocaleLowerCase('de') !== normalized));
 }
 
+// FileMaker-Export: In der ersten Zeile der Bemerkung steht der Dolmetscher, den die Einsatzleitung vorab eingetragen hat.
+// Der Name wird nur übernommen, wenn er in der Dolmetscherliste steht (ganzer Name oder eindeutiger Vorname) –
+// so wird aus einer gewöhnlichen Bemerkung nie versehentlich ein Dolmetscher. Unbekannte Namen werden nur gemeldet.
+function assignInterpretersFromRemarks(records) {
+    const names = readInterpreterDirectory();
+    const byFull = new Map(names.map(name => [name.toLocaleLowerCase('de'), name]));
+    const byFirst = new Map();
+    names.forEach(name => {
+        const first = name.split(' ')[0].toLocaleLowerCase('de');
+        byFirst.set(first, byFirst.has(first) ? null : name);
+    });
+    const result = { assigned: 0, unknown: [] };
+    (records || []).forEach(record => {
+        if (String(record.Übersetzer || '').trim()) return;
+        const first = String(record.Bemerkung || '').split(/\r\n|\n|\r/).map(line => line.trim()).find(Boolean) || '';
+        const candidate = normalizeInterpreterName(first.replace(/^(?:dolmetscher(?:\/in)?|übersetzer(?:\/in)?)\s*:\s*/iu, '').replace(/[.,;:]+$/, ''));
+        if (!candidate || candidate.length > 40 || /\d/.test(candidate) || candidate.split(' ').length > 3) return;
+        const key = candidate.toLocaleLowerCase('de');
+        const match = byFull.get(key) || byFirst.get(key) || null;
+        if (match) { record.Übersetzer = match; result.assigned += 1; }
+        else if (/^\p{Lu}[\p{L}'’-]+(?: \p{Lu}[\p{L}'’-]+){0,2}$/u.test(candidate)) result.unknown.push(candidate);
+    });
+    result.unknown = [...new Set(result.unknown)];
+    return result;
+}
+
+// Meldet das Ergebnis und bietet an, unbekannte Namen in die Liste aufzunehmen (rerun: danach erneut zuordnen und anzeigen).
+function reportRemarkInterpreters(result, rerun) {
+    if (typeof showToast !== 'function') return;
+    if (result.assigned) showToast(`${result.assigned} Dolmetscher aus der ersten Zeile der Bemerkung eingetragen.`, 'success');
+    if (!result.unknown.length) return;
+    const shown = result.unknown.slice(0, 4).join(', ') + (result.unknown.length > 4 ? ' …' : '');
+    showToast(`In der Bemerkung ${result.unknown.length === 1 ? 'steht ein Name' : `stehen ${result.unknown.length} Namen`}, die nicht in der Dolmetscherliste sind: ${shown}`, 'info', {
+        duration: 20000,
+        actionLabel: 'In die Liste aufnehmen und eintragen',
+        onAction: () => { result.unknown.forEach(name => addInterpreterName(name)); rerun(); }
+    });
+}
+
 function refreshInterpreterSuggestions() {
     const datalist = document.getElementById('dolmetscherSuggestions');
     if (!datalist) return;

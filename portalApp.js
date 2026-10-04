@@ -66,16 +66,16 @@
         item.append(text);
         const duration = kind === 'error' ? 10000 : 5000;
         item.style.setProperty('--toast-time', `${duration}ms`);
-        const problem = kind === 'error' ? findProblem(target) : null;
+        const problem = kind === 'error' ? (typeof target === 'function' ? target : findProblem(target)) : null;
         if (problem) {
             item.classList.add('has-target');
             item.setAttribute('role', 'button');
             item.tabIndex = 0;
             const hint = document.createElement('em');
             hint.className = 'toast-jump';
-            hint.textContent = 'Zur Stelle';
+            hint.textContent = typeof target === 'function' ? 'Öffnen' : 'Zur Stelle';
             item.append(hint);
-            const jump = () => { item.remove(); jumpToProblem(target || problem); };
+            const jump = () => { item.remove(); if (typeof target === 'function') target(); else jumpToProblem(target || problem); };
             item.addEventListener('click', jump);
             item.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jump(); } });
         } else {
@@ -181,6 +181,7 @@
         // Direkter Sprung aus einer Mitteilung: portal.html?seite=nachrichten
         const wanted = new URLSearchParams(location.search).get('seite');
         if (wanted === 'nachrichten') { history.replaceState(null, '', location.pathname); goTo('messages'); }
+        else if (wanted === 'auftraege') { history.replaceState(null, '', location.pathname); goTo('jobs'); }
         else goTo(TAB_OF[currentView] ? currentView : 'vehicle');
     }
 
@@ -278,6 +279,8 @@
         const notices = [];
         if (unread) notices.push([`${unread} neue ${unread === 1 ? 'Nachricht' : 'Nachrichten'} von der Einsatzleitung`, () => goTo('messages')]);
         if (open) notices.push([`${open} ${open === 1 ? 'Auftrag wartet' : 'Aufträge warten'} auf deine Antwort`, () => goTo('jobs')]);
+        const running = jobsData.filter(item => !item.cancelled && jobStarted(item) && !jobFinished(item) && item.date <= today);
+        running.forEach(item => notices.push([`Laufender Auftrag: ${item.title}${item.started_at ? ` · seit ${clock(item.started_at)} Uhr` : ''} – bitte „Fertig“ melden, wenn du fertig bist`, () => goTo('jobs')]));
         const waiting = statementData.find(item => item.response === 'offen');
         if (waiting && !isFest()) notices.push([`Deine Abrechnung für ${monthLabel(waiting.month)} wartet auf deine Bestätigung`, () => goTo('statement')]);
         $('startNotices').replaceChildren(...notices.map(([text, action]) => {
@@ -590,6 +593,54 @@
         return body;
     }
 
+    // ---------- Losfahren und Fertig: Der Dolmetscher meldet selbst, wann er startet und wann er fertig ist ----------
+    const clock = value => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const jobStarted = item => Boolean(item.started_at) || item.work_status === 'losgefahren';
+    const jobFinished = item => Boolean(item.finished_at) || ['beendet', 'alleine'].includes(item.work_status);
+
+    async function setJobProgress(item, action, button) {
+        if (action === 'start' && !myHandover) {
+            toast('Bitte zuerst ein Fahrzeug übernehmen. Ohne Fahrzeug kann der Auftrag nicht gestartet werden.', 'error', () => goTo('vehicle'));
+            return;
+        }
+        button.disabled = true;
+        const { data, error } = await client.rpc('tt_assignment_progress', { p_id: item.id, p_action: action });
+        if (error) {
+            button.disabled = false;
+            const noCar = /fahrzeug übernehmen/i.test(error.message || '');
+            toast(/could not find the function|schema cache|does not exist/i.test(error.message || '') ? 'Diese Funktion ist in der Datenbank noch nicht eingerichtet (Update 12 fehlt).' : TerminCloud.germanError(error), 'error', noCar ? () => goTo('vehicle') : null);
+            return;
+        }
+        const overtime = Number(data?.overtime_minutes || 0);
+        toast(action === 'start' ? 'Gute Fahrt! Die Einsatzleitung sieht, dass du unterwegs bist.'
+            : `Auftrag beendet. Die Einsatzleitung weiß, dass du wieder frei bist.${overtime ? ` Überstunden eingetragen: ${duration(overtime)}.` : ''}`, 'success');
+        // Zusätzlich als Mitteilung an die Einsatzleitung (falls dort eingeschaltet).
+        TerminCloud.callFunction({ action: 'progress', assignmentId: item.id }).catch(() => null);
+        await loadJobs();
+        if (isFest() && overtime) loadOvertime();
+        renderHome();
+    }
+
+    // Nur am Tag des Auftrags (und danach, falls noch nicht beendet) – nicht bei Absage.
+    function jobProgress(item) {
+        if (item.response === 'abgesagt' || item.date > TerminCloud.todayIso() || ['storniert'].includes(item.work_status)) return null;
+        const box = el('div', 'job-progress');
+        const finished = jobFinished(item);
+        const started = jobStarted(item);
+        box.dataset.state = finished ? 'beendet' : started ? 'unterwegs' : 'offen';
+        if (finished) {
+            box.append(svgSpan('job-progress-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.800 2.800L16.500 9.500"/></svg>'),
+                el('span', 'job-progress-text', item.finished_at ? `Beendet um ${clock(item.finished_at)} Uhr` : 'Beendet'));
+            return box;
+        }
+        if (started) box.append(el('span', 'job-progress-text', item.started_at ? `Unterwegs seit ${clock(item.started_at)} Uhr` : 'Unterwegs'));
+        const button = el('button', `job-progress-button ${started ? 'is-finish' : 'is-start'}`, started ? 'Fertig – Auftrag beenden' : 'Losfahren');
+        button.type = 'button';
+        button.addEventListener('click', () => setJobProgress(item, started ? 'finish' : 'start', button));
+        box.append(button);
+        return box;
+    }
+
     function jobCard(item) {
         const card = el('li', 'job-card');
         card.dataset.response = item.response;
@@ -645,7 +696,10 @@
             buttons.append(button);
         });
         answer.append(note, buttons);
-        card.append(top, details, answer);
+        card.append(top, details);
+        const progress = jobProgress(item);
+        if (progress) card.append(progress);
+        card.append(answer);
         // Ab dem Tag des Termins: Arztbericht, Rezept oder Überweisung direkt zu diesem Auftrag fotografieren.
         if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
             const docs = el('button', 'job-docs-button');
@@ -662,7 +716,9 @@
         if (error) { $('jobsSummary').textContent = 'Aufträge konnten nicht geladen werden.'; return; }
         jobsData = data;
         const today = TerminCloud.todayIso();
-        const upcoming = data.filter(item => item.date >= today && !item.cancelled).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        // Oben stehen kommende Aufträge – und ältere, die gestartet, aber noch nicht beendet wurden.
+        const isCurrent = item => !item.cancelled && (item.date >= today || (jobStarted(item) && !jobFinished(item)));
+        const upcoming = data.filter(isCurrent).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
         const open = upcoming.filter(item => item.response === 'offen').length;
         $('jobsSummary').textContent = upcoming.length
             ? `${upcoming.length} ${upcoming.length === 1 ? 'Auftrag' : 'Aufträge'}${open ? `, ${open} ${open === 1 ? 'wartet' : 'warten'} auf deine Antwort` : ''}`
@@ -680,7 +736,7 @@
 
         const history = $('jobHistory');
         history.replaceChildren();
-        const past = data.filter(item => item.date < today || item.cancelled);
+        const past = data.filter(item => !isCurrent(item));
         if (!past.length) {
             const empty = document.createElement('li');
             empty.className = 'directory-empty';

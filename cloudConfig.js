@@ -9,11 +9,11 @@ window.TERMIN_CLOUD_CONFIG = {
     // wenn die App lokal auf dem PC läuft.
     portalUrl: 'https://masudtaher.github.io/Termin-Tool/portal.html',
     // Auswahllisten im Portal – hier lassen sich Begriffe ändern oder ergänzen.
-    parkingOptions: ['Links', 'Links / Rechts', 'Rechts', 'Links / Rechts weit', 'Auf dem Hof (Botschaft)'],
+    parkingOptions: ['Links', 'Links/Rechts', 'Links/Rechts weit', 'Rechts', 'Büro'],
     // Schadensarten für die Schadenmeldung (kurz halten – „Sonstiges“ fängt den Rest auf).
     damageKinds: ['Kratzer', 'Schramme', 'Delle', 'Steinschlag', 'Unfall mit Bericht', 'Unfall ohne Bericht', 'Schiebetür defekt', 'Felge / Reifen', 'Sonstiges'],
     // Unterlagen, die Dolmetscher nach einem Termin fotografieren und als PDF schicken.
-    documentKinds: ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Überweisung Facharzt', 'Überweisung MRT / CT / Röntgen', 'Sonstiges'],
+    documentKinds: ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'],
     alertKinds: ['Reifendruck', 'AdBlue nachfüllen', 'Serviceanzeige', 'Ölstand', 'Motorkontrollleuchte', 'Wischwasser', 'Sonstiges'],
     fuelLabels: ['Leer', '1/4', '1/2', '3/4', 'Voll'],
     // Arbeitszeit der Festangestellten – alles davor oder danach zählt als Überstunden.

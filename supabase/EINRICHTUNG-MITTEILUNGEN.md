@@ -2,7 +2,10 @@
 
 Dauer: etwa 5 Minuten, einmalig. Danach funktionieren:
 
-- Mitteilungen aufs Handy der Dolmetscher (neuer Auftrag, Nachricht, Erinnerung „Fahrzeug zurückgeben“ nach 16 Uhr)
+- Mitteilungen aufs Handy der Dolmetscher (neuer Auftrag, Nachricht, Erinnerung „Fahrzeug zurückgeben“ nach 16 Uhr,
+  Erinnerung „Auftrag noch nicht beendet“ nach 4 Stunden und danach alle 2 Stunden)
+- Mitteilungen an Einsatzleitung und Sekretariat („Dolmetscher losgefahren“, „Dolmetscher wieder frei“) –
+  einschalten auf der Übersicht unter „Mitteilungen auf diesem Gerät“
 - der Knopf „Neues Passwort“ auf der Seite „Team“
 
 Ohne diese Einrichtung läuft die App ganz normal weiter – nur diese beiden Dinge fehlen dann.
@@ -21,10 +24,15 @@ Ohne diese Einrichtung läuft die App ganz normal weiter – nur diese beiden Di
 4. **Deploy function** klicken.
 5. Fertig. Am Schalter „Verify JWT with legacy secret“ muss nichts geändert werden – die Funktion prüft die Anmeldung selbst und läuft in beiden Stellungen.
 
-## Schritt 3 – Automatische Erinnerung nach 16 Uhr
+## Schritt 3 – Automatische Erinnerungen
 
 1. Supabase → **SQL Editor**.
-2. Den Inhalt der Datei `update-8b-erinnerung.sql` einfügen → **Run**.
+2. Den Inhalt der Datei `update-12.sql` einfügen → **Run**. Die Datenbank ruft die Funktion danach alle 10 Minuten auf;
+   die Funktion entscheidet selbst, wer erinnert wird (Fahrzeug ab 16 Uhr einmal am Tag, offener Auftrag nach 4 Stunden
+   und dann alle 2 Stunden, nachts zwischen 22 und 7 Uhr ist Ruhe).
+   (`update-8b-erinnerung.sql` ist der alte Zeitplan und wird damit ersetzt.)
+3. Nach jeder Änderung an `functions/tt-push/index.ts`: Supabase → **Edge Functions** → `tt-push` → **Code** →
+   Text ersetzen → **Deploy updates**.
 
 Falls dabei eine Meldung zu `pg_cron` oder `pg_net` kommt: Supabase → **Database** → **Extensions** → `pg_cron` und `pg_net` einschalten, dann Schritt 3 wiederholen.
 

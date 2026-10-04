@@ -128,6 +128,13 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
         // Jeder Termin bekommt eine feste interne Kennung, damit das Live-Tracking ihn wiedererkennt.
         const importStamp = Date.now().toString(36);
         alleTermine.forEach((termin, index) => { termin._src = `${importStamp}-${index}`; });
+        // Erste Zeile der Bemerkung = vorab eingetragener Dolmetscher (nur Namen aus der Dolmetscherliste).
+        if (typeof assignInterpretersFromRemarks === 'function') {
+            reportRemarkInterpreters(assignInterpretersFromRemarks(alleTermine), () => {
+                reportRemarkInterpreters({ ...assignInterpretersFromRemarks(alleTermine), unknown: [] }, () => {});
+                filterTermine();
+            });
+        }
         // Eine neu hochgeladene Datei beginnt einen frischen Filterlauf.
         saveTerminWorkflow({ step: 'filtern' });
 

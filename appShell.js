@@ -332,4 +332,9 @@
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildShell);
     else buildShell();
+
+    // Für Mitteilungen aufs Gerät der Einsatzleitung (z. B. „Dolmetscher wieder frei“) – der Rest der Seite braucht ihn nicht.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+        navigator.serviceWorker.register('sw.js').catch(() => { /* ohne Service Worker gibt es nur die Anzeigen in der App */ });
+    }
 })();

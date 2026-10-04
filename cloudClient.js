@@ -176,7 +176,12 @@ const TerminCloud = (() => {
         if (permission !== 'granted') throw new Error('Mitteilungen wurden nicht erlaubt. Du kannst das in den Einstellungen des Handys ändern.');
         const key = await callFunction({ action: 'publicKey' });
         if (!key.ok || !key.data?.publicKey) throw new Error('Mitteilungen sind noch nicht eingerichtet. Bitte sag der Einsatzleitung Bescheid.');
-        const registration = await navigator.serviceWorker.ready;
+        // Ohne laufenden Service Worker würde hier ewig gewartet – nach 10 Sekunden lieber eine klare Auskunft.
+        const registration = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise(resolve => setTimeout(() => resolve(null), 10000))
+        ]);
+        if (!registration) throw new Error('Mitteilungen konnten auf diesem Gerät nicht eingerichtet werden. Bitte die Seite neu laden und noch einmal versuchen.');
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key.data.publicKey) });
         const raw = subscription.toJSON();

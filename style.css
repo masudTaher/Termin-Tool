@@ -1251,6 +1251,9 @@ a.app-nav-note:hover span { color: #fff; text-decoration: underline; }
 .doc-kinds .doc-kind, :root[data-theme="dark"] .doc-kinds .doc-kind { justify-content: flex-start; gap: 14px; min-height: 60px; font-size: 1rem; font-weight: 650; text-align: left; }
 .doc-kind-icon { display: grid; flex: 0 0 auto; width: 40px; height: 40px; place-items: center; border-radius: 11px; background: var(--brand-soft); color: var(--brand-dark); }
 .doc-kind-icon svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.doc-kind-text { display: grid; gap: 1px; min-width: 0; }
+.doc-kind-text strong { font-weight: 650; }
+.doc-kind-text small { color: var(--muted); font-size: 0.82rem; font-weight: 500; line-height: 1.3; }
 
 .doc-capture { display: flex; flex-direction: column; gap: 8px; }
 .wizard .doc-capture .big-button { margin-top: 0; }
@@ -1315,3 +1318,36 @@ a.app-nav-note:hover span { color: #fff; text-decoration: underline; }
   .fuel-entry .vehicle-entry-actions { flex: 1 1 100%; justify-content: flex-start; }
   .fuel-entry .vehicle-entry-actions select { max-width: none; flex: 1 1 150px; }
 }
+/* ---------- 23 Losfahren/Fertig im Portal, Dolmetscher heute, Zähler im Live-Tracking ---------- */
+.job-progress { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--surface); }
+.job-progress[data-state="unterwegs"] { background: color-mix(in srgb, var(--row-departed) 45%, var(--surface)); }
+.job-progress[data-state="beendet"] { flex-direction: row; align-items: center; background: color-mix(in srgb, var(--row-done) 55%, var(--surface)); color: var(--ok); }
+.job-progress-text { font-size: .92rem; font-weight: 700; }
+.job-progress-icon svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.job-progress-button, :root[data-theme="dark"] .job-progress-button { width: 100%; min-height: 54px; border: 0; border-radius: 13px; color: #fff; font-size: 1.05rem; font-weight: 750; }
+.job-progress-button.is-start, :root[data-theme="dark"] .job-progress-button.is-start { background: #1769aa; }
+.job-progress-button.is-finish, :root[data-theme="dark"] .job-progress-button.is-finish { background: #18794e; }
+.job-progress-button:disabled { opacity: .6; }
+
+.people-panel { margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+.people-panel > summary { display: flex; align-items: center; gap: 12px; padding: 11px 16px; cursor: pointer; list-style: none; }
+.people-panel > summary::-webkit-details-marker { display: none; }
+.people-panel > summary::before { content: "▸"; color: var(--muted); font-size: .8rem; }
+.people-panel[open] > summary::before { content: "▾"; }
+.people-title { font-size: .92rem; font-weight: 750; }
+.people-summary { padding: 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ok); font-size: .8rem; font-weight: 700; }
+.people-body { padding: 0 16px 14px; }
+.people-heading { margin: 10px 0 6px; color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.people-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.people-empty { color: var(--muted); font-size: .84rem; }
+.person-chip, :root[data-theme="dark"] .person-chip { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; padding: 4px 6px 4px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: .86rem; font-weight: 650; }
+.person-chip:hover { border-color: var(--brand); background: var(--brand-soft); }
+.person-chip b, .job-count { display: inline-grid; min-width: 22px; height: 22px; padding: 0 6px; place-items: center; border-radius: 999px; background: var(--surface-hover); color: var(--ink-soft); font-size: .74rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.person-chip b[data-load="mittel"], .job-count[data-load="mittel"] { background: var(--warn-soft); color: var(--warn); }
+.person-chip b[data-load="hoch"], .job-count[data-load="hoch"] { background: var(--danger-soft); color: var(--danger); }
+.person-chip small { padding-right: 6px; color: var(--muted); font-size: .72rem; font-weight: 500; }
+.interpreter-line { display: flex; align-items: center; gap: 4px; }
+.interpreter-line .interpreter-input { min-width: 0; flex: 1 1 auto; }
+.job-count[hidden] { display: none; }
+.status-times { display: block; margin-top: 3px; color: var(--row-ink, var(--muted)); font-size: .7rem; font-weight: 600; opacity: .8; }
+#dataTable tbody tr.is-active-row > td { box-shadow: inset 0 2px 0 var(--brand), inset 0 -2px 0 var(--brand); }

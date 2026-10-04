@@ -30,6 +30,16 @@
                <span id="cloudDayStatus" class="cloud-day-status" role="status" hidden></span>
                <div class="reminder-control"><span class="reminder-control-text">Erinnerung 60 Min. (Bonn) / 90 Min. (außerhalb)</span><button id="enableReminderSound" type="button" class="button-secondary">Ton einschalten</button><small id="reminderSoundStatus" role="status">Einmal pro Sitzung aktivieren</small></div>
             </div>
+            <details class="people-panel" id="peoplePanel">
+               <summary><span class="people-title">Dolmetscher heute</span><span id="peopleSummary" class="people-summary">noch niemand eingeteilt</span></summary>
+               <div class="people-body">
+                  <p class="field-hint">Die Zahl zeigt, wie viele Aufträge die Person heute hat. Klicke zuerst in das Dolmetscher-Feld eines Termins und dann auf einen Namen – so wird er eingetragen.</p>
+                  <h3 class="people-heading">Frei</h3>
+                  <div id="peopleFree" class="people-list"></div>
+                  <h3 class="people-heading">Unterwegs</h3>
+                  <div id="peopleBusy" class="people-list"></div>
+               </div>
+            </details>
             <div id="reminderBanner" class="reminder-banner" role="alert" aria-live="assertive" hidden></div>
 			
 			

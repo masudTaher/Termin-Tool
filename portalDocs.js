@@ -6,7 +6,7 @@ window.PortalDocs = (function () {
     const core = window.PortalCore;
     const $ = id => document.getElementById(id);
     const { client, toast, el, svgSpan } = core;
-    const KINDS = core.config.documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Überweisung Facharzt', 'Überweisung MRT / CT / Röntgen', 'Sonstiges'];
+    const KINDS = core.config.documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'];
     const REPORT_KIND = 'Dolmetscherbericht';
     const MAX_PAGES = 20;
     const MAX_PDF_BYTES = 19 * 1024 * 1024;      // der Speicher nimmt höchstens 20 MB je Datei an
@@ -32,8 +32,18 @@ window.PortalDocs = (function () {
         'Rezept Medikamente': icon('<rect x="3.500" y="8.500" width="17" height="7" rx="3.500" transform="rotate(-45 12 12)"/><path d="M9.500 9.500l5 5"/>'),
         'Rezept Physiotherapie': icon('<circle cx="12" cy="5.500" r="2"/><path d="M5 10.500l7-1.500 7 1.500M12 9v6l-3.500 5M12 15l3.500 5"/>'),
         'Überweisung Facharzt': icon('<path d="M4 12h13M12.500 7.500 17 12l-4.500 4.500"/><path d="M20 5v14"/>'),
-        'Überweisung MRT / CT / Röntgen': icon('<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="12" cy="12" r="3.500"/><path d="M12 5v2M12 17v2M4 12h2M18 12h2"/>'),
+        'Rezept Hilfsmittel': icon('<circle cx="9" cy="16.500" r="4"/><path d="M9 12.500V5.500H6.500M9 9.500h5.500l2 6H19"/><circle cx="18.500" cy="18.500" r="1.500"/>'),
+        'Überweisung Radiologie': icon('<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="12" cy="12" r="3.500"/><path d="M12 5v2M12 17v2M4 12h2M18 12h2"/>'),
         'Sonstiges': icon('<path d="M3.500 7.500a2 2 0 0 1 2-2h4l2 2.200h7a2 2 0 0 1 2 2v7.800a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>')
+    };
+    // Kurze Erklärung unter der Art – damit die Unterlage in der richtigen Kategorie landet.
+    const KIND_HINTS = {
+        'Arztbericht': 'Befund, Arztbrief, Entlassbericht',
+        'Rezept Medikamente': 'für die Apotheke',
+        'Rezept Physiotherapie': 'Krankengymnastik, Massage, Lymphdrainage',
+        'Rezept Hilfsmittel': 'z. B. Rollstuhl, Bandage, Einlagen',
+        'Überweisung Facharzt': 'an einen anderen Arzt',
+        'Überweisung Radiologie': 'MRT, CT, Röntgen'
     };
     const STATUS = { neu: ['in Arbeit', 'gesendet'], 'geprüft': ['erledigt', 'geprüft'], weitergeleitet: ['erledigt', 'weitergeleitet'] };
     const ISSUE_SHORT = { dunkel: 'ist zu dunkel', hell: 'ist überbelichtet', unscharf: 'ist unscharf', klein: 'ist sehr klein', kontrast: 'hat kaum erkennbare Schrift' };
@@ -233,7 +243,10 @@ window.PortalDocs = (function () {
         $('docKinds').replaceChildren(...KINDS.map(kind => {
             const button = el('button', 'choice-button doc-kind');
             button.type = 'button';
-            button.append(svgSpan('doc-kind-icon', KIND_ICONS[kind] || KIND_ICONS.Sonstiges), el('span', '', kind));
+            const label = el('span', 'doc-kind-text');
+            label.append(el('strong', '', kind));
+            if (KIND_HINTS[kind]) label.append(el('small', '', KIND_HINTS[kind]));
+            button.append(svgSpan('doc-kind-icon', KIND_ICONS[kind] || KIND_ICONS.Sonstiges), label);
             button.addEventListener('click', () => {
                 draft.kind = kind;
                 $('docCameraLabel').textContent = 'Seite fotografieren';

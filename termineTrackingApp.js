@@ -105,6 +105,14 @@ function handleFileUpload(event) {
             showWorkflowStatus('Die Excel-Datei enthält keine Termine.', 'error');
             return;
         }
+        // Erste Zeile der Bemerkung = vorab eingetragener Dolmetscher (nur Namen aus der Dolmetscherliste).
+        if (typeof assignInterpretersFromRemarks === 'function') {
+            reportRemarkInterpreters(assignInterpretersFromRemarks(trackingData), () => {
+                reportRemarkInterpreters({ ...assignInterpretersFromRemarks(trackingData), unknown: [] }, () => {});
+                persistTerminRecords(trackingData, 'tracking');
+                renderTrackingTable(trackingData);
+            });
+        }
 
         sessionStorage.removeItem(TRACKING_UNDO_KEY);
 
@@ -270,11 +278,12 @@ function renderTrackingTable(data) {
             escapeHtml(termin.Bemerkung || ''),
             escapeHtml(termin['Arzt Nr::Name'] || ''),
             escapeHtml(getAppointmentLocation(termin)),
-            `<input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben">`
+            `<div class="interpreter-line"><input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben"><span class="job-count" data-index="${index}" hidden></span></div>`
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
                 + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button></div>`
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>` : ''),
-            `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`,
+            `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
+                + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : ''),
             `<div class="tracking-row-actions">`
                 + `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`
                 + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="${termin['Rückmeldung'] ? 'Auftrag erneut ins Dolmetscher-Portal senden' : 'Auftrag ins Dolmetscher-Portal senden'}">${ROW_ICONS.send}<span>${termin['Rückmeldung'] ? 'Erneut' : 'Auftrag'}</span></button>` : '')
@@ -287,8 +296,98 @@ function renderTrackingTable(data) {
     updateTrackingOverview(data);
     applyTrackingFilter();
     updateUndoButton();
+    refreshInterpreterLoad();
     if (typeof refreshTrackingReminders === 'function') refreshTrackingReminders();
 }
+
+// ---------- Dolmetscher heute: wer ist frei, wer ist unterwegs, wie viele Aufträge hat jeder ----------
+let activeInterpreterIndex = null;      // Termin, dessen Dolmetscher-Feld zuletzt angeklickt wurde
+
+function interpreterLoad(data = trackingData) {
+    const load = new Map();
+    data.forEach(termin => {
+        const name = getAppointmentInterpreterName(termin);
+        const group = getTrackingStatusGroup(termin);
+        if (!name || group === 'storniert') return;
+        const key = name.toLocaleLowerCase('de');
+        const entry = load.get(key) || { name, total: 0, open: 0, running: 0, done: 0 };
+        entry.total += 1;
+        entry[group === 'offen' ? 'open' : group === 'unterwegs' ? 'running' : 'done'] += 1;
+        load.set(key, entry);
+    });
+    return load;
+}
+
+const loadText = entry => `${entry.total} ${entry.total === 1 ? 'Auftrag' : 'Aufträge'} heute`
+    + ` (${[entry.done ? `${entry.done} erledigt` : '', entry.running ? `${entry.running} unterwegs` : '', entry.open ? `${entry.open} offen` : ''].filter(Boolean).join(', ')})`;
+
+function refreshInterpreterLoad() {
+    const load = interpreterLoad();
+    // Kleine Zahl neben jedem Namen: so viele Aufträge hat die Person heute schon.
+    document.querySelectorAll('#tableBody .job-count').forEach(badge => {
+        const termin = trackingData[Number(badge.dataset.index)];
+        const entry = termin ? load.get(getAppointmentInterpreterName(termin).toLocaleLowerCase('de')) : null;
+        badge.hidden = !entry;
+        if (!entry) return;
+        badge.textContent = String(entry.total);
+        badge.title = `${entry.name}: ${loadText(entry)}`;
+        badge.dataset.load = entry.total >= 4 ? 'hoch' : entry.total === 3 ? 'mittel' : 'normal';
+    });
+
+    const free = document.getElementById('peopleFree');
+    const busy = document.getElementById('peopleBusy');
+    if (!free || !busy) return;
+    // Zu den Eingeteilten kommen Dolmetscher aus dem Portal, die heute arbeiten können (siehe cloudDaySync.js).
+    const people = new Map([...load.values()].map(entry => [entry.name.toLocaleLowerCase('de'), { ...entry }]));
+    (window.trackingPeopleOnline || []).forEach(person => {
+        const key = String(person.name || '').toLocaleLowerCase('de');
+        if (!key) return;
+        const entry = people.get(key) || { name: person.name, total: 0, open: 0, running: 0, done: 0 };
+        people.set(key, { ...entry, employment: person.employment, online: true });
+    });
+    const sorted = [...people.values()].sort((left, right) => left.total - right.total || left.name.localeCompare(right.name, 'de'));
+    const chip = entry => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'person-chip';
+        button.dataset.name = entry.name;
+        const vehicle = typeof getCurrentFleetVehicleForDriver === 'function' && isTrackingDayToday() ? getCurrentFleetVehicleForDriver(entry.name)?.plate : '';
+        button.title = entry.total ? loadText(entry) : 'Heute noch kein Auftrag';
+        const name = document.createElement('span');
+        name.textContent = entry.name;
+        const count = document.createElement('b');
+        count.textContent = String(entry.total);
+        count.dataset.load = entry.total >= 4 ? 'hoch' : entry.total === 3 ? 'mittel' : 'normal';
+        button.append(name, count);
+        const meta = [entry.employment === 'fest' ? 'fest' : '', vehicle].filter(Boolean).join(' · ');
+        if (meta) { const small = document.createElement('small'); small.textContent = meta; button.append(small); }
+        button.addEventListener('click', () => assignFromPeoplePanel(entry.name));
+        return button;
+    };
+    const freeList = sorted.filter(entry => !entry.running);
+    const busyList = sorted.filter(entry => entry.running);
+    const empty = text => { const note = document.createElement('p'); note.className = 'people-empty'; note.textContent = text; return note; };
+    free.replaceChildren(...(freeList.length ? freeList.map(chip) : [empty('Im Moment ist niemand frei.')]));
+    busy.replaceChildren(...(busyList.length ? busyList.map(chip) : [empty('Niemand ist gerade unterwegs.')]));
+    document.getElementById('peopleSummary').textContent = people.size
+        ? `${freeList.length} frei · ${busyList.length} unterwegs`
+        : 'noch niemand eingeteilt';
+}
+
+function assignFromPeoplePanel(name) {
+    const input = activeInterpreterIndex == null ? null : document.querySelector(`#tableBody .interpreter-input[data-index="${activeInterpreterIndex}"]`);
+    if (!input) { showToast('Klicke zuerst in das Dolmetscher-Feld des Termins, dann auf den Namen.', 'info'); return; }
+    input.value = name;
+    updateInterpreterFromInput(input);
+    showToast(`${name} für Termin ${activeInterpreterIndex + 1} eingetragen`, 'success');
+}
+document.getElementById('tableBody').addEventListener('focusin', event => {
+    if (!event.target.classList?.contains('interpreter-input')) return;
+    activeInterpreterIndex = Number(event.target.dataset.index);
+    document.querySelectorAll('#tableBody tr.is-active-row').forEach(row => row.classList.remove('is-active-row'));
+    event.target.closest('tr')?.classList.add('is-active-row');
+});
+window.refreshInterpreterLoad = refreshInterpreterLoad;
 
 // Schnittstelle für den Online-Abgleich des Tagesstands (cloudDaySync.js).
 window.getTrackingRecords = () => trackingData;
@@ -306,11 +405,33 @@ document.getElementById('archiveDayButton')?.addEventListener('click', () => win
 // Nach einem Online-Abgleich (z. B. Übernahme im Dolmetscher-Portal) die Fahrzeuglisten auffrischen,
 // ohne ein Feld zu stören, in dem gerade getippt wird.
 document.addEventListener('fleet-synced', () => {
+    applyCurrentVehicles();
     document.querySelectorAll('#tableBody .vehicle-select').forEach(select => {
         const termin = trackingData[Number(select.dataset.index)];
         if (termin && document.activeElement !== select) select.innerHTML = renderVehicleOptions(termin);
     });
+    refreshInterpreterLoad();
 });
+
+// Hat ein Dolmetscher im Portal selbst ein Fahrzeug übernommen, steht es automatisch bei seinen heutigen
+// offenen und laufenden Terminen – niemand muss es von Hand zuweisen.
+function applyCurrentVehicles() {
+    if (typeof getCurrentFleetVehicleForDriver !== 'function' || !isTrackingDayToday()) return false;
+    let changed = false;
+    trackingData.forEach(termin => {
+        const name = getAppointmentInterpreterName(termin);
+        const group = getTrackingStatusGroup(termin);
+        if (!name || (group !== 'offen' && group !== 'unterwegs')) return;
+        const plate = getCurrentFleetVehicleForDriver(name)?.plate;
+        if (!plate || normalizeFleetPlateKey(plate) === normalizeFleetPlateKey(termin.Fahrzeug)) return;
+        ensureVehicleColumn();
+        termin.Fahrzeug = plate;
+        changed = true;
+    });
+    if (changed) persistTerminRecords(trackingData, 'tracking');
+    return changed;
+}
+window.applyCurrentVehicles = applyCurrentVehicles;
 
 // Ein Satz Listener für die ganze Tabelle statt pro Zeile – bleibt auch bei vielen Terminen schnell.
 (function bindTrackingTableEvents() {
@@ -1120,6 +1241,7 @@ function updateInterpreterFromInput(input) {
     persistTerminRecords(trackingData, 'tracking');
     refreshPatientHints();
     applyTrackingFilter();
+    refreshInterpreterLoad();
     if (typeof refreshTrackingReminders === 'function') refreshTrackingReminders();
     offerInterpreterForSiblings(termin, value);
 }
@@ -1244,11 +1366,24 @@ function updateVehicleFromSelect(select) {
     document.querySelector(`#tableBody .vehicle-select[data-index="${index}"]`)?.focus();
 }
 
+// Merkt sich, wann losgefahren und wann beendet wurde (steht klein unter dem Status und im Tagesarchiv).
+function stampStatusTime(termin, status, time = formatTime(new Date()).slice(0, 5)) {
+    trackingData.forEach(item => {
+        if (!Object.prototype.hasOwnProperty.call(item, 'Losgefahren_um')) item.Losgefahren_um = '';
+        if (!Object.prototype.hasOwnProperty.call(item, 'Beendet_um')) item.Beendet_um = '';
+    });
+    if (status === 'losgefahren') { termin.Losgefahren_um = termin.Losgefahren_um || time; termin.Beendet_um = ''; }
+    else if (status === 'beendet' || status === 'alleine') termin.Beendet_um = time;
+    else if (status === 'offen') { termin.Losgefahren_um = ''; termin.Beendet_um = ''; }
+}
+window.stampTrackingStatusTime = stampStatusTime;
+
 function setTrackingStatus(index, status) {
     const termin = trackingData[index];
     if (!termin || termin.Status === status) return;
     recordTrackingUndo('Terminstatus geändert');
     termin.Status = status;
+    stampStatusTime(termin, status);
     persistTerminRecords(trackingData, 'tracking');
     renderTrackingTable(trackingData);
     const row = document.querySelector(`#tableBody tr[data-index="${index}"]`);
