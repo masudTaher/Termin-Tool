@@ -823,6 +823,21 @@ function formatWhatsAppDate(value) {
     return text;
 }
 
+// Geburtsdatum des Patienten als TT.MM.JJJJ (Excel-Zahl, Datum oder Text). Zweistellige Jahre liegen nie in der Zukunft.
+function formatBirthDate(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return `${String(value.getDate()).padStart(2, '0')}.${String(value.getMonth() + 1).padStart(2, '0')}.${value.getFullYear()}`;
+    }
+    const text = String(value ?? '').trim();
+    const short = text.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2})(?!\d)/);
+    if (short) {
+        const year = Number(short[3]) + (Number(short[3]) > new Date().getFullYear() % 100 ? 1900 : 2000);
+        return `${short[1].padStart(2, '0')}.${short[2].padStart(2, '0')}.${year}`;
+    }
+    const formatted = formatWhatsAppDate(value);
+    return /^\d{2}\.\d{2}\.\d{4}$/.test(formatted) ? formatted : '';
+}
+
 function formatWhatsAppTime(value) {
     if (value === null || value === undefined || value === '') return '';
 
@@ -1097,6 +1112,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
     const oneLine = TerminContact.singleLine;
     const patientName = oneLine(getAppointmentPatientName(termin) || remark.patientName);
     const patientRecordNumber = getPatientRecordNumber(termin);
+    const patientBirthDate = formatBirthDate(termin['Patienten Nr::Patienten_Geburtsdatum'] ?? termin.Patienten_Geburtsdatum ?? termin.Geburtsdatum);
     const isCompanionAppointment = remark.companionNames.length > 0;
     const doctorName = oneLine(remark.doctorName || termin['Arzt Nr::Name'] || '');
     const appointmentLocation = formatWhatsAppAddress(remark.doctorLocation || termin['Arzt Nr::Ort'] || termin.Ort || termin.Termin_Ort || termin.Stadt || '');
@@ -1134,6 +1150,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
                 : '';
     const keyFacts = [
         patientName ? `*${isCompanionAppointment ? 'Hauptpatient/in' : 'Patient/in'}: ${patientName}*` : '',
+        patientBirthDate ? `*Geburtsdatum: ${patientBirthDate}*` : '',
         patientRecordNumber ? `*Aktennummer: ${patientRecordNumber}*` : '',
         appointmentDate || appointmentTime ? `*Termin: ${[appointmentDate, appointmentTime].filter(Boolean).join(' · ')}*` : '',
         appointmentLocation ? `*Ort: ${appointmentLocation}*` : '',

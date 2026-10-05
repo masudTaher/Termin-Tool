@@ -160,6 +160,20 @@ function formatExcelDate(serial) {
     return normalizeTerminDatum(serial);
 }
 
+// Geburtsdatum aus der Liste (Excel-Zahl, Datum oder Text) als TT.MM.JJJJ – es steht später im Auftrag an den Dolmetscher.
+function formatBirthValue(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const pad = number => String(number).padStart(2, '0');
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return `${pad(value.getDate())}.${pad(value.getMonth() + 1)}.${value.getFullYear()}`;
+    const text = String(value).trim();
+    if (/^\d+(?:\.\d+)?$/.test(text) && Number(text) >= 1 && Number(text) < 100000) {
+        const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(text)) * 86400000);
+        return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()}`;
+    }
+    const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return iso ? `${pad(iso[3])}.${pad(iso[2])}.${iso[1]}` : text;
+}
+
 // Funktion zur Formatierung von Excel-Zeitwerten
 function formatExcelTime(value) {
     return normalizeTerminUhrzeit(value);
@@ -537,7 +551,7 @@ function saveToExcel() {
         ...gefilterteTermine,
         ...herausgefilterteTermine
     ].flatMap(row => Object.keys(row || {})))];
-    const contactHeaderPattern = /anschrift|adresse|strasse|hausnummer|plz|postleitzahl|postal|zip|ort|stadt|city|telefon|rufnummer|phone|handy|mobil|mobile|cell/;
+    const contactHeaderPattern = /geburt|anschrift|adresse|strasse|hausnummer|plz|postleitzahl|postal|zip|ort|stadt|city|telefon|rufnummer|phone|handy|mobil|mobile|cell/;
     const personHeaderPattern = /patient|arzt|praxis/;
     const contactHeaders = sourceHeaders.filter(header => {
         const normalized = String(header || '')
@@ -566,7 +580,7 @@ function saveToExcel() {
                 'Arzt Nr::Vorname': row['Arzt Nr::Vorname']
             };
             contactHeaders.forEach(header => {
-                formattedRow[header] = row[header] ?? '';
+                formattedRow[header] = /geburt/i.test(header) ? formatBirthValue(row[header]) : (row[header] ?? '');
             });
             return formattedRow;
         }).sort((a, b) => {

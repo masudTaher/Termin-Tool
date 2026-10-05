@@ -42,7 +42,7 @@
                 ] },
                 { id: 'uebernehmen', title: 'Fahrzeug übernehmen', lead: 'Auto wählen, Zustand prüfen, Kilometer eintragen – immer bevor du losfährst.', steps: [
                     ['04d-start-danach', 'Start', 'Auf der Startseite [[Fahrzeug übernehmen]] tippen.'],
-                    ['05-auto-waehlen', 'Auto antippen', 'Du siehst nur freie Fahrzeuge – mit Tank und Parkort.'],
+                    ['05-auto-waehlen', 'Auto antippen', 'Du siehst nur freie Fahrzeuge – mit Tank und Parkort. Sind viele frei, wählst du zuerst [[Diplomatisch]] oder [[Mietwagen]].'],
                     ['06-zustand', 'Zustand prüfen', 'Alles gut? [[Ja, alles in Ordnung]]. Sonst [[Nein, etwas stimmt nicht]] und kurz beschreiben.'],
                     ['07-kilometer', 'Kilometer eintragen', 'Tacho ablesen, eintragen und [[Fahrzeug übernehmen]] tippen.']
                 ] },
@@ -130,7 +130,7 @@
                 ] },
                 { id: 'uebernehmen', title: 'استلام السيارة', lead: 'اختر السيارة، ثم افحص حالتها، ثم أدخل قراءة العدّاد، وذلك قبل كل انطلاق.', steps: [
                     ['04d-start-danach', 'ابدأ', 'في الصفحة الرئيسية اضغط [[Fahrzeug übernehmen]].'],
-                    ['05-auto-waehlen', 'اختر السيارة', 'تظهر السيارات المتاحة فقط، مع مستوى الوقود ومكان الوقوف.'],
+                    ['05-auto-waehlen', 'اختر السيارة', 'تظهر السيارات المتاحة فقط، مع مستوى الوقود ومكان الوقوف. وإذا كانت السيارات المتاحة كثيرة فاختر أولًا [[Diplomatisch]] (سيارة دبلوماسية) أو [[Mietwagen]] (سيارة مستأجرة).'],
                     ['06-zustand', 'افحص الحالة', 'كل شيء سليم؟ اضغط [[Ja, alles in Ordnung]]. وإن لاحظت شيئًا فاضغط [[Nein, etwas stimmt nicht]] واكتبه باختصار.'],
                     ['07-kilometer', 'قراءة العدّاد', 'اقرأ عدّاد الكيلومترات وأدخل الرقم، ثم اضغط [[Fahrzeug übernehmen]].']
                 ] },

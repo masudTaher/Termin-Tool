@@ -1875,3 +1875,22 @@ tbody tr.absence-rejected td:nth-child(-n+5), tbody tr.absence-rejected td:nth-c
 /* Die allgemeine Regel für Datei-Felder (Breite 100 %, Rahmen) galt auch für unsichtbare Felder hinter einem Knopf –
    auf dem Handy ragte die Seite dadurch ein Stück nach rechts heraus. */
 input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border: 0; }
+
+/* ---------- 36 Portal, Auto übernehmen: erst „Diplomatisch“ oder „Mietwagen“ wählen ---------- */
+.car-types { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+.car-types[hidden] { display: none; }
+.car-type, :root[data-theme="dark"] .car-type { display: flex; min-height: 64px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 10px; border: 2px solid var(--line-strong); border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: none; }
+.car-type strong { font-size: 1.02rem; line-height: 1.25; }
+.car-type span { color: var(--muted); font-size: .84rem; font-weight: 600; }
+.car-types .car-type[aria-pressed="true"], .car-types .car-type[aria-pressed="true"]:hover, .car-types .car-type[aria-pressed="true"]:focus,
+:root[data-theme="dark"] .car-types .car-type[aria-pressed="true"], :root[data-theme="dark"] .car-types .car-type[aria-pressed="true"]:hover, :root[data-theme="dark"] .car-types .car-type[aria-pressed="true"]:focus { border-color: #1769aa; background: #1769aa; color: #fff; }
+.car-type[aria-pressed="true"] span { color: rgba(255, 255, 255, .88); }
+
+/* 37  Abrechnung: Knöpfe je Person mit Symbol und Wort, ausgeblendete Personen */
+.payroll-actions .payroll-icon-button, :root[data-theme="dark"] .payroll-actions .payroll-icon-button { display: inline-flex; flex: 0 0 auto; width: auto; align-items: center; gap: 5px; padding: 6px 10px; }
+.payroll-actions .payroll-icon-button svg { flex: none; width: 16px; height: 16px; }
+.payroll-actions .payroll-remove, :root[data-theme="dark"] .payroll-actions .payroll-remove { color: var(--danger); }
+.payroll-actions .payroll-remove:hover, :root[data-theme="dark"] .payroll-actions .payroll-remove:hover { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+.payroll-why { display: block; margin-top: 3px; white-space: normal; }
+.payroll-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--muted); font-size: .86rem; }
+.payroll-hidden[hidden] { display: none; }

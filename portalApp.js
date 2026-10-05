@@ -729,6 +729,7 @@ if (!window.TerminContact) {
             block.append(svgSpan('job-section-icon', JOB_ICONS.person));
             const content = el('div', 'job-section-content');
             content.append(el('span', 'job-section-title', facts['Hauptpatient/in'] ? 'Hauptpatient/in' : 'Patient/in'), el('strong', 'job-patient', patient));
+            if (facts['Geburtsdatum']) content.append(el('span', 'job-chip job-birth', `geb. ${facts['Geburtsdatum']}`));
             if (facts['Aktennummer']) content.append(el('span', 'job-chip', `Aktennummer ${facts['Aktennummer']}`));
             if (facts['Termin für Begleitperson']) content.append(jobField('Termin für Begleitperson', facts['Termin für Begleitperson']));
             const contact = sections.find(section => /PATIENTENKONTAKT/.test(section.title));
@@ -1222,6 +1223,28 @@ if (!window.TerminContact) {
     // ---------- Übernahme: 1 Auto wählen · 2 Zustand prüfen · 3 Kilometer ----------
     const take = { vehicle: null };
     const takeWizard = makeWizard('take', 3, () => goTo('vehicle'));
+    // Bei vielen freien Fahrzeugen wählt man zuerst die Art („Diplomatisch“ oder „Mietwagen“) – so bleibt die Liste kurz.
+    // Die zuletzt gewählte Art ist beim nächsten Mal schon eingestellt.
+    const takeTypeKey = () => `terminTool.portal.takeType.${profile?.id || ''}`;      // je Konto, falls sich zwei ein Handy teilen
+    const TAKE_TYPES = ['Diplomatisch', 'Mietwagen'];
+    const TAKE_TYPE_FROM = 6;          // ab so vielen freien Fahrzeugen (ohne das eigene feste) wird nach der Art gefragt
+    const takeTypeOf = vehicle => vehicle.type === 'Mietwagen' ? 'Mietwagen' : 'Diplomatisch';
+    let takeType = '';                 // gewählte Art; '' = noch keine
+    let takeChoice = false;            // true: Die Art muss gewählt werden, bevor die Liste erscheint
+
+    function applyTakeFilter() {
+        const query = $('takeSearch').value.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
+        let shown = 0;
+        $('takeCars').querySelectorAll('.car-card').forEach(card => {
+            // Die Suche nach dem Kennzeichen findet jedes freie Auto – egal welche Art gerade gewählt ist.
+            const byType = !takeChoice || card.dataset.own === '1' || card.dataset.type === takeType;
+            card.hidden = query ? !card.dataset.search.includes(query) : !byType;
+            if (!card.hidden) shown += 1;
+        });
+        $('takeNoMatch').hidden = !query || shown > 0;
+        $('takeChoose').hidden = Boolean(query) || !takeChoice || Boolean(takeType);
+        $('takeTypes').querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(!query && button.dataset.type === takeType)));
+    }
 
     function startTake() {
         take.vehicle = null;
@@ -1247,21 +1270,40 @@ if (!window.TerminContact) {
             if (vehicle.parking) chips.append(el('em', 'chip', `Steht: ${vehicle.parking}`));
             card.append(main, chips, el('span', 'car-card-arrow', '›'));
             card.dataset.search = `${vehicle.plate} ${vehicle.brand} ${vehicle.body}`.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
+            card.dataset.type = takeTypeOf(vehicle);
+            if (vehicle.assigned_to === profile.id) card.dataset.own = '1';
             card.addEventListener('click', () => chooseTakeVehicle(vehicle));
             list.append(card);
         });
+        // Art wählen: nur wenn es von beiden Arten freie Autos gibt und die Liste sonst lang wäre.
+        const others = free.filter(vehicle => vehicle.assigned_to !== profile.id);
+        const counts = Object.fromEntries(TAKE_TYPES.map(type => [type, others.filter(vehicle => takeTypeOf(vehicle) === type).length]));
+        takeChoice = TAKE_TYPES.every(type => counts[type] > 0) && others.length >= TAKE_TYPE_FROM;
+        let remembered = '';
+        try { remembered = localStorage.getItem(takeTypeKey()) || ''; } catch (error) { /* dann wird jedes Mal gefragt */ }
+        takeType = takeChoice && TAKE_TYPES.includes(remembered) ? remembered : '';
+        const types = $('takeTypes');
+        types.hidden = !takeChoice;
+        types.replaceChildren(...(takeChoice ? TAKE_TYPES : []).map(type => {
+            const button = el('button', 'car-type');
+            button.type = 'button';
+            button.dataset.type = type;
+            button.append(el('strong', '', type), el('span', '', `${counts[type]} frei`));
+            button.addEventListener('click', () => {
+                takeType = type;
+                try { localStorage.setItem(takeTypeKey(), type); } catch (error) { /* gilt dann nur für dieses Mal */ }
+                $('takeSearch').value = '';
+                applyTakeFilter();
+            });
+            return button;
+        }));
         // Bei vielen Fahrzeugen hilft ein Suchfeld: Kennzeichen eintippen, die Liste wird sofort kürzer.
         $('takeSearch').value = '';
         $('takeSearchRow').hidden = free.length < 7;
-        $('takeNoMatch').hidden = true;
+        applyTakeFilter();
         takeWizard.show(1);
     }
-    $('takeSearch').addEventListener('input', () => {
-        const query = $('takeSearch').value.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
-        let shown = 0;
-        $('takeCars').querySelectorAll('.car-card').forEach(card => { card.hidden = Boolean(query) && !card.dataset.search.includes(query); if (!card.hidden) shown += 1; });
-        $('takeNoMatch').hidden = shown > 0;
-    });
+    $('takeSearch').addEventListener('input', applyTakeFilter);
 
     async function chooseTakeVehicle(vehicle) {
         take.vehicle = vehicle;

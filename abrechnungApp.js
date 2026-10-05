@@ -16,6 +16,9 @@
     let profiles = [];
     let autoWorkdays = new Map();
     let result = null;
+    const HIDDEN = 'ausgeblendet';
+    let hiddenPeople = [];
+    let autoNames = new Set();
     let tab = 'list';
     // Archiv: alle freigegebenen Abrechnungen über alle Monate (null = noch nicht geladen)
     let archive = null;
@@ -86,11 +89,20 @@
         // Zeilen der Endliste können mit einem Portal-Konto verknüpft sein (Name auf dem Tagesblatt ↔ Konto).
         // Belege aus dem Portal zählen dann zu dieser Zeile, auch wenn der Name anders geschrieben ist.
         const linkedName = new Map(payroll.filter(item => item.profile_id).map(item => [item.profile_id, item.person_name]));
-        const receiptsByRow = receipts.map(item => linkedName.has(item.profile_id) ? { ...item, person_name: linkedName.get(item.profile_id) } : item);
+        const receiptsAll = receipts.map(item => linkedName.has(item.profile_id) ? { ...item, person_name: linkedName.get(item.profile_id) } : item);
+        // Für diesen Monat aus der Endliste genommene Personen (Mülleimer in der Zeile) – sie lassen sich unter der Liste wieder einblenden.
+        hiddenPeople = payroll.filter(item => item.status === HIDDEN);
+        const hiddenKeys = new Set(hiddenPeople.map(item => Abrechnung.key(item.person_name)));
+        hiddenPeople.forEach(item => { const account = profiles.find(person => person.id === item.profile_id); if (account) hiddenKeys.add(Abrechnung.key(account.full_name)); });
+        const shown = item => !hiddenKeys.has(Abrechnung.key(item.person_name));
+        const receiptsByRow = receiptsAll.filter(shown);
         // Temporäre Dolmetscher mit Portal-Konto stehen automatisch in der Liste (erst ab dem Monat, in dem das Konto angelegt wurde).
         const temporary = profiles.filter(item => item.active && item.role === 'dolmetscher' && item.employment !== 'fest' && item.full_name
-            && !linkedName.has(item.id) && (!item.created_at || String(item.created_at).slice(0, 7) <= month)).map(item => item.full_name);
-        result = Abrechnung.compute({ rate, receipts: receiptsByRow, specialDays: [...specialDays, ...trackingSpecial], payroll, autoWorkdays, extraNames: temporary });
+            && !linkedName.has(item.id) && (!item.created_at || String(item.created_at).slice(0, 7) <= month)).map(item => item.full_name).filter(name => !hiddenKeys.has(Abrechnung.key(name)));
+        const autoShown = new Map([...autoWorkdays].filter(([id]) => !hiddenKeys.has(id)));
+        autoNames = new Set([...temporary, ...receiptsByRow.map(item => item.person_name), ...[...specialDays, ...trackingSpecial].map(item => item.person_name)].map(name => Abrechnung.key(name)));
+        autoShown.forEach((count, id) => autoNames.add(id));
+        result = Abrechnung.compute({ rate, receipts: receiptsByRow, specialDays: [...specialDays, ...trackingSpecial].filter(shown), payroll: payroll.filter(item => item.status !== HIDDEN), autoWorkdays: autoShown, extraNames: temporary });
         result.rows.forEach(row => {
             const entry = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
             row.profileId = entry?.profile_id || profiles.find(item => Abrechnung.key(item.full_name) === Abrechnung.key(row.name))?.id || null;
@@ -138,6 +150,18 @@
         if (existing) Object.assign(existing, row); else payroll.push(row);
         render();
         return true;
+    }
+
+    // Eine ausgeblendete Person wieder in die Endliste holen (ihre Angaben waren nie gelöscht).
+    async function showAgain(name) {
+        const entry = payroll.find(item => item.person_name === name);
+        if (!entry) return;
+        const empty = entry.workdays == null && !entry.remark && !entry.profile_id && !entry.full_name;
+        const { error } = empty ? await client.from('tt_payroll').delete().eq('month', month).eq('person_name', name)
+            : await client.from('tt_payroll').update({ status: '' }).eq('month', month).eq('person_name', name);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        showToast(`${name} steht wieder in der Endliste.`, 'success');
+        await refresh();
     }
 
     function renderList() {
@@ -193,14 +217,48 @@
             release.disabled = !row.profileId || row.salary == null;
             release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} freigegeben – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
             mainActions.append(release);
-            // Drucken und Entfernen als Symbol-Knöpfe: so bleibt jede Person eine flache Zeile (wichtig bei 40 Namen).
+            // Warum sich (noch) nicht freigeben lässt, steht direkt unter den Knöpfen.
+            const why = !row.profileId ? 'Freigeben geht erst mit Portal-Konto (Spalte „Portal“).' : row.salary == null ? 'Freigeben geht erst mit Arbeitstagen.' : '';
+            if (why) release.title = why;
+            // Drucken und Entfernen mit Symbol und Wort – jede Zeile hat beide Knöpfe.
             const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
-            print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span class="visually-hidden">Abrechnung</span>';
+            print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span>Drucken</span>';
             print.type = 'button';
             print.title = 'Abrechnung der Belege für diese Person drucken';
             print.setAttribute('aria-label', `Abrechnung für ${row.name} drucken`);
             print.addEventListener('click', () => printPerson(row));
             mainActions.append(print);
+            // Jede Person lässt sich für diesen Monat aus der Endliste nehmen. Steht sie von selbst in der Liste (Konto, Beleg,
+            // Sondertag oder Arbeitstag im Archiv), wird sie ausgeblendet und kann unter der Liste wieder eingeblendet werden.
+            const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
+            const comesBack = autoNames.has(Abrechnung.key(row.name));
+            const remove = el('button', 'button-secondary fleet-end-button payroll-icon-button payroll-remove');
+            remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg><span>Entfernen</span>';
+            remove.type = 'button';
+            remove.title = 'Diese Person für diesen Monat aus der Endliste nehmen';
+            remove.setAttribute('aria-label', `${row.name} aus der Endliste nehmen`);
+            remove.addEventListener('click', async () => {
+                const label = Abrechnung.monthRange(month).label;
+                const has = [row.workdays ? `${row.workdays} ${row.workdays === 1 ? 'Arbeitstag' : 'Arbeitstage'}` : '', row.receiptCount ? `${row.receiptCount} ${row.receiptCount === 1 ? 'Beleg' : 'Belege'}` : '', row.specialCount ? `${row.specialCount} ${row.specialCount === 1 ? 'Sondertag' : 'Sondertage'}` : ''].filter(Boolean).join(', ');
+                const released = row.statement ? `\n\nDie Abrechnung ist schon im Portal freigegeben – die Freigabe wird dabei zurückgezogen.` : '';
+                const text = comesBack
+                    ? `${row.name} für ${label} aus der Endliste nehmen?${has ? `\n\nFür diesen Monat steht bei dieser Person: ${has}. Das zählt dann nicht mehr in der Endliste mit.` : ''}${released}\n\nNichts wird gelöscht: Unter der Liste kannst du die Person jederzeit wieder einblenden.`
+                    : `${row.name} für ${label} aus der Endliste löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${released}`;
+                if (!await confirmDialog(text, 'Entfernen')) return;
+                if (row.statement) {
+                    const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                }
+                const { error } = comesBack
+                    ? await client.from('tt_payroll').upsert({ month, person_name: existing?.person_name || row.name, full_name: existing?.full_name || '', workdays: existing?.workdays ?? null, remark: existing?.remark || '', profile_id: existing?.profile_id ?? null, status: HIDDEN }, { onConflict: 'month,person_name' })
+                    : await client.from('tt_payroll').delete().eq('month', month).eq('person_name', existing.person_name);
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                showToast(comesBack ? `${row.name} steht für ${label} nicht mehr in der Endliste.` : `${row.name}: Einträge für diesen Monat gelöscht.`, 'success', comesBack ? { actionLabel: 'Rückgängig', onAction: () => showAgain(existing?.person_name || row.name) } : undefined);
+                await refresh();
+                window.refreshCloudInbox?.();
+            });
+            if (existing || comesBack) mainActions.append(remove);
+            if (why) moreActions.append(el('small', 'payroll-sub payroll-why', why));
             // Eine freigegebene Abrechnung lässt sich wieder aus dem Portal nehmen (z. B. wenn sie zu früh oder falsch freigegeben wurde).
             if (row.statement) {
                 const withdraw = el('button', 'button-quiet-danger', 'Freigabe zurückziehen');
@@ -216,28 +274,18 @@
                 });
                 moreActions.append(withdraw);
             }
-            // Eine von Hand hinzugefügte Person (oder ihre Einträge für diesen Monat) wieder aus der Endliste nehmen.
-            if (payroll.some(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name))) {
-                const remove = el('button', 'button-quiet-danger payroll-icon-button');
-                remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg><span class="visually-hidden">Entfernen</span>';
-                remove.type = 'button';
-                remove.title = 'Arbeitstage, Bemerkung und Konto-Verknüpfung dieser Person für diesen Monat löschen';
-                remove.setAttribute('aria-label', `${row.name} aus der Endliste nehmen`);
-                remove.addEventListener('click', async () => {
-                    const stays = row.workdaysAuto ? `\n\n${row.name} bleibt in der Liste, weil im Tagesarchiv ${row.workdaysAuto} ${row.workdaysAuto === 1 ? 'Arbeitstag steht' : 'Arbeitstage stehen'} – es werden nur die hier eingetragenen Angaben gelöscht.` : '';
-                    if (!await confirmDialog(`Die Einträge für ${row.name} im ${Abrechnung.monthRange(month).label} löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${stays}\n\nBelege und Sondertage bleiben erhalten.`, 'Entfernen')) return;
-                    const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
-                    const { error } = await client.from('tt_payroll').delete().eq('month', month).eq('person_name', existing.person_name);
-                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                    showToast(`${row.name}: Einträge für diesen Monat gelöscht.`, 'success');
-                    await refresh();
-                });
-                mainActions.append(remove);
-            }
             tr.append(nameCell, daysCell, el('td', null, row.specialText || '–'), el('td', 'payroll-number', row.receiptCount ? `${euro(row.receiptSum)} (${row.receiptCount})` : '–'),
                 el('td', 'payroll-number', row.salary == null ? '–' : euro(row.salary)), el('td', 'payroll-number payroll-total', row.total == null ? '–' : euro(row.total)), remarkCell, portalCell, actionCell);
             body.append(tr);
         });
+        const hiddenBox = $('payrollHidden');
+        hiddenBox.hidden = !hiddenPeople.length;
+        hiddenBox.replaceChildren(el('span', null, `Für ${Abrechnung.monthRange(month).label} aus der Endliste genommen:`), ...hiddenPeople.map(item => {
+            const button = el('button', 'button-secondary fleet-end-button payroll-show-again', `${item.person_name} wieder anzeigen`);
+            button.type = 'button';
+            button.addEventListener('click', () => showAgain(item.person_name));
+            return button;
+        }));
         const foot = $('payrollFoot');
         const sumDays = result.rows.reduce((sum, row) => sum + (row.workdays || 0), 0);
         const sumSpecial = result.rows.reduce((sum, row) => sum + row.specialCount, 0);
@@ -294,7 +342,7 @@
     $('addPersonForm').addEventListener('submit', async event => {
         event.preventDefault();
         const name = $('addPersonName').value.trim().replace(/\s+/g, ' ');
-        if (name && await savePayroll(name, {})) $('addPersonName').value = '';
+        if (name && await savePayroll(name, { status: '' })) $('addPersonName').value = '';
     });
 
     // ---------- Sondertage ----------
