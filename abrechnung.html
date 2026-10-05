@@ -37,7 +37,7 @@
 
             <section class="directory-card">
                <div class="fleet-log-heading">
-                  <div class="portal-tabs payroll-tabs"><button type="button" data-payroll-tab="list" class="is-active">Endliste</button><button type="button" data-payroll-tab="special">Sondertage</button><button type="button" data-payroll-tab="receipts">Belege</button></div>
+                  <div class="portal-tabs payroll-tabs"><button type="button" data-payroll-tab="list" class="is-active">Endliste</button><button type="button" data-payroll-tab="special">Sondertage</button><button type="button" data-payroll-tab="receipts">Belege</button><button type="button" data-payroll-tab="archive">Archiv</button></div>
                </div>
 
                <div data-payroll-panel="list">
@@ -72,12 +72,28 @@
                   </form>
                   <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Ort</th><th>Betrag</th><th>Art · Nachweis</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
                </div>
+
+               <!-- Archiv: alles, was im Portal freigegeben wurde – je Dolmetscher unter seinem Namen (alle Monate) -->
+               <div data-payroll-panel="archive" hidden>
+                  <p class="fleet-footnote payroll-note">Alles, was du im Portal freigegeben hast – geordnet nach Dolmetscher, über alle Monate. Eine neue Freigabe steht sofort hier. Ein Tipp auf den Namen zeigt die Abrechnungen dieser Person.</p>
+                  <div class="archive-tools">
+                     <label class="board-search archive-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Name suchen" aria-label="Im Archiv nach Namen suchen"></label>
+                     <span id="archiveSummary" class="archive-summary" role="status"></span>
+                  </div>
+                  <div id="archiveList" class="archive-list"></div>
+               </div>
             </section>
          </div>
       </main>
       <datalist id="payrollNames"></datalist>
       <datalist id="payrollPlaces"></datalist>
       <div id="printArea" class="print-area"></div>
+      <dialog id="statementDialog" class="confirm-dialog statement-dialog" aria-labelledby="statementDialogTitle">
+         <h2 id="statementDialogTitle" tabindex="-1"></h2>
+         <p id="statementDialogMeta" class="statement-dialog-meta"></p>
+         <div id="statementDialogBody" class="statement-dialog-body"></div>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="statementDialogPrint">Drucken</button><button type="button" class="button-primary" id="statementDialogClose">Schließen</button></div>
+      </dialog>
       <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto des Belegs"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
       <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

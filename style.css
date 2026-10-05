@@ -1837,3 +1837,41 @@ tbody tr.absence-rejected td:nth-child(-n+5), tbody tr.absence-rejected td:nth-c
 .people-hidden { margin: 8px 0 2px; }
 .people-hidden[hidden] { display: none; }
 .people-hidden-toggle, :root[data-theme="dark"] .people-hidden-toggle { min-height: 28px; padding: 2px 6px; color: var(--brand); font-size: inherit; font-weight: 700; text-decoration: underline; }
+
+/* ---------- 33 Portal: „Zusage für den ganzen Tag“ über den Aufträgen eines Tages ---------- */
+.job-day { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; padding: 12px 14px; border: 1px solid var(--line); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); border-radius: 14px; background: var(--surface); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.job-day-text { display: flex; min-width: 0; flex: 1 1 180px; flex-direction: column; gap: 1px; }
+.job-day-text strong { font-size: 1rem; line-height: 1.3; }
+.job-day-text span { color: var(--ink-soft); font-size: .86rem; }
+.job-day-accept, :root[data-theme="dark"] .job-day-accept { min-height: 48px; flex: 1 1 220px; border-color: #18794e; background: #18794e; color: #fff; font-size: .98rem; font-weight: 750; }
+.job-day-accept:disabled { opacity: .6; }
+
+/* ---------- 34 Abrechnung: Archiv der Freigaben – je Dolmetscher unter seinem Namen ---------- */
+.payroll-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: min(100%, 520px); }
+/* Handy: vier Reiter passen nicht nebeneinander – zwei Zeilen mit je zwei. */
+@media (max-width: 560px) { .payroll-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; width: 100%; } }
+.archive-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; }
+.archive-search { max-width: 420px; }
+.archive-summary { color: var(--muted); font-size: .86rem; font-weight: 600; }
+.archive-list { display: flex; flex-direction: column; gap: 8px; }
+.archive-person { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.archive-person > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 48px; padding: 9px 14px; cursor: pointer; list-style: none; }
+.archive-person > summary::-webkit-details-marker { display: none; }
+.archive-person > summary::before { content: ""; width: 8px; height: 8px; flex: 0 0 auto; margin: 0 2px 2px 2px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; }
+.archive-person[open] > summary::before { transform: rotate(45deg); }
+.archive-person[open] > summary { border-bottom: 1px solid var(--line); }
+.archive-person > summary:hover { background: var(--surface-hover); }
+.archive-person-name { font-size: 1rem; }
+.archive-person-info { flex: 1 1 220px; color: var(--muted); font-size: .84rem; }
+.archive-person .fleet-table-wrap { margin: 0; border: 0; border-radius: 0 0 12px 12px; }
+.archive-actions { white-space: nowrap; }
+.archive-actions button + button { margin-left: 6px; }
+.statement-dialog { width: min(560px, calc(100vw - 24px)); }
+.statement-dialog h2 { margin: 0 0 4px; font-size: 1.15rem; }
+.statement-dialog-meta { margin: 0 0 12px; color: var(--muted); font-size: .86rem; line-height: 1.4; }
+.statement-dialog-body { display: flex; flex-direction: column; margin-bottom: 16px; }
+
+/* ---------- 35 Versteckte Datei-Felder dürfen die Seite nicht breiter machen ---------- */
+/* Die allgemeine Regel für Datei-Felder (Breite 100 %, Rahmen) galt auch für unsichtbare Felder hinter einem Knopf –
+   auf dem Handy ragte die Seite dadurch ein Stück nach rechts heraus. */
+input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border: 0; }

@@ -54,7 +54,7 @@
                 ], tips: [
                     ['Erinnerung', 'Ist das Auto um 16 Uhr noch nicht zurück, erinnert dich dein Handy.']
                 ] },
-                { id: 'auftraege', title: 'Aufträge', lead: 'Eine rote Zahl bei [[Aufträge]] heißt: Ein Auftrag wartet auf deine Antwort.', steps: [
+                { id: 'auftraege', title: 'Aufträge', lead: 'Eine rote Zahl bei [[Aufträge]] heißt: Ein Auftrag wartet auf deine Antwort. Mehrere Aufträge am selben Tag sagst du mit [[Zusage für den ganzen Tag]] auf einmal zu.', steps: [
                     ['12-auftrag-offen', 'Auftrag lesen', 'Patient, Praxis, Adresse und Telefon. [[In Karten öffnen]] zeigt den Weg. Unter jeder Nummer des Patienten: [[Anrufen]] und [[WhatsApp]].'],
                     ['12b-auftrag-antwort', 'Immer antworten', '[[Zusage]], [[Unter Vorbehalt]] oder [[Absage]]. Vertippt? [[Rückgängig]] oder [[Antwort zurücknehmen]]. Einen kurzen Hinweis schickst du mit [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'Losfahren', 'Am Tag des Termins [[Losfahren]] tippen. Das geht erst, wenn du ein Fahrzeug übernommen hast.'],
@@ -142,7 +142,7 @@
                 ], tips: [
                     ['تذكير', 'إذا لم تُرجَع السيارة حتى الساعة الرابعة عصرًا يصلك تذكير على جوالك.']
                 ] },
-                { id: 'auftraege', title: 'المهام', lead: 'الرقم الأحمر عند [[Aufträge]] يعني أن مهمة تنتظر ردّك.', steps: [
+                { id: 'auftraege', title: 'المهام', lead: 'الرقم الأحمر عند [[Aufträge]] يعني أن مهمة تنتظر ردّك. وإذا كانت لديك عدة مهام في اليوم نفسه فاضغط [[Zusage für den ganzen Tag]] للموافقة عليها دفعة واحدة.', steps: [
                     ['12-auftrag-offen', 'اقرأ المهمة', 'اسم المريض والعيادة والعنوان وأرقام الهاتف. اضغط [[In Karten öffnen]] لفتح الخريطة. وتحت كل رقم للمريض زرّان: [[Anrufen]] للاتصال و[[WhatsApp]] للمحادثة.'],
                     ['12b-auftrag-antwort', 'أجب دائمًا', '[[Zusage]] موافقة، [[Unter Vorbehalt]] موافقة بتحفّظ، [[Absage]] اعتذار. ضغطت بالخطأ؟ اضغط [[Rückgängig]] أو [[Antwort zurücknehmen]]. ولإرسال ملاحظة قصيرة اكتبها ثم اضغط [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'عند الانطلاق', 'في يوم الموعد اضغط [[Losfahren]]. لا يعمل الزر إلا بعد استلام سيارة.'],

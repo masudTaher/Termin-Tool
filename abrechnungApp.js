@@ -17,6 +17,10 @@
     let autoWorkdays = new Map();
     let result = null;
     let tab = 'list';
+    // Archiv: alle freigegebenen Abrechnungen über alle Monate (null = noch nicht geladen)
+    let archive = null;
+    let archiveQuery = '';
+    const archiveOpen = new Set();
 
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -58,6 +62,7 @@
         if (window.PhotoRequest) await PhotoRequest.load().catch(() => []);
         const statementResult = await client.from('tt_statements').select('*').eq('month', month);
         statements = statementResult.error ? [] : statementResult.data;
+        archive = null;
         const failed = [receiptResult, specialResult, payrollResult, monthResult].find(item => item.error);
         if (failed) { setStatus(`${TerminCloud.germanError(failed.error)} Falls Tabellen fehlen: supabase/update-5.sql im SQL Editor ausführen.`, 'error'); return; }
         // Belege der Festangestellten gehören nicht in die Abrechnung der Temporären – sie stehen unter „Überstunden & Belege“.
@@ -119,6 +124,9 @@
         renderList();
         renderSpecial();
         renderReceipts();
+        renderArchive();
+        // Das Archiv wird geholt, sobald der Reiter zum ersten Mal offen ist – und nach jeder Freigabe neu.
+        if (tab === 'archive' && archive == null) loadArchive();
     }
 
     // ---------- Endliste ----------
@@ -183,7 +191,7 @@
             release.type = 'button';
             release.title = 'Abrechnung für diese Person im Portal sichtbar machen';
             release.disabled = !row.profileId || row.salary == null;
-            release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} freigegeben`, 'success'); await refresh(); } });
+            release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} freigegeben – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
             mainActions.append(release);
             // Drucken und Entfernen als Symbol-Knöpfe: so bleibt jede Person eine flache Zeile (wichtig bei 40 Namen).
             const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
@@ -279,7 +287,7 @@
         if (!confirmed) return;
         let done = 0;
         for (const row of ready) { if (await releaseStatement(row)) done += 1; else break; }
-        showToast(`${done} ${done === 1 ? 'Abrechnung' : 'Abrechnungen'} freigegeben`, 'success');
+        showToast(`${done} ${done === 1 ? 'Abrechnung' : 'Abrechnungen'} freigegeben – zu finden im Archiv, je Dolmetscher unter seinem Namen`, 'success');
         await refresh();
     });
 
@@ -504,6 +512,156 @@
         refresh();
     });
     document.querySelectorAll('[data-payroll-tab]').forEach(button => button.addEventListener('click', () => { tab = button.dataset.payrollTab; render(); }));
+
+    // ---------- Archiv: Freigegebenes je Dolmetscher ----------
+    // Jede Freigabe ist ein fester Stand (genau das, was die Person im Portal sieht). Hier stehen alle Freigaben aller
+    // Monate, geordnet nach Person: so bleibt die Endliste des laufenden Monats übersichtlich und nichts geht verloren.
+    const STATEMENT_STATE = { offen: 'freigegeben', 'bestätigt': 'bestätigt', einwand: 'Einwand' };
+    const STATEMENT_PILL = { offen: 'in Arbeit', 'bestätigt': 'erledigt', einwand: 'offen' };
+    const stamp = value => value ? new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const statementLabel = item => item.data?.label || Abrechnung.monthRange(item.month).label;
+    const statementName = item => profiles.find(person => person.id === item.profile_id)?.full_name || item.person_name || 'Ohne Namen';
+    const own = data => Array.isArray(data?.receipts) ? data.receipts.length : 0;
+
+    async function loadArchive() {
+        const { data, error } = await client.from('tt_statements').select('*').order('month', { ascending: false });
+        archive = error ? [] : data;
+        renderArchive();
+        if (error) $('archiveSummary').textContent = TerminCloud.germanError(error);
+    }
+
+    function statementState(item) {
+        if (item.response === 'bestätigt') return `bestätigt am ${stamp(item.responded_at)}`;
+        if (item.response === 'einwand') return `Einwand${item.response_note ? `: „${item.response_note}“` : ''}`;
+        return 'freigegeben – wartet auf die Bestätigung';
+    }
+
+    // Zeilen einer Abrechnung, wie sie die Person im Portal sieht: [Bezeichnung, Angabe]
+    function statementLines(item) {
+        const data = item.data || {};
+        const short = iso => Abrechnung.longDate(iso).slice(0, 6);
+        const special = Array.isArray(data.specialDays) ? data.specialDays : [];
+        const own = Array.isArray(data.receipts) ? data.receipts : [];
+        return [
+            ['Zeitraum', data.period || Abrechnung.monthRange(item.month).period],
+            ['Arbeitstage', `${data.workdays ?? '–'}${data.dates?.length ? ` (${data.dates.map(short).join(', ')})` : ''}`],
+            [`davon normale Tage × ${euro(data.rate || 0)}`, `${(data.workdays ?? 0) - (data.specialCount ?? 0)} Tage`],
+            ...special.map(day => [`Sondertag ${short(day.date)}${day.job ? ` · ${day.job}` : ''}`, `${euro(day.amount)}${day.counts === 'prüfen' ? ' (wird geprüft)' : ''}`]),
+            ['Salary', euro(data.salary || 0)],
+            ...own.map(receipt => [`Beleg ${short(receipt.date)} · ${receipt.place || receipt.kind || ''}`, euro(receipt.amount)]),
+            [`Belege gesamt (${own.length})`, euro(data.receiptSum || 0)],
+            ...(data.remark ? [['Bemerkung', data.remark]] : [])
+        ];
+    }
+
+    function printStatement(item) {
+        const data = item.data || {};
+        printSheet([
+            el('h1', null, `Abrechnung ${statementLabel(item)}`),
+            el('p', null, 'Temporäre Dolmetscher/innen · Arbeitstage, Sondertage und Belege'),
+            el('p', 'print-meta', `Dolmetscher/in: ${statementName(item)}   ·   Im Portal freigegeben am ${stamp(item.released_at)}${item.released_by ? ` von ${item.released_by}` : ''}   ·   Stand: ${statementState(item)}`),
+            printTable(['Position', 'Angabe / Betrag'], statementLines(item), ['Gesamtbetrag', euro(data.total || 0)])
+        ]);
+    }
+
+    let shownStatement = null;
+    function showStatement(item) {
+        shownStatement = item;
+        $('statementDialogTitle').textContent = `${statementName(item)} · ${statementLabel(item)}`;
+        $('statementDialogMeta').textContent = `Im Portal freigegeben am ${stamp(item.released_at)}${item.released_by ? ` von ${item.released_by}` : ''} · ${statementState(item)}`;
+        const body = $('statementDialogBody');
+        body.replaceChildren(...statementLines(item).map(([term, value]) => { const row = el('div', 'statement-line'); row.append(el('span', null, term), el('span', null, value)); return row; }));
+        const total = el('div', 'statement-line is-total');
+        total.append(el('span', null, 'Gesamtbetrag'), el('span', null, euro(item.data?.total || 0)));
+        body.append(total);
+        const dialog = $('statementDialog');
+        if (!dialog.open) dialog.showModal();
+    }
+    $('statementDialogClose').addEventListener('click', () => $('statementDialog').close());
+    $('statementDialogPrint').addEventListener('click', () => { if (shownStatement) { $('statementDialog').close(); printStatement(shownStatement); } });
+
+    function renderArchive() {
+        const list = $('archiveList');
+        if (!list) return;
+        if (archive == null) { $('archiveSummary').textContent = ''; list.replaceChildren(el('p', 'directory-empty', 'Das Archiv wird geladen …')); return; }
+        // Je Person (Konto): Der Name kommt aus dem Konto – so stehen alle Monate unter einem Namen, auch nach einer Umbenennung.
+        const groups = new Map();
+        archive.forEach(item => {
+            const key = item.profile_id || `name:${Abrechnung.key(item.person_name)}`;
+            if (!groups.has(key)) groups.set(key, { key, name: statementName(item), items: [] });
+            groups.get(key).items.push(item);
+        });
+        const persons = [...groups.values()].sort((left, right) => left.name.localeCompare(right.name, 'de'));
+        const fold = text => String(text || '').toLocaleLowerCase('de');
+        const shown = persons.filter(person => !archiveQuery || fold(person.name).includes(fold(archiveQuery)));
+        $('archiveSummary').textContent = archive.length
+            ? `${archive.length} ${archive.length === 1 ? 'Abrechnung' : 'Abrechnungen'} · ${persons.length} ${persons.length === 1 ? 'Person' : 'Personen'}${archiveQuery ? ` · ${shown.length} gefunden` : ''}`
+            : '';
+        list.replaceChildren();
+        if (!archive.length) { list.append(el('p', 'directory-empty', 'Noch nichts freigegeben. Sobald du eine Abrechnung im Portal freigibst, steht sie hier – unter dem Namen der Person.')); return; }
+        if (!shown.length) { list.append(el('p', 'directory-empty', 'Kein Name passt zur Suche.')); return; }
+        shown.forEach(person => {
+            const items = [...person.items].sort((left, right) => String(right.month).localeCompare(String(left.month)));
+            const box = el('details', 'archive-person');
+            box.dataset.person = person.key;
+            box.open = archiveOpen.has(person.key) || Boolean(archiveQuery) || shown.length === 1;
+            box.addEventListener('toggle', () => { if (box.open) archiveOpen.add(person.key); else archiveOpen.delete(person.key); });
+            const summary = el('summary');
+            const waiting = items.filter(item => item.response === 'offen').length;
+            const objections = items.filter(item => item.response === 'einwand').length;
+            const sum = items.reduce((total, item) => total + Number(item.data?.total || 0), 0);
+            const info = el('span', 'archive-person-info', `${items.length} ${items.length === 1 ? 'Abrechnung' : 'Abrechnungen'} · zuletzt ${statementLabel(items[0])} · zusammen ${euro(sum)}`);
+            summary.append(el('strong', 'archive-person-name', person.name), info);
+            if (objections) { const pill = el('span', 'status-pill', objections === 1 ? 'Einwand' : `${objections} Einwände`); pill.dataset.status = 'offen'; summary.append(pill); }
+            else if (waiting) { const pill = el('span', 'status-pill', waiting === 1 ? 'wartet auf Bestätigung' : `${waiting} warten auf Bestätigung`); pill.dataset.status = 'in Arbeit'; summary.append(pill); }
+            const wrap = el('div', 'fleet-table-wrap');
+            const table = el('table', 'fleet-table archive-table');
+            const head = el('tr');
+            ['Monat', 'Arbeitstage', 'Salary', 'Belege', 'Gesamt', 'Freigegeben', 'Stand im Portal', 'Aktion'].forEach(text => head.append(el('th', null, text)));
+            const thead = el('thead');
+            thead.append(head);
+            const tbody = el('tbody');
+            items.forEach(item => {
+                const data = item.data || {};
+                const tr = el('tr');
+                tr.dataset.month = item.month;
+                const state = el('span', 'status-pill', STATEMENT_STATE[item.response] || item.response);
+                state.dataset.status = STATEMENT_PILL[item.response] || 'bekannt';
+                const stateCell = el('td');
+                stateCell.append(state);
+                if (item.response === 'bestätigt') stateCell.append(el('small', 'payroll-sub', `am ${stamp(item.responded_at)}`));
+                if (item.response === 'einwand' && item.response_note) stateCell.append(el('small', 'payroll-sub payroll-objection', `„${item.response_note}“`));
+                const actions = el('td', 'archive-actions');
+                const view = el('button', 'button-secondary fleet-end-button', 'Ansehen');
+                view.type = 'button';
+                view.setAttribute('aria-label', `Abrechnung ${statementLabel(item)} von ${person.name} ansehen`);
+                view.addEventListener('click', () => showStatement(item));
+                const print = el('button', 'button-secondary fleet-end-button', 'Drucken');
+                print.type = 'button';
+                print.setAttribute('aria-label', `Abrechnung ${statementLabel(item)} von ${person.name} drucken`);
+                print.addEventListener('click', () => printStatement(item));
+                const open = el('button', 'button-quiet', 'Zum Monat');
+                open.type = 'button';
+                open.title = 'Diesen Monat in der Endliste öffnen (zum Ändern oder neu Freigeben)';
+                open.addEventListener('click', () => {
+                    month = item.month;
+                    try { sessionStorage.setItem(MONTH_KEY, month); } catch (error) { /* gilt dann nur bis zum Neuladen */ }
+                    tab = 'list';
+                    refresh();
+                });
+                actions.append(view, print, open);
+                tr.append(el('td', null, statementLabel(item)), el('td', null, String(data.workdays ?? '–')), el('td', 'payroll-number', euro(data.salary || 0)),
+                    el('td', 'payroll-number', own(data) ? `${euro(data.receiptSum || 0)} (${own(data)})` : '–'), el('td', 'payroll-number payroll-total', euro(data.total || 0)),
+                    el('td', null, `${stamp(item.released_at)}${item.released_by ? ` · ${item.released_by}` : ''}`), stateCell, actions);
+                tbody.append(tr);
+            });
+            table.append(thead, tbody);
+            wrap.append(table);
+            box.append(summary, wrap);
+            list.append(box);
+        });
+    }
+    $('archiveSearch').addEventListener('input', () => { archiveQuery = $('archiveSearch').value.trim(); renderArchive(); });
 
     // ---------- Excel ----------
     $('payrollImportFile').addEventListener('change', async event => {

@@ -238,10 +238,14 @@
         }
         // Eine Anzeige je Art: Eine neue rote ersetzt die alte; sobald etwas geklappt hat, sind ältere Fehlermeldungen überholt.
         // Anzeigen mit einer Aktion („Rückgängig“) bleiben stehen, bis ihre Zeit abgelaufen ist.
+        // options.keep: Meldungen von außen (ein Dolmetscher sagt zu, sagt ab, ist fertig …) – jede zählt. Sie werden
+        // nicht von der nächsten Anzeige ersetzt, sondern stehen untereinander (höchstens fünf), bis ihre Zeit um ist.
+        if (options.keep) toast.dataset.keep = '1';
         region.querySelectorAll(kind === 'error' ? '.toast[data-kind="error"]' : `.toast[data-kind="${kind}"], .toast[data-kind="error"]`)
-            .forEach(old => { if (!old.querySelector('button')) old.remove(); });
+            .forEach(old => { if (!old.querySelector('button') && !old.dataset.keep) old.remove(); });
         region.append(toast);
-        while (region.children.length > 3) region.firstElementChild.remove();
+        const limit = region.querySelector('.toast[data-keep]') ? 5 : 3;
+        while (region.children.length > limit) region.firstElementChild.remove();
         // Oberste Ebene des Browsers: so liegt die Anzeige auch über einem geöffneten Dialog.
         if (typeof region.showPopover === 'function') {
             try { if (region.matches(':popover-open')) region.hidePopover(); region.showPopover(); } catch (error) { /* ältere Browser: normale Ebene */ }

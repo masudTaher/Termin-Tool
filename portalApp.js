@@ -912,13 +912,15 @@ if (!window.TerminContact) {
             button.addEventListener('click', async () => {
                 const noteText = note.value.trim();
                 if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
-                const before = { response: item.response, note: saved };
+                const before = { response: item.response, note: saved, draft: noteText !== saved ? note.value : null };
                 if (!(await respond(value, noteText))) return;
                 // Wer gerade die Angaben liest, soll sie nach der Antwort weiter vor sich haben.
                 if (details.open) rememberJobDetails(item.id, true);
                 // Vertippt? „Rückgängig“ stellt den Stand von vorher wieder her (auch „noch keine Antwort“).
                 toast(`${text} gesendet`, 'success', null, { label: 'Rückgängig', run: async () => {
                     if (!(await respond(before.response, before.note, 'zurueck'))) return;
+                    // Ein Hinweis, der mit der Antwort verschickt wurde, steht danach wieder als Entwurf im Feld.
+                    if (before.draft != null) jobNoteDrafts[item.id] = before.draft;
                     toast(before.response === 'offen' ? 'Zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.' : `Zurückgenommen. Es gilt wieder „${RESPONSE_LABEL[before.response]}“.`, 'success');
                     await loadJobs();
                 } });
@@ -950,6 +952,68 @@ if (!window.TerminContact) {
             card.append(docs);
         }
         return card;
+    }
+
+    // ---------- „Zusage für den ganzen Tag“ ----------
+    // Hat ein Tag mehrere Aufträge, die noch auf eine Antwort warten, steht über dem ersten ein Knopf: ein Tipp sagt alle zu.
+    function dayTitle(date) {
+        const today = TerminCloud.todayIso();
+        const next = new Date(`${today}T12:00:00`); next.setDate(next.getDate() + 1);
+        const tomorrow = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+        const text = new Date(`${date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        return `${date === today ? 'Heute · ' : date === tomorrow ? 'Morgen · ' : ''}${text}`;
+    }
+
+    async function acceptDay(date, items, button) {
+        button.disabled = true;
+        const before = items.map(item => ({ id: item.id, note: item.response_note || '', draft: item.id in jobNoteDrafts ? jobNoteDrafts[item.id] : null }));
+        let done = 0;
+        let failure = null;
+        for (const item of items) {
+            // Ein schon getippter, noch nicht gesendeter Hinweis geht mit – wie bei der einzelnen Zusage.
+            const note = item.id in jobNoteDrafts ? String(jobNoteDrafts[item.id]).trim() : (item.response_note || '');
+            const { error } = await client.rpc('tt_respond_assignment', { p_id: item.id, p_response: 'zugesagt', p_note: note });
+            if (error) { failure = error; break; }
+            delete jobNoteDrafts[item.id];
+            done += 1;
+        }
+        const day = new Date(`${date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        if (failure) {
+            toast(done ? `${done} von ${items.length} Aufträgen zugesagt. Dann ging es nicht weiter: ${TerminCloud.germanError(failure)}` : TerminCloud.germanError(failure), 'error');
+        } else {
+            // Vertippt? „Rückgängig“ setzt genau diese Aufträge wieder auf „Antwort offen“.
+            toast(`Zusage für ${done} Aufträge am ${day} gesendet`, 'success', null, { label: 'Rückgängig', run: async () => {
+                let undone = 0;
+                for (const entry of before) {
+                    const { error } = await client.rpc('tt_respond_assignment', { p_id: entry.id, p_response: 'offen', p_note: entry.note });
+                    if (error) {
+                        toast(/unbekannte antwort/i.test(error.message || '') ? 'Zurücknehmen ist in der Datenbank noch nicht eingerichtet (Update 16). Ändere die Antwort einfach am Auftrag.' : TerminCloud.germanError(error), 'error');
+                        break;
+                    }
+                    // Was nur getippt und mit der Zusage verschickt wurde, steht danach wieder als Entwurf im Feld.
+                    if (entry.draft != null && String(entry.draft).trim() !== entry.note) jobNoteDrafts[entry.id] = entry.draft;
+                    undone += 1;
+                }
+                jobsRendered = '';
+                if (undone) toast(undone === before.length ? 'Zurückgenommen. Die Aufträge warten wieder auf deine Antwort.' : `${undone} von ${before.length} Aufträgen zurückgenommen.`, 'success');
+                await loadJobs();
+                renderHome();
+            } });
+        }
+        await loadJobs();
+        renderHome();
+    }
+
+    function dayBanner(date, waiting) {
+        const item = el('li', 'job-day');
+        item.dataset.date = date;
+        const text = el('div', 'job-day-text');
+        text.append(el('strong', '', dayTitle(date)), el('span', '', `${waiting.length} Aufträge warten auf deine Antwort`));
+        const button = el('button', 'button-primary job-day-accept', 'Zusage für den ganzen Tag');
+        button.type = 'button';
+        button.addEventListener('click', () => acceptDay(date, waiting, button));
+        item.append(text, button);
+        return item;
     }
 
     async function loadJobs() {
@@ -990,7 +1054,22 @@ if (!window.TerminContact) {
         const focusedId = focused?.closest('.job-card')?.dataset.id;
         const caret = focused ? [focused.selectionStart, focused.selectionEnd] : null;
         list.replaceChildren();
-        upcoming.forEach(item => list.append(jobCard(item)));
+        // Je Tag: Warten mindestens zwei Aufträge auf eine Antwort, kommt davor „Zusage für den ganzen Tag“.
+        const waitingByDate = new Map();
+        upcoming.forEach(item => {
+            if (item.response !== 'offen' || item.date < today || jobStarted(item) || jobFinished(item)) return;
+            if (!waitingByDate.has(item.date)) waitingByDate.set(item.date, []);
+            waitingByDate.get(item.date).push(item);
+        });
+        let shownDate = '';
+        upcoming.forEach(item => {
+            if (item.date !== shownDate) {
+                shownDate = item.date;
+                const waiting = waitingByDate.get(item.date) || [];
+                if (waiting.length >= 2) list.append(dayBanner(item.date, waiting));
+            }
+            list.append(jobCard(item));
+        });
         if (focusedId) {
             const again = [...list.querySelectorAll('.job-card')].find(card => card.dataset.id === focusedId)?.querySelector('.job-note-row input');
             if (again) { again.focus({ preventScroll: true }); try { again.setSelectionRange(caret[0], caret[1]); } catch (error) { /* Position ist nicht wichtig */ } }

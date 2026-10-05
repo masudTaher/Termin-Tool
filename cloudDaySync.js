@@ -188,7 +188,7 @@
             if (status === 'offen') {
                 record.Status = 'losgefahren';
                 window.stampTrackingStatusTime?.(record, 'losgefahren', time(assignment.started_at));
-                showToast(`${assignment.interpreter_name} ist losgefahren: ${assignment.title}`, 'info', { duration: 10000 });
+                showToast(`${assignment.interpreter_name} ist losgefahren: ${assignment.title}`, 'info', { duration: 10000, keep: true });
             }
             changed = true;
         }
@@ -197,7 +197,7 @@
             if (['offen', 'losgefahren'].includes(String(record.Status || 'offen').trim().toLocaleLowerCase('de-DE'))) {
                 record.Status = 'beendet';
                 window.stampTrackingStatusTime?.(record, 'beendet', time(assignment.finished_at));
-                showToast(`${assignment.interpreter_name} ist fertig und wieder frei: ${assignment.title}`, 'success', { duration: 15000 });
+                showToast(`${assignment.interpreter_name} ist fertig und wieder frei: ${assignment.title}`, 'success', { duration: 15000, keep: true });
                 if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
                     try { new Notification('Dolmetscher wieder frei', { body: `${assignment.interpreter_name} ist fertig: ${assignment.title}` }); } catch (error) { /* nur als Einblendung */ }
                 }
@@ -223,6 +223,7 @@
         const byAppointment = new Map(assignments.map(item => [item.appointment_id, item]));
         const responses = new Map();
         const notes = new Map();
+        const accepted = new Map();   // Name → Aufträge, die in diesem Durchlauf zugesagt wurden („Zusage für den ganzen Tag“ = eine Anzeige)
         let changed = false;
         for (const record of records()) {
             const assignment = byAppointment.get(record._id);
@@ -242,14 +243,16 @@
             notes.set(assignment.appointment_id, assignment.response_note || '');
             const responseBefore = lastResponses ? lastResponses.get(assignment.appointment_id) : undefined;
             const noteText = assignment.response_note ? ` – „${assignment.response_note}“` : '';
-            if (lastResponses && responseBefore !== assignment.response && assignment.response !== 'offen') {
-                showToast(`${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${noteText}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000 });
+            if (lastResponses && responseBefore !== assignment.response && assignment.response === 'zugesagt' && !assignment.response_note) {
+                accepted.set(assignment.interpreter_name, [...(accepted.get(assignment.interpreter_name) || []), assignment.title]);
+            } else if (lastResponses && responseBefore !== assignment.response && assignment.response !== 'offen') {
+                showToast(`${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${noteText}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000, keep: true });
             } else if (lastResponses && responseBefore && responseBefore !== 'offen' && assignment.response === 'offen') {
                 // Der Dolmetscher hat sich vertippt und seine Antwort zurückgenommen.
-                showToast(`${assignment.interpreter_name} hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000 });
+                showToast(`${assignment.interpreter_name} hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000, keep: true });
             } else if (lastNotes && lastNotes.has(assignment.appointment_id) && lastNotes.get(assignment.appointment_id) !== (assignment.response_note || '') && assignment.response_note) {
                 // Neuer Hinweis, ohne dass sich die Antwort geändert hat (z. B. „Pat geht alleine“).
-                showToast(`Hinweis von ${assignment.interpreter_name}: „${assignment.response_note}“ – ${assignment.title}`, 'info', { duration: 15000 });
+                showToast(`Hinweis von ${assignment.interpreter_name}: „${assignment.response_note}“ – ${assignment.title}`, 'info', { duration: 15000, keep: true });
             }
             // „Losfahren“ und „Fertig“ aus dem Portal: jede Meldung wird genau einmal in den Tagesstand übernommen.
             if (applyProgress(record, assignment)) changed = true;
@@ -269,6 +272,12 @@
         for (const assignment of assignments) {
             if (!assignment.cancelled && !ids.has(assignment.appointment_id)) await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
         }
+        // Mehrere Zusagen derselben Person auf einmal (z. B. „Zusage für den ganzen Tag“) stehen in EINER Anzeige.
+        accepted.forEach((titles, name) => {
+            if (titles.length === 1) { showToast(`${name}: ${RESPONSE_TEXT.zugesagt} für ${titles[0]}`, 'success', { duration: 12000, keep: true }); return; }
+            const short = titles.map(title => title.split(' · ').slice(0, 2).join(' · '));
+            showToast(`${name}: Zusage für ${titles.length} Aufträge – ${short.slice(0, 4).join('; ')}${short.length > 4 ? ` und ${short.length - 4} weitere` : ''}`, 'success', { duration: 15000, keep: true });
+        });
         lastResponses = responses;
         lastNotes = notes;
         if (changed) window.refreshTrackingRows?.();
