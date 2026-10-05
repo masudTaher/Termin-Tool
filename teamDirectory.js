@@ -45,11 +45,57 @@ function removeInterpreterName(value) {
     return writeInterpreterDirectory(readInterpreterDirectory().filter(name => name.toLocaleLowerCase('de') !== normalized));
 }
 
+// ---------- Registrierte Dolmetscher ----------
+// Beim Eintragen eines Dolmetschers werden nur die registrierten (freigeschalteten) Dolmetscher-Konten vorgeschlagen –
+// nur ihnen kann ein Auftrag ins Portal geschickt werden. Der Online-Abgleich meldet die Namen; sie werden gemerkt,
+// damit die Vorschläge beim nächsten Öffnen sofort stimmen. Gibt es (noch) keine Konten, gilt die eigene Namensliste.
+// Einen anderen Namen von Hand eintippen geht weiterhin.
+const REGISTERED_INTERPRETERS_KEY = 'terminTool.registeredInterpreters.v1';
+
+function sortedInterpreterNames(names) {
+    const seen = new Set();
+    return (names || []).map(normalizeInterpreterName).filter(name => {
+        const key = name.toLocaleLowerCase('de');
+        if (!name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    }).sort((left, right) => left.localeCompare(right, 'de', { sensitivity: 'base' }));
+}
+
+function readRegisteredInterpreters() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(REGISTERED_INTERPRETERS_KEY) || 'null');
+        return Array.isArray(stored) ? sortedInterpreterNames(stored) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function setRegisteredInterpreters(names) {
+    const cleaned = sortedInterpreterNames(names);
+    try {
+        if (JSON.stringify(cleaned) === JSON.stringify(readRegisteredInterpreters())) return;
+        localStorage.setItem(REGISTERED_INTERPRETERS_KEY, JSON.stringify(cleaned));
+    } catch (error) { /* ohne Speicher gelten die Namen bis zum Neuladen nicht – dann greift die eigene Liste */ }
+    refreshInterpreterSuggestions();
+}
+
+// Was beim Eintragen vorgeschlagen wird
+function interpreterSuggestionNames() {
+    const registered = readRegisteredInterpreters();
+    return registered.length ? registered : readInterpreterDirectory();
+}
+
+// Alle Namen, die als Dolmetscher bekannt sind (eigene Liste und registrierte Konten) – zum Erkennen in der Bemerkung
+function knownInterpreterNames() {
+    return sortedInterpreterNames([...readInterpreterDirectory(), ...readRegisteredInterpreters()]);
+}
+
 // FileMaker-Export: In der ersten Zeile der Bemerkung steht der Dolmetscher, den die Einsatzleitung vorab eingetragen hat.
 // Der Name wird nur übernommen, wenn er in der Dolmetscherliste steht (ganzer Name oder eindeutiger Vorname) –
 // so wird aus einer gewöhnlichen Bemerkung nie versehentlich ein Dolmetscher. Unbekannte Namen werden nur gemeldet.
 function assignInterpretersFromRemarks(records) {
-    const names = readInterpreterDirectory();
+    const names = knownInterpreterNames();
     const byFull = new Map(names.map(name => [name.toLocaleLowerCase('de'), name]));
     const byFirst = new Map();
     names.forEach(name => {
@@ -87,7 +133,7 @@ function reportRemarkInterpreters(result, rerun) {
 function refreshInterpreterSuggestions() {
     const datalist = document.getElementById('dolmetscherSuggestions');
     if (!datalist) return;
-    datalist.replaceChildren(...readInterpreterDirectory().map(name => {
+    datalist.replaceChildren(...interpreterSuggestionNames().map(name => {
         const option = document.createElement('option');
         option.value = name;
         return option;

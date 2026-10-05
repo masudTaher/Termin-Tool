@@ -1,3 +1,22 @@
+// Direkt nach einem Update kann der Browser für wenige Minuten noch die ältere Seite liefern, in der contactParse.js
+// fehlt. Dann wird die Datei hier nachgeladen; bis sie da ist, hilft eine einfache Ersatzfassung (Adresse und
+// Nummern bleiben zusammen in einer Zeile), damit nichts stehen bleibt.
+if (!window.TerminContact) {
+    const lines = value => String(value ?? '').replace(/\r\n?/g, '\n');
+    const one = value => lines(value).replace(/\s*\n+\s*/g, ', ').replace(/^[\s,]+|[\s,]+$/g, '');
+    window.TerminContact = {
+        standIn: true, normalizeLineBreaks: lines, singleLine: one,
+        parsePatientContact: value => ({ address: one(value), extra: [], phones: [] }),
+        parsePhones: value => /\d/.test(String(value || '')) ? [{ number: one(value), whatsapp: false, note: '' }] : [],
+        whatsappNumber: () => '', isQatarNumber: () => false, dialNumber: number => String(number || '').replace(/[^\d+]/g, ''),
+        mapQuery: address => one(address), formatPhone: phone => String(phone?.number || '')
+    };
+    const script = document.createElement('script');
+    script.src = 'contactParse.js';
+    script.addEventListener('load', () => window.dispatchEvent(new Event('termincontact-ready')));
+    document.head.append(script);
+}
+
 let trackingData = [];
 let workbook;
 let activeWhatsAppAppointmentIndex = null;
@@ -304,6 +323,7 @@ function renderTrackingTable(data) {
 // ---------- Dolmetscher heute: wer ist frei, wer ist unterwegs, wie viele Aufträge hat jeder ----------
 let activeInterpreterIndex = null;      // Termin, dessen Dolmetscher-Feld zuletzt angeklickt wurde
 let peopleGenderFilter = '';            // '' = alle, sonst 'weiblich' oder 'männlich'
+let showPeopleWithoutAccount = false;   // Namen aus der Terminliste ohne Portal-Konto mit anzeigen
 
 function interpreterLoad(data = trackingData) {
     const load = new Map();
@@ -357,7 +377,29 @@ function refreshInterpreterLoad() {
         if (!knownGender) peopleGenderFilter = '';
         genderBox.querySelectorAll('[data-people-gender]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.peopleGender === peopleGenderFilter)));
     }
-    const sorted = [...people.values()].filter(entry => !peopleGenderFilter || entry.gender === peopleGenderFilter)
+    // Gezeigt werden nur Personen mit freigeschaltetem Portal-Konto – sobald die Konten bekannt sind. Wer nur in der
+    // Terminliste steht (ohne Konto), lässt sich weiter von Hand eintragen und über „Anzeigen“ einblenden.
+    const registered = typeof readRegisteredInterpreters === 'function' ? readRegisteredInterpreters() : [];
+    const accountKeys = new Set([...registered, ...(window.trackingPeopleStaff || [])].map(name => String(name).toLocaleLowerCase('de')));
+    const withoutAccount = registered.length ? [...people.values()].filter(entry => !accountKeys.has(entry.name.toLocaleLowerCase('de'))) : [];
+    const hiddenNote = document.getElementById('peopleHidden');
+    if (hiddenNote) {
+        hiddenNote.hidden = !withoutAccount.length;
+        if (withoutAccount.length) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'button-quiet people-hidden-toggle';
+            toggle.textContent = showPeopleWithoutAccount ? 'Ausblenden' : 'Anzeigen';
+            toggle.addEventListener('click', () => { showPeopleWithoutAccount = !showPeopleWithoutAccount; refreshInterpreterLoad(); });
+            const count = withoutAccount.length;
+            hiddenNote.replaceChildren(
+                document.createTextNode(`Hier stehen die Dolmetscher mit Portal-Konto. ${count === 1 ? '1 weiterer Name' : `${count} weitere Namen`} aus der Terminliste ${count === 1 ? 'hat' : 'haben'} kein Konto${showPeopleWithoutAccount ? ` und ${count === 1 ? 'wird' : 'werden'} gerade mit angezeigt` : ''}. `),
+                toggle);
+        }
+    }
+    const hiddenKeys = new Set(showPeopleWithoutAccount ? [] : withoutAccount.map(entry => entry.name.toLocaleLowerCase('de')));
+    const sorted = [...people.values()].filter(entry => !hiddenKeys.has(entry.name.toLocaleLowerCase('de')))
+        .filter(entry => !peopleGenderFilter || entry.gender === peopleGenderFilter)
         .sort((left, right) => left.total - right.total || left.name.localeCompare(right.name, 'de'));
     const chip = entry => {
         const button = document.createElement('button');
@@ -407,9 +449,9 @@ function refreshInterpreterLoad() {
             return node;
         }));
     }
-    document.getElementById('peopleSummary').textContent = people.size || awayList.length
+    document.getElementById('peopleSummary').textContent = sorted.length || awayList.length || (people.size && !withoutAccount.length)
         ? `${freeList.length} frei · ${busyList.length} unterwegs${awayList.length ? ` · ${awayList.length} abwesend` : ''}`
-        : 'noch niemand eingeteilt';
+        : people.size ? 'noch niemand mit Portal-Konto eingeteilt' : 'noch niemand eingeteilt';
 }
 document.getElementById('peopleGender')?.addEventListener('click', event => {
     const button = event.target.closest('[data-people-gender]');
@@ -633,18 +675,45 @@ function splitPhoneNumbers(value) {
     });
 }
 
-function getPatientAddressFields(termin) {
-    return getAppointmentContactEntries(termin, 'patient', 'address').map(({ key, value }) => {
+// Adresse in Deutschland und Telefonnummern des Patienten.
+// In der Terminliste steht oft alles in EINEM Feld („Anschrift Deutschland“: Adresse, darunter die Nummern, dazu
+// Vermerke wie „wats“ oder „Vater“). Hier wird das getrennt: die Adresse (zum Öffnen in der Karte) und jede Nummer
+// einzeln – die Hausnummer bleibt bei der Adresse. Die Anschrift in Katar wird nicht mitgeschickt: Für den Einsatz
+// zählt nur die Adresse in Deutschland.
+function getPatientContact(termin) {
+    const contact = { address: '', extra: [], phones: [] };
+    const known = new Map();
+    const addPhone = phone => {
+        const key = phone.number.replace(/\D/g, '').replace(/^00/, '');
+        if (!key) return;
+        const existing = known.get(key);
+        if (existing) { existing.whatsapp = existing.whatsapp || phone.whatsapp; if (!existing.note) existing.note = phone.note; return; }
+        const entry = { number: phone.number, whatsapp: Boolean(phone.whatsapp), note: phone.note || '' };
+        known.set(key, entry);
+        contact.phones.push(entry);
+    };
+    const street = [];
+    let postalCode = '';
+    let city = '';
+    getAppointmentContactEntries(termin, 'patient', 'address').forEach(({ key, value }) => {
         const normalized = normalizeAppointmentColumnName(key);
-        const label = normalized.includes('qatar') || normalized.includes('katar')
-            ? 'Patientenadresse (Katar)'
-            : 'Patientenadresse';
-        return [label, formatWhatsAppAddress(value)];
+        if (normalized.includes('qatar') || normalized.includes('katar')) return;
+        const parsed = TerminContact.parsePatientContact(value);
+        parsed.phones.forEach(addPhone);
+        contact.extra.push(...parsed.extra);
+        if (!parsed.address) return;
+        if (/plz|postleitzahl|postal|zip/.test(normalized)) postalCode = postalCode || parsed.address;
+        else if (/ort$|stadt$|city$/.test(normalized)) city = city || parsed.address;
+        else street.push(parsed.address);
     });
+    contact.address = formatWhatsAppAddress([street.join(', '), [postalCode, city].filter(Boolean).join(' ')].filter(Boolean).join(', '));
+    getAppointmentContactValues(termin, 'patient', 'phone').forEach(value => TerminContact.parsePhones(value).forEach(addPhone));
+    return contact;
 }
 
 function formatWhatsAppAddress(value) {
     return String(value || '')
+        .replace(/\s*[\r\n]+\s*/g, ', ')
         .replace(/\s*,?\s*(?:Deutschland|Germany)\s*$/iu, '')
         .replace(/\s{2,}/g, ' ')
         .replace(/\s*,\s*,/g, ',')
@@ -704,8 +773,9 @@ function getWhatsAppDataHint(termin) {
     if (!getPatientRecordNumber(termin)) missing.push('Aktennummer');
     if (!termin.Termin_Datum) missing.push('Termindatum');
     if (!termin.Termin_Uhrzeit) missing.push('Uhrzeit');
-    if (getPatientAddressFields(termin).length === 0) missing.push('Patientenadresse');
-    if (getAppointmentContactValues(termin, 'patient', 'phone').length === 0) missing.push('Patiententelefonnummer');
+    const patientContact = getPatientContact(termin);
+    if (!patientContact.address) missing.push('Patientenadresse');
+    if (!patientContact.phones.length) missing.push('Patiententelefonnummer');
     if (!getDoctorAddress(termin)) missing.push('Arztadresse');
     if (getAppointmentContactValues(termin, 'doctor', 'phone').length === 0) missing.push('Arzttelefonnummer');
     const interpreter = getAppointmentInterpreterName(termin);
@@ -813,7 +883,7 @@ function parseAppointmentRemark(value, assignedInterpreterName = '') {
     const doctorAddressParts = [];
     const doctorLocationParts = [];
     const knownNames = [
-        ...(typeof readInterpreterDirectory === 'function' ? readInterpreterDirectory() : []),
+        ...(typeof knownInterpreterNames === 'function' ? knownInterpreterNames() : typeof readInterpreterDirectory === 'function' ? readInterpreterDirectory() : []),
         String(assignedInterpreterName || '').trim()
     ].filter(Boolean);
     const normalizedName = name => String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
@@ -1022,21 +1092,31 @@ function getAppointmentInterpreterName(termin) {
 function createWhatsAppAppointmentMessage(termin, includeNote) {
     const interpreter = getAppointmentInterpreterName(termin).replace(/[\r\n]+/g, ' ');
     const remark = parseAppointmentRemark(termin.Bemerkung, termin.Übersetzer);
-    const patientName = getAppointmentPatientName(termin) || remark.patientName;
+    // Felder der Liste können einen Zeilenumbruch enthalten (z. B. der Name einer Praxis über zwei Zeilen) –
+    // im Auftrag steht jedes Feld in einer Zeile.
+    const oneLine = TerminContact.singleLine;
+    const patientName = oneLine(getAppointmentPatientName(termin) || remark.patientName);
     const patientRecordNumber = getPatientRecordNumber(termin);
     const isCompanionAppointment = remark.companionNames.length > 0;
-    const doctorName = remark.doctorName || String(termin['Arzt Nr::Name'] || '').trim();
+    const doctorName = oneLine(remark.doctorName || termin['Arzt Nr::Name'] || '');
     const appointmentLocation = formatWhatsAppAddress(remark.doctorLocation || termin['Arzt Nr::Ort'] || termin.Ort || termin.Termin_Ort || termin.Stadt || '');
-    const patientAddressFields = getPatientAddressFields(termin).map(([label, value]) => [
-        isCompanionAppointment ? `${label} (Hauptpatient)` : label,
-        value
-    ]);
+    // Adresse in Deutschland, dann jede Telefonnummer des Patienten in einer eigenen Zeile –
+    // mit dem Vermerk „(WhatsApp)“ oder einem Zusatz wie „(Vater)“, wenn er in der Liste steht.
+    const patientContact = getPatientContact(termin);
+    const patientPhoneLabel = isCompanionAppointment ? 'Telefon Hauptpatient' : 'Telefon';
+    const patientContactFields = [
+        [isCompanionAppointment ? 'Patientenadresse (Hauptpatient)' : 'Patientenadresse', patientContact.address],
+        ...patientContact.extra.map(text => ['Hinweis', text]),
+        ...patientContact.phones.map((phone, index) => [
+            patientContact.phones.length > 1 ? `${patientPhoneLabel} ${index + 1}` : patientPhoneLabel,
+            TerminContact.formatPhone(phone)
+        ])
+    ];
     // Jede Telefonnummer bekommt eine eigene Zeile („Telefon 1“, „Telefon 2“ …).
     const phoneFields = (label, values) => {
         const numbers = [...new Set(values.flatMap(splitPhoneNumbers))];
         return numbers.map((number, index) => [numbers.length > 1 ? `${label} ${index + 1}` : label, number]);
     };
-    const patientPhones = getAppointmentContactValues(termin, 'patient', 'phone');
     const doctorAddress = formatWhatsAppAddress(remark.doctorAddress || getDoctorAddress(termin));
     const doctorPhones = remark.doctorPhone ? [remark.doctorPhone] : getAppointmentContactValues(termin, 'doctor', 'phone');
     const appointmentDate = formatWhatsAppDate(termin.Termin_Datum);
@@ -1060,14 +1140,11 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
         interpreter ? `*Dolmetscher/in: ${interpreter}*` : '',
         ...(isCompanionAppointment ? [`*Termin für Begleitperson: ${remark.companionNames.join(', ')}*`] : []),
         ...(costStatus ? [`*${costStatus}*`] : [])
-    ].filter(Boolean);
+    ].filter(Boolean).map(oneLine);
     const sections = [
         {
             title: 'PATIENTENKONTAKT',
-            fields: [
-                ...patientAddressFields,
-                ...phoneFields(isCompanionAppointment ? 'Telefon Hauptpatient' : 'Telefon', patientPhones)
-            ]
+            fields: patientContactFields
         },
         {
             title: 'ARZT / PRAXIS',
@@ -1090,7 +1167,7 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
 
     const details = sections.flatMap(section => [
         `*${section.title}*`,
-        ...section.fields.map(([label, value]) => label ? `${label}: ${value}` : String(value)),
+        ...section.fields.map(([label, value]) => label ? `${label}: ${oneLine(value)}` : oneLine(value)),
         ''
     ]);
 

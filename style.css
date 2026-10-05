@@ -1806,3 +1806,34 @@ tbody tr.absence-rejected td:nth-child(-n+5), tbody tr.absence-rejected td:nth-c
 .team-guide-note { margin: 14px 0 8px; color: var(--muted); font-size: .88rem; }
 .team-guide-note strong { color: var(--ink); }
 .directory-input-row a { flex: 0 0 auto; }
+
+/* ---------- 31 Auftragskarte im Portal: Nummern einzeln (Anrufen, WhatsApp), Hinweis mit „Senden“, Antwort zurücknehmen ---------- */
+/* Patientennummern: die Nummer groß in einer Zeile, darunter „Anrufen“ und „WhatsApp“ nebeneinander.
+   Reicht der Platz nicht für beide, stehen die Knöpfe untereinander – kein Wort und keine Nummer wird zerteilt. */
+.job-field-phone { gap: 5px; }
+.job-phone-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; }
+.job-phone-note { color: var(--muted); font-size: .78rem; font-weight: 600; }
+.job-phone-note::before { content: "· "; }
+.job-phone-number { font-size: 1.12rem; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: .01em; line-height: 1.25; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+.job-phone-row { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.job-phone-row .job-phone, .job-whatsapp { min-width: max-content; flex: 1 1 0; justify-content: center; gap: 6px; padding-inline: 6px; font-size: .9rem; font-weight: 750; letter-spacing: 0; white-space: nowrap; }
+.job-phone-row .job-phone-icon, .job-whatsapp-icon { width: 18px; height: 18px; flex: 0 0 auto; }
+.job-whatsapp { display: flex; min-height: 46px; align-items: center; border: 1px solid var(--line); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); border-radius: 12px; background: var(--surface); color: var(--ok); text-decoration: none; }
+.job-whatsapp:hover, .job-phone:hover { border-color: var(--ok); }
+.job-whatsapp-icon svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.job-contact-note { color: var(--ink-soft); font-size: .88rem; }
+.job-note-label { margin-bottom: -4px; }
+.job-note-row { display: flex; gap: 8px; }
+.job-note-row input { min-width: 0; flex: 1 1 auto; }
+.job-note-send, :root[data-theme="dark"] .job-note-send { min-height: 44px; flex: 0 0 auto; padding-inline: 14px; font-weight: 700; }
+.job-note-send:not(:disabled), :root[data-theme="dark"] .job-note-send:not(:disabled) { border-color: #1769aa; background: #1769aa; color: #fff; }
+.job-note-state { min-height: 1.2em; margin: -2px 0 2px; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.job-note-state[data-state="leer"] { display: none; }
+.job-note-state[data-state="gesendet"] { color: var(--ok); }
+.job-note-state[data-state="offen"] { color: var(--warn, #9a6700); }
+.job-answer-undo, :root[data-theme="dark"] .job-answer-undo { align-self: flex-start; min-height: 36px; margin-top: -2px; padding: 4px 2px; font-size: .86rem; }
+
+/* ---------- 32 „Dolmetscher heute“: nur Personen mit Portal-Konto, die übrigen auf Wunsch ---------- */
+.people-hidden { margin: 8px 0 2px; }
+.people-hidden[hidden] { display: none; }
+.people-hidden-toggle, :root[data-theme="dark"] .people-hidden-toggle { min-height: 28px; padding: 2px 6px; color: var(--brand); font-size: inherit; font-weight: 700; text-decoration: underline; }

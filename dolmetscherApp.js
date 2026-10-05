@@ -233,7 +233,10 @@
     function render() {
         if (!data) return;
         const plan = isPlan();
-        const people = data.people;
+        // Gezeigt werden die Personen mit Portal-Konto. Namen, die nur im Tagesplan stehen, erscheinen über „Ohne Konto“.
+        const without = data.withoutAccount || [];
+        if (chipFilter === 'ohnekonto' && !without.length && !data.people.some(item => item.noAccount)) chipFilter = '';
+        const people = chipFilter === 'ohnekonto' && without.length ? without : data.people;
         // Kopf: Tag
         document.querySelectorAll('[data-crew-day]').forEach(node => node.setAttribute('aria-pressed', String((node.dataset.crewDay === 'heute' && date === today()) || (node.dataset.crewDay === 'morgen' && date === tomorrow()))));
         $('crewDate').value = date;
@@ -243,7 +246,8 @@
         // Kacheln: Zahlen je Zustand – zusammen ergeben sie „Alle“. An anderen Tagen gibt es kein „Unterwegs“.
         const inState = key => people.filter(person => person.state === key);
         $('crewCountAll').textContent = String(people.length);
-        $('crewSubAll').textContent = [data.employment.fest ? `${data.employment.fest} fest` : '', data.employment['temporär'] ? `${data.employment['temporär']} temporär` : ''].filter(Boolean).join(' · ');
+        $('crewSubAll').textContent = people === without ? 'ohne Portal-Konto'
+            : [data.employment.fest ? `${data.employment.fest} fest` : '', data.employment['temporär'] ? `${data.employment['temporär']} temporär` : ''].filter(Boolean).join(' · ');
         [['unterwegs', 'crewCountOut', 'crewSubOut'], ['frei', 'crewCountFree', 'crewSubFree'], ['abwesend', 'crewCountAway', 'crewSubAway'], ['nichtda', 'crewCountNo', 'crewSubNo'], ['offen', 'crewCountOpen', 'crewSubOpen']].forEach(([key, countId, subId]) => {
             const list = inState(key);
             $(countId).textContent = String(list.length);
@@ -257,7 +261,8 @@
         document.querySelectorAll('[data-crew-filter]').forEach(node => { const active = node.dataset.crewFilter === filter; node.classList.toggle('is-active', active); node.setAttribute('aria-pressed', String(active)); });
 
         // Weitere Filter: nur, was es an diesem Tag gibt
-        const chips = CHIPS.map(([key, label, test]) => ({ key, label, test, count: people.filter(test).length })).filter(item => item.count > 0 && item.count < people.length || item.key === chipFilter);
+        const chips = CHIPS.map(([key, label, test]) => ({ key, label, test, count: key === 'ohnekonto' && without.length ? without.length : data.people.filter(test).length }))
+            .filter(item => (item.key === 'ohnekonto' && without.length) || (item.count > 0 && item.count < data.people.length) || item.key === chipFilter);
         if (chipFilter && !chips.some(item => item.key === chipFilter)) chipFilter = '';
         $('crewChips').hidden = !chips.length;
         $('crewChips').replaceChildren(...chips.map(item => chip(item.label, item.count, chipFilter === item.key, () => { chipFilter = chipFilter === item.key ? '' : item.key; render(); }, item.key)));
@@ -379,7 +384,7 @@
     });
 
     // ---------- Seitenfenster für eine Person ----------
-    const person = () => data?.people.find(item => item.key === selectedKey) || null;
+    const person = () => (data ? [...data.people, ...(data.withoutAccount || [])] : []).find(item => item.key === selectedKey) || null;
     function updateNav() {
         const position = shownKeys.indexOf(selectedKey);
         $('crewFilePosition').textContent = position >= 0 && shownKeys.length > 1 ? `${position + 1} von ${shownKeys.length}` : '';

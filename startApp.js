@@ -146,8 +146,11 @@
                 item.append(text, side);
                 return item;
             }));
-            if (!running.length) list.append(liveEl('li', 'directory-empty', 'Gerade ist niemand unterwegs.'));
+            // Gezählt werden die Personen mit Portal-Konto. Läuft gerade ein Termin von jemandem ohne Konto, steht das als Hinweis da.
+            const others = (live.withoutAccount || []).filter(person => person.state === 'unterwegs').length;
+            if (!running.length && !others) list.append(liveEl('li', 'directory-empty', 'Gerade ist niemand unterwegs.'));
             if (running.length > 8) list.append(liveEl('li', 'directory-empty', `und ${running.length - 8} weitere – alle unter „Dolmetscher“`));
+            if (others) list.append(liveEl('li', 'directory-empty', `${running.length ? 'Dazu ' : ''}${others === 1 ? '1 Person' : `${others} Personen`} ohne Portal-Konto unterwegs – zu sehen unter „Dolmetscher“ → „Ohne Konto“`));
             // Morgen: wer kommt, wer fehlt, wer hat noch nicht geantwortet
             $('liveTomorrowTitle').textContent = `Morgen · ${AbsenceLogic.parse(tomorrow).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })}`;
             const open = next.ask.open.length;

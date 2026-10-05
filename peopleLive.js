@@ -127,17 +127,22 @@ window.PeopleLive = (function () {
             };
         }
 
-        const people = [];
+        const everyone = [];
         const seen = new Set();
-        profiles.filter(profile => profile.active && profile.role === 'dolmetscher').forEach(profile => { const person = build(profile); people.push(person); seen.add(person.key); });
+        profiles.filter(profile => profile.active && profile.role === 'dolmetscher').forEach(profile => { const person = build(profile); everyone.push(person); seen.add(person.key); });
         // Einsatzleitung oder Sekretariat, wenn sie an dem Tag selbst eingeteilt sind
-        profiles.filter(profile => profile.active && profile.role !== 'dolmetscher' && recordsByName.has(nameKey(profile.full_name))).forEach(profile => { const person = build(profile); if (!seen.has(person.key)) { people.push(person); seen.add(person.key); } });
+        profiles.filter(profile => profile.active && profile.role !== 'dolmetscher' && recordsByName.has(nameKey(profile.full_name))).forEach(profile => { const person = build(profile); if (!seen.has(person.key)) { everyone.push(person); seen.add(person.key); } });
         // Namen aus dem Tagesplan ohne Portal-Konto
-        recordsByName.forEach((entry, key) => { if (!seen.has(key)) { people.push(build(null, entry.name)); seen.add(key); } });
+        recordsByName.forEach((entry, key) => { if (!seen.has(key)) { everyone.push(build(null, entry.name)); seen.add(key); } });
 
+        // Gezeigt und gezählt werden die Personen mit Portal-Konto. Wer nur im Tagesplan steht (ohne Konto), wird
+        // getrennt geführt und lässt sich in der Dolmetscher-Übersicht über „Ohne Konto“ einblenden.
+        // Gibt es noch gar kein Konto, bleiben die Namen aus dem Tagesplan sichtbar.
+        const withAccount = everyone.filter(person => !person.noAccount);
+        const people = withAccount.length ? withAccount : everyone;
+        const withoutAccount = withAccount.length ? everyone.filter(person => person.noAccount) : [];
         const counts = { all: people.length };
         STATES.forEach(state => { counts[state] = people.filter(person => person.state === state).length; });
-        const withAccount = people.filter(person => !person.noAccount);
         const dayCounts = { total: 0, offen: 0, unterwegs: 0, erledigt: 0, storniert: 0 };
         records.forEach(record => { dayCounts.total += 1; dayCounts[recordGroup(record)] += 1; });
         // Tagesanfrage: Wen betrifft sie, wer hat geantwortet?
@@ -151,7 +156,7 @@ window.PeopleLive = (function () {
         const activeVehicles = vehicles.filter(vehicle => vehicle.active !== false);
         const outIds = new Set(handovers.map(item => item.vehicle_id));
         return {
-            ok: true, ready, date, isToday, weekend, holiday: logic.holidayName(date), people, counts, request, ask,
+            ok: true, ready, date, isToday, weekend, holiday: logic.holidayName(date), people, withoutAccount, counts, request, ask,
             gender: { weiblich: withAccount.filter(person => person.gender === 'weiblich').length, 'männlich': withAccount.filter(person => person.gender === 'männlich').length, unbekannt: withAccount.filter(person => !person.gender).length },
             employment: { fest: withAccount.filter(person => person.employment === 'fest').length, 'temporär': withAccount.filter(person => person.employment === 'temporär').length },
             day: records.length ? dayCounts : null,

@@ -12,8 +12,10 @@
     let busy = false;
     let dayDate = '';
     let lastResponses = null;     // appointment_id -> response (für Hinweise bei neuen Antworten)
+    let lastNotes = null;         // appointment_id -> Hinweis des Dolmetschers (für die Anzeige eines neuen Hinweises)
     let pushTimer = null;
     let conflictAsked = '';
+    let idsUnsaved = false;       // neue Kennungen sind noch nicht im Arbeitsstand dieses Tabs gespeichert
 
     const records = () => window.getTrackingRecords();
     const contentKey = record => JSON.stringify(Object.keys(record).filter(key => !key.startsWith('_')).sort().map(key => [key, record[key]]));
@@ -37,7 +39,7 @@
         const now = new Date().toISOString();
         const ids = new Set();
         records().forEach(record => {
-            if (!record._id) record._id = crypto.randomUUID();
+            if (!record._id) { record._id = crypto.randomUUID(); idsUnsaved = true; }
             ids.add(record._id);
             const key = contentKey(record);
             if (deleted[record._id]) { delete deleted[record._id]; record._updatedAt = now; }
@@ -106,7 +108,7 @@
                 } else { setStatus('Online: noch kein Tagesstand'); return; }
             }
             if (!date) { setStatus('Online: Termine ohne Datum werden nicht abgeglichen'); return; }
-            if (date !== dayDate) { dayDate = date; lastResponses = null; }
+            if (date !== dayDate) { dayDate = date; lastResponses = null; lastNotes = null; }
 
             const { data: cloud, error } = await client.from('tt_days').select('*').eq('date', date).maybeSingle();
             if (error) { setStatus(`Online-Abgleich nicht möglich: ${TerminCloud.germanError(error)}`, 'error'); return; }
@@ -139,6 +141,10 @@
                 }, { onConflict: 'date' });
                 if (pushError) { setStatus(`Online-Speichern nicht möglich: ${TerminCloud.germanError(pushError)}`, 'error'); return; }
             }
+            // Die neu vergebenen Kennungen auch im Arbeitsstand dieses Tabs merken. Sonst gilt der Tag nach einem
+            // Seitenwechsel wieder als „frisch geladen“ und es erscheint die Frage nach dem Online-Stand, obwohl
+            // beide Stände gleich sind.
+            if (idsUnsaved) { idsUnsaved = false; saveTerminRecords(records(), 'tracking'); }
             const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             setStatus(`Online gespeichert · ${time}${cloud?.archived ? ' · archiviert' : ''}`, 'success');
         } catch (error) {
@@ -164,6 +170,8 @@
             .map(item => ({ name: String(item.full_name).trim(), employment: item.employment, gender: item.gender || '' }));
         window.trackingPeopleAway = interpreters.filter(item => away.has(item.id))
             .map(item => ({ name: String(item.full_name).trim(), gender: item.gender || '', reason: AbsenceLogic.awayText(away.get(item.id), date) }));
+        // Einsatzleitung und Sekretariat haben auch ein Konto – stehen sie selbst im Tagesplan, erscheinen sie unter „Dolmetscher heute“.
+        window.trackingPeopleStaff = profiles.filter(item => item.active && item.role !== 'dolmetscher' && String(item.full_name || '').trim()).map(item => String(item.full_name).trim());
         // Angabe weiblich/männlich für alle Konten – auch für Personen, die heute nicht als verfügbar gemeldet sind
         window.trackingPeopleGender = new Map(interpreters.map(item => [String(item.full_name).trim().toLocaleLowerCase('de'), item.gender || '']));
         window.refreshInterpreterLoad?.();
@@ -209,9 +217,12 @@
         ]);
         if (error) return;
         profiles = profileResult.data || [];
+        // Vorschläge beim Eintragen eines Dolmetschers: nur registrierte, freigeschaltete Dolmetscher-Konten.
+        window.setRegisteredInterpreters?.(profiles.filter(person => person.active && person.role === 'dolmetscher').map(person => person.full_name));
         publishPeople(workdayResult.error ? [] : workdayResult.data, absenceResult.error ? [] : absenceResult.data, date);
         const byAppointment = new Map(assignments.map(item => [item.appointment_id, item]));
         const responses = new Map();
+        const notes = new Map();
         let changed = false;
         for (const record of records()) {
             const assignment = byAppointment.get(record._id);
@@ -228,8 +239,17 @@
             const text = RESPONSE_TEXT[assignment.response] + (assignment.response_note ? ` – ${assignment.response_note}` : '');
             if (record['Rückmeldung'] !== text) { record['Rückmeldung'] = text; changed = true; }
             responses.set(assignment.appointment_id, assignment.response);
-            if (lastResponses && lastResponses.get(assignment.appointment_id) !== assignment.response && assignment.response !== 'offen') {
-                showToast(`${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000 });
+            notes.set(assignment.appointment_id, assignment.response_note || '');
+            const responseBefore = lastResponses ? lastResponses.get(assignment.appointment_id) : undefined;
+            const noteText = assignment.response_note ? ` – „${assignment.response_note}“` : '';
+            if (lastResponses && responseBefore !== assignment.response && assignment.response !== 'offen') {
+                showToast(`${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${noteText}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000 });
+            } else if (lastResponses && responseBefore && responseBefore !== 'offen' && assignment.response === 'offen') {
+                // Der Dolmetscher hat sich vertippt und seine Antwort zurückgenommen.
+                showToast(`${assignment.interpreter_name} hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000 });
+            } else if (lastNotes && lastNotes.has(assignment.appointment_id) && lastNotes.get(assignment.appointment_id) !== (assignment.response_note || '') && assignment.response_note) {
+                // Neuer Hinweis, ohne dass sich die Antwort geändert hat (z. B. „Pat geht alleine“).
+                showToast(`Hinweis von ${assignment.interpreter_name}: „${assignment.response_note}“ – ${assignment.title}`, 'info', { duration: 15000 });
             }
             // „Losfahren“ und „Fertig“ aus dem Portal: jede Meldung wird genau einmal in den Tagesstand übernommen.
             if (applyProgress(record, assignment)) changed = true;
@@ -250,6 +270,7 @@
             if (!assignment.cancelled && !ids.has(assignment.appointment_id)) await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
         }
         lastResponses = responses;
+        lastNotes = notes;
         if (changed) window.refreshTrackingRows?.();
     }
 
@@ -266,6 +287,10 @@
         if (!date) { showToast('Der Termin hat kein Datum – der Auftrag kann nicht gesendet werden.', 'error'); return; }
         stamp();
         const time = String(record.Termin_Uhrzeit || '').slice(0, 5);
+        // Der Name der Praxis kann in der Liste über zwei Zeilen gehen – in Titel und Mitteilung steht er in einer.
+        const oneLine = value => window.TerminContact ? TerminContact.singleLine(value) : String(value || '').trim();
+        const doctorName = oneLine(record['Arzt Nr::Name']);
+        const place = oneLine(getAppointmentLocation(record));
         // Geht der Auftrag an eine andere Person als zuvor, beginnt er für sie neu (kein „schon losgefahren/fertig“ vom Vorgänger).
         const { data: previous } = await client.from('tt_assignments').select('*').eq('appointment_id', record._id).maybeSingle();
         const restart = previous && 'started_at' in previous && previous.interpreter_id !== target.id
@@ -274,7 +299,7 @@
         const { error } = await client.from('tt_assignments').upsert({
             ...restart,
             appointment_id: record._id, date, time, interpreter_id: target.id, interpreter_name: target.full_name,
-            title: [time ? `${time} Uhr` : '', record['Arzt Nr::Name'], getAppointmentLocation(record)].filter(Boolean).join(' · '),
+            title: [time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · '),
             message: createWhatsAppAppointmentMessage(record, true),
             response: 'offen', response_note: '', responded_at: null, cancelled: false,
             work_status: String(record.Status || 'offen'), sent_at: new Date().toISOString(), sent_by: profile.full_name || ''
@@ -285,7 +310,7 @@
         window.refreshTrackingRows?.();
         showToast(`Auftrag an ${target.full_name} gesendet`, 'success');
         // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
-        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', record['Arzt Nr::Name'], getAppointmentLocation(record)].filter(Boolean).join(' · ') });
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · ') });
         syncDay();
     };
 

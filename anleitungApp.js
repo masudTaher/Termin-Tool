@@ -18,6 +18,7 @@
             orgOther: 'المكتب الصحي القطري في مدينة بون',
             orgOtherLang: 'ar',
             openPortal: 'Zum Portal',
+            backToPortal: 'Zurück zum Portal',
             print: 'Drucken / als PDF speichern',
             qr: 'Portal öffnen: Code mit der Handy-Kamera scannen',
             contents: 'Inhalt',
@@ -54,8 +55,8 @@
                     ['Erinnerung', 'Ist das Auto um 16 Uhr noch nicht zurück, erinnert dich dein Handy.']
                 ] },
                 { id: 'auftraege', title: 'Aufträge', lead: 'Eine rote Zahl bei [[Aufträge]] heißt: Ein Auftrag wartet auf deine Antwort.', steps: [
-                    ['12-auftrag-offen', 'Auftrag lesen', 'Patient, Praxis, Adresse und Telefon. Ein Tipp auf die Adresse öffnet die Karte.'],
-                    ['12b-auftrag-antwort', 'Immer antworten', '[[Zusage]], [[Unter Vorbehalt]] oder [[Absage]] – gern mit einem kurzen Hinweis.'],
+                    ['12-auftrag-offen', 'Auftrag lesen', 'Patient, Praxis, Adresse und Telefon. [[In Karten öffnen]] zeigt den Weg. Unter jeder Nummer des Patienten: [[Anrufen]] und [[WhatsApp]].'],
+                    ['12b-auftrag-antwort', 'Immer antworten', '[[Zusage]], [[Unter Vorbehalt]] oder [[Absage]]. Vertippt? [[Rückgängig]] oder [[Antwort zurücknehmen]]. Einen kurzen Hinweis schickst du mit [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'Losfahren', 'Am Tag des Termins [[Losfahren]] tippen. Das geht erst, wenn du ein Fahrzeug übernommen hast.'],
                     ['12d-auftrag-unterwegs', 'Fertig', 'Nach dem Termin [[Fertig – Auftrag beenden]] tippen. Die Einsatzleitung sieht sofort, dass du wieder frei bist.']
                 ] },
@@ -105,6 +106,7 @@
             orgOther: 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher',
             orgOtherLang: 'de',
             openPortal: 'فتح البوابة',
+            backToPortal: 'العودة إلى البوابة',
             print: 'طباعة / حفظ بصيغة PDF',
             qr: 'لفتح البوابة: امسح الرمز بكاميرا الجوال',
             contents: 'المحتويات',
@@ -141,8 +143,8 @@
                     ['تذكير', 'إذا لم تُرجَع السيارة حتى الساعة الرابعة عصرًا يصلك تذكير على جوالك.']
                 ] },
                 { id: 'auftraege', title: 'المهام', lead: 'الرقم الأحمر عند [[Aufträge]] يعني أن مهمة تنتظر ردّك.', steps: [
-                    ['12-auftrag-offen', 'اقرأ المهمة', 'اسم المريض والعيادة والعنوان ورقم الهاتف. الضغط على العنوان يفتح الخريطة.'],
-                    ['12b-auftrag-antwort', 'أجب دائمًا', '[[Zusage]] موافقة، [[Unter Vorbehalt]] موافقة بتحفّظ، [[Absage]] اعتذار. ويمكنك إضافة ملاحظة قصيرة.'],
+                    ['12-auftrag-offen', 'اقرأ المهمة', 'اسم المريض والعيادة والعنوان وأرقام الهاتف. اضغط [[In Karten öffnen]] لفتح الخريطة. وتحت كل رقم للمريض زرّان: [[Anrufen]] للاتصال و[[WhatsApp]] للمحادثة.'],
+                    ['12b-auftrag-antwort', 'أجب دائمًا', '[[Zusage]] موافقة، [[Unter Vorbehalt]] موافقة بتحفّظ، [[Absage]] اعتذار. ضغطت بالخطأ؟ اضغط [[Rückgängig]] أو [[Antwort zurücknehmen]]. ولإرسال ملاحظة قصيرة اكتبها ثم اضغط [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'عند الانطلاق', 'في يوم الموعد اضغط [[Losfahren]]. لا يعمل الزر إلا بعد استلام سيارة.'],
                     ['12d-auftrag-unterwegs', 'عند الانتهاء', 'بعد الموعد اضغط [[Fertig – Auftrag beenden]]، فتعرف الإدارة فورًا أنك أصبحت متاحًا.']
                 ] },
@@ -218,6 +220,8 @@
         $('guideName').textContent = text.name;
         $('guideKickerTop').textContent = text.kicker;
         $('guideOpenText').textContent = text.openPortal;
+        document.querySelector('.guide-brand').title = text.backToPortal;
+        document.querySelector('.guide-brand').setAttribute('aria-label', `${text.backToPortal} · ${text.name}`);
         document.querySelectorAll('[data-lang]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.lang === lang)));
 
         const main = $('guide');

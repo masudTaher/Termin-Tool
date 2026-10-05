@@ -4,11 +4,32 @@
 // Unterlagen (Fotos → PDF) und der Bericht über den Tag stehen in portalDocs.js.
 // Übernahme und Rückgabe laufen Schritt für Schritt, damit nichts vergessen wird.
 // Ohne übernommenes Fahrzeug gibt es weder Schaden- noch Fehlermeldung.
+
+// Direkt nach einem Update kann der Browser für wenige Minuten noch die ältere Seite liefern, in der contactParse.js
+// fehlt. Dann wird die Datei hier nachgeladen; bis sie da ist, hilft eine einfache Ersatzfassung (Adresse und
+// Nummern bleiben zusammen in einer Zeile), damit nichts stehen bleibt.
+if (!window.TerminContact) {
+    const lines = value => String(value ?? '').replace(/\r\n?/g, '\n');
+    const one = value => lines(value).replace(/\s*\n+\s*/g, ', ').replace(/^[\s,]+|[\s,]+$/g, '');
+    window.TerminContact = {
+        standIn: true, normalizeLineBreaks: lines, singleLine: one,
+        parsePatientContact: value => ({ address: one(value), extra: [], phones: [] }),
+        parsePhones: value => /\d/.test(String(value || '')) ? [{ number: one(value), whatsapp: false, note: '' }] : [],
+        whatsappNumber: () => '', isQatarNumber: () => false, dialNumber: number => String(number || '').replace(/[^\d+]/g, ''),
+        mapQuery: address => one(address), formatPhone: phone => String(phone?.number || '')
+    };
+    const script = document.createElement('script');
+    script.src = 'contactParse.js';
+    script.addEventListener('load', () => window.dispatchEvent(new Event('termincontact-ready')));
+    document.head.append(script);
+}
+
 (function () {
     const $ = id => document.getElementById(id);
     const client = TerminCloud.client;
     const config = window.TERMIN_CLOUD_CONFIG || {};
-    // Wie eine App: Nach dem Öffnen oder Neuladen steht die Seite oben (wichtige Hinweise stehen dort).
+    // Wie eine App: Nach dem Öffnen oder Neuladen steht die Seite oben – außer die App macht dort weiter, wo man
+    // zuletzt war (siehe lastViewState); dann wird die gemerkte Stelle von Hand wiederhergestellt.
     try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (error) { /* ältere Browser */ }
     const FUEL = config.fuelLabels || ['Leer', '1/4', '1/2', '3/4', 'Voll'];
     const WORK_START = config.workStart || '09:00';
@@ -29,6 +50,26 @@
     let overtimeData = [];
     let currentView = 'vehicle';
     let previousView = 'vehicle';
+    // Der zuletzt offene Bereich (z. B. „Aufträge“) und die Stelle auf der Seite: Lädt das Handy die App im
+    // Hintergrund neu, geht es genau dort weiter.
+    const LAST_VIEW_KEY = 'terminTool.portal.lastView';
+    const LAST_VIEW_MINUTES = 90;
+    const RESTORABLE_VIEWS = ['vehicle', 'jobs', 'docs', 'workdays', 'overtime', 'statement', 'receiptsHome'];
+    function rememberView(view, y = 0) {
+        try { if (RESTORABLE_VIEWS.includes(view)) localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ view, y, at: Date.now(), user: profile?.id || '' })); } catch (error) { /* ohne Speicher startet die App vorn */ }
+    }
+    function lastViewState() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || 'null');
+            if (!saved || saved.user !== (profile?.id || '') || !RESTORABLE_VIEWS.includes(saved.view)) return null;
+            return Date.now() - Number(saved.at) < LAST_VIEW_MINUTES * 60000 ? { view: saved.view, y: Math.max(0, Number(saved.y) || 0) } : null;
+        } catch (error) { return null; }
+    }
+    // Beim Verlassen der App die Stelle merken (nur in den Hauptbereichen).
+    function rememberPlace() {
+        if (profile?.active && !profile.must_change_password) rememberView(currentView, Math.round(window.scrollY));
+    }
+    let firstStart = true;
     let workedMonth = '';
     let overtimeMonth = '';
     let receiptOrigin = '';
@@ -58,7 +99,8 @@
         return true;
     }
 
-    function toast(message, kind = 'info', target = null) {
+    // action = { label, run }: zusätzlicher Knopf in der Anzeige, z. B. „Rückgängig“.
+    function toast(message, kind = 'info', target = null, action = null) {
         const item = document.createElement('div');
         item.className = 'toast';
         item.dataset.kind = kind;
@@ -66,7 +108,7 @@
         const text = document.createElement('span');
         text.textContent = message;
         item.append(text);
-        const duration = kind === 'error' ? 10000 : 5000;
+        const duration = kind === 'error' ? 10000 : action ? 10000 : 5000;
         item.style.setProperty('--toast-time', `${duration}ms`);
         const problem = kind === 'error' ? (typeof target === 'function' ? target : findProblem(target)) : null;
         if (problem) {
@@ -82,6 +124,13 @@
             item.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jump(); } });
         } else {
             item.addEventListener('click', () => item.remove());
+        }
+        if (action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = action.label;
+            button.addEventListener('click', event => { event.stopPropagation(); item.remove(); action.run(); });
+            item.append(button);
         }
         const region = $('toastRegion');
         // Immer nur eine Anzeige je Art; sobald etwas geklappt hat, sind ältere Fehlermeldungen überholt.
@@ -196,7 +245,13 @@
             goTo('overtime');
             window.PortalPlan?.showZeiten('absence');
         }
-        else goTo(TAB_OF[currentView] ? currentView : 'vehicle');
+        else {
+            const last = firstStart ? lastViewState() : null;
+            goTo(last ? last.view : firstStart ? 'vehicle' : TAB_OF[currentView] ? currentView : 'vehicle');
+            // Auch die Stelle auf der Seite: dort weiter, wo man war.
+            if (last?.y && currentView === last.view) window.requestAnimationFrame(() => window.scrollTo({ top: last.y, behavior: 'instant' }));
+        }
+        firstStart = false;
     }
 
     // ---------- Bereiche ----------
@@ -253,6 +308,7 @@
         // Der Beleg (Parkticket) lässt sich auch aus „Unterlagen“ öffnen – „Zurück“ führt dann dorthin.
         if (view === 'receipts') receiptOrigin = currentView === 'docs' ? 'docs' : '';
         currentView = view;
+        rememberView(view);
         const activeTab = view === 'receipts' ? (receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')) : TAB_OF[view];
         document.querySelectorAll('#portalTabbar button').forEach(button => {
             const active = button.dataset.view === activeTab;
@@ -312,7 +368,19 @@
         $('messagesBadge').hidden = !unread;
         $('messagesBadge').textContent = unread ? String(unread) : '';
         addPushNotice();
+        refreshHomeBadge();
     }
+
+    // Fragen und Bitten der Einsatzleitung stehen auf der Startseite. Wer gerade in einem anderen Bereich ist (die App
+    // öffnet dort, wo man zuletzt war), sieht an der Zahl am Reiter „Fahrzeug“, dass dort etwas auf ihn wartet.
+    function refreshHomeBadge() {
+        const waiting = ['planBanner', 'requestBanner'].reduce((sum, id) => { const node = $(id); return sum + (node && !node.hidden ? node.children.length : 0); }, 0);
+        setBadge('vehicle', waiting || '');
+    }
+    if (typeof MutationObserver === 'function') ['planBanner', 'requestBanner'].forEach(id => {
+        const node = $(id);
+        if (node) new MutationObserver(refreshHomeBadge).observe(node, { childList: true, attributes: true, attributeFilter: ['hidden'] });
+    });
 
     // Tankkarte: Nur der Admin gibt sie aus und nimmt sie zurück – hier steht, welche Karte gerade bei mir ist.
     async function loadFuelCards() {
@@ -471,6 +539,15 @@
     const WORK_LABEL = { beendet: 'gearbeitet', alleine: 'Patient ging alleine', storniert: 'storniert', losgefahren: 'unterwegs', offen: '' };
     let knownJobIds = null;
 
+    // Was der Dolmetscher zuletzt eingestellt hat, bleibt – auch wenn er die App kurz verlässt (anrufen, Karte,
+    // WhatsApp) und zurückkommt: aufgeklappte „Alle Angaben zum Auftrag“ und ein angefangener, noch nicht gesendeter Hinweis.
+    const JOB_DETAILS_KEY = 'terminTool.portal.jobDetails';
+    const jobDetailsOpen = (() => { try { const saved = JSON.parse(localStorage.getItem(JOB_DETAILS_KEY) || '{}'); return saved && typeof saved === 'object' ? saved : {}; } catch (error) { return {}; } })();
+    const saveJobDetails = () => { try { localStorage.setItem(JOB_DETAILS_KEY, JSON.stringify(jobDetailsOpen)); } catch (error) { /* ohne Speicher gilt es bis zum Neuladen */ } };
+    function rememberJobDetails(id, open) { jobDetailsOpen[id] = Boolean(open); saveJobDetails(); }
+    const jobNoteDrafts = {};
+    let jobsRendered = '';
+
     // ---------- Auftrag als Karte: der gesendete Text wird in klare Felder zerlegt ----------
     function splitPhoneNumbers(value) {
         const digits = text => (String(text).match(/\d/g) || []).length;
@@ -507,8 +584,11 @@
     }
 
     const JOB_SKIP = [/^guten tag,?$/i, /^bitte übernimm den folgenden dolmetschauftrag:?$/i, /^bitte bestätige kurz den erhalt/i];
+    // Feldnamen in den Abschnitten „Patientenkontakt“ und „Arzt / Praxis“
+    const JOB_FIELD_LABEL = /^(?:Patientenadresse|Adresse|Telefon|Hinweis|Name)(?:\s|$)/i;
     function parseJobMessage(text) {
-        const lines = String(text || '').split(/\r?\n/).map(line => line.trim());
+        // Zeilenumbrüche innerhalb eines Feldes der Terminliste kommen als einzelnes CR an – wie ein normaler Umbruch lesen.
+        const lines = TerminContact.normalizeLineBreaks(text).split('\n').map(line => line.trim());
         if (!/^\*?DOLMETSCHAUFTRAG\*?$/i.test(lines[0] || '')) return null;
         const facts = {}; const notices = []; const sections = []; let cost = ''; let section = null;
         lines.slice(1).forEach(line => {
@@ -517,7 +597,14 @@
             const inner = starred ? starred[1].trim() : line;
             if (starred && !inner.includes(':') && inner === inner.toLocaleUpperCase('de-DE')) { section = { title: inner, fields: [] }; sections.push(section); return; }
             const pair = inner.match(/^([A-Za-zÄÖÜäöüß][^:]{1,40}):\s+(.+)$/);
-            if (section) { section.fields.push(pair ? [pair[1].trim(), pair[2].trim()] : ['', inner]); return; }
+            if (section) {
+                // In „Patientenkontakt“ und „Arzt / Praxis“ gibt es nur feste Feldnamen. Jede andere Zeile ist die
+                // Fortsetzung des Feldes davor (z. B. die Telefonnummern unter der Adresse).
+                const last = section.fields[section.fields.length - 1];
+                if (/KONTAKT|ARZT/.test(section.title) && last && last[0] && !(pair && JOB_FIELD_LABEL.test(pair[1].trim()))) { last[1] += `\n${inner}`; return; }
+                section.fields.push(pair ? [pair[1].trim(), pair[2].trim()] : ['', inner]);
+                return;
+            }
             if (/^(kostenstatus|kostenübernahme|bitte kostenstatus)/i.test(inner)) { cost = inner; return; }
             if (starred && pair) facts[pair[1].trim()] = pair[2].trim();
             else notices.push(inner.replace(/^Hinweis:\s*/i, ''));
@@ -531,36 +618,104 @@
         person: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
         clinic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/><path d="M12 7v5M9.500 9.500h5"/></svg>',
         note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>',
-        camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>'
+        camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>',
+        chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.500a7.500 7.500 0 0 1-11.200 6.500L4 19.500l1.500-4.300A7.500 7.500 0 1 1 20 11.500z"/></svg>'
     };
     const svgSpan = (className, markup) => { const node = el('span', className); node.innerHTML = markup; return node; };
+
+    // Telefonnummer von Arzt oder Praxis: die Nummer ist der Knopf – ein Tipp ruft an.
+    function phoneLink(number, text = number) {
+        const link = el('a', 'job-phone');
+        const dial = TerminContact.dialNumber(number);
+        if (dial.replace(/\D/g, '').length >= 5) link.href = `tel:${dial}`;
+        link.append(svgSpan('job-phone-icon', JOB_ICONS.phone), el('span', '', text));
+        link.setAttribute('aria-label', `${number} anrufen`);
+        return link;
+    }
+    // Telefonnummer des Patienten: die Nummer groß in einer Zeile, darunter „Anrufen“ und – wenn die Nummer dafür taugt
+    // (katarische und andere Auslandsnummern, deutsche Handynummern) – der direkte WhatsApp-Chat.
+    function phoneActions(phone) {
+        const row = el('span', 'job-phone-row');
+        row.append(phoneLink(phone.number, 'Anrufen'));
+        const chat = TerminContact.whatsappNumber(phone.number);
+        if (chat) {
+            const link = el('a', 'job-whatsapp');
+            link.href = `https://wa.me/${chat}`;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.append(svgSpan('job-whatsapp-icon', JOB_ICONS.chat), el('span', '', 'WhatsApp'));
+            link.setAttribute('aria-label', `WhatsApp-Chat mit ${phone.number} öffnen`);
+            row.append(link);
+        }
+        return row;
+    }
 
     function jobField(label, value) {
         const row = el('div', 'job-field');
         if (label) row.append(el('span', 'job-field-label', label));
         if (/^telefon/i.test(label)) {
             const numbers = el('span', 'job-phones');
-            splitPhoneNumbers(value).forEach(number => {
-                const link = el('a', 'job-phone');
-                const dial = number.replace(/[^\d+]/g, '');
-                if (dial.length >= 5) link.href = `tel:${dial}`;
-                link.append(svgSpan('job-phone-icon', JOB_ICONS.phone), el('span', '', number));
-                numbers.append(link);
-            });
+            splitPhoneNumbers(value).forEach(number => numbers.append(phoneLink(number)));
             row.append(numbers);
         } else if (/adresse/i.test(label)) {
+            const text = String(value || '').replace(/\s*\n+\s*/g, ', ');
             const wrap = el('span', 'job-address');
-            wrap.append(el('span', 'job-field-value', value));
+            wrap.append(el('span', 'job-field-value', text));
             const map = el('a', 'job-map', 'In Karten öffnen');
-            map.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+            map.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(TerminContact.mapQuery(text) || text)}`;
             map.target = '_blank';
             map.rel = 'noopener';
             wrap.append(map);
             row.append(wrap);
         } else {
-            row.append(el('span', 'job-field-value', value));
+            row.append(el('span', 'job-field-value', String(value || '').replace(/\s*\n+\s*/g, ' · ')));
         }
         return row;
+    }
+
+    // Kontakt des Patienten: die Adresse in Deutschland (mit „In Karten öffnen“) und jede Telefonnummer einzeln.
+    // In der Terminliste stehen Adresse und Nummern oft in einem Feld – sie werden hier getrennt, die Hausnummer bleibt
+    // bei der Adresse. Die Anschrift in Katar wird nicht gezeigt: Für den Einsatz zählt nur die Adresse in Deutschland.
+    function patientContactRows(fields) {
+        const rows = [];
+        const notes = [];
+        const phones = [];
+        const known = new Map();
+        let phoneLabel = 'Telefon';
+        const addPhone = phone => {
+            const key = phone.number.replace(/\D/g, '').replace(/^00/, '');
+            if (!key) return;
+            const existing = known.get(key);
+            if (existing) { existing.whatsapp = existing.whatsapp || phone.whatsapp; if (!existing.note) existing.note = phone.note; return; }
+            const entry = { number: phone.number, whatsapp: Boolean(phone.whatsapp), note: phone.note || '' };
+            known.set(key, entry);
+            phones.push(entry);
+        };
+        fields.forEach(([label, value]) => {
+            if (/katar|qatar/i.test(label)) return;
+            if (/adresse/i.test(label)) {
+                const parsed = TerminContact.parsePatientContact(value);
+                if (parsed.address) rows.push(jobField(label, parsed.address));
+                notes.push(...parsed.extra);
+                parsed.phones.forEach(addPhone);
+            } else if (/^telefon/i.test(label)) {
+                phoneLabel = label.replace(/\s*\d+$/, '') || 'Telefon';
+                TerminContact.parsePhones(value).forEach(addPhone);
+            } else if (!label || /^hinweis/i.test(label)) notes.push(String(value || '').replace(/\s*\n+\s*/g, ' · '));
+            else rows.push(jobField(label, value));
+        });
+        notes.filter(Boolean).forEach(text => rows.push(el('span', 'job-field-value job-contact-note', text)));
+        phones.forEach((phone, index) => {
+            const row = el('div', 'job-field job-field-phone');
+            const head = el('span', 'job-phone-head');
+            head.append(el('span', 'job-field-label', phones.length > 1 ? `${phoneLabel} ${index + 1}` : phoneLabel));
+            // Vermerk aus der Terminliste, z. B. „WhatsApp-Nummer“ oder „Vater“
+            const hint = [phone.whatsapp ? 'WhatsApp-Nummer' : '', phone.note].filter(Boolean).join(' · ');
+            if (hint) head.append(el('small', 'job-phone-note', hint));
+            row.append(head, el('strong', 'job-phone-number', phone.number), phoneActions(phone));
+            rows.push(row);
+        });
+        return rows;
     }
 
     function jobBody(item) {
@@ -577,7 +732,7 @@
             if (facts['Aktennummer']) content.append(el('span', 'job-chip', `Aktennummer ${facts['Aktennummer']}`));
             if (facts['Termin für Begleitperson']) content.append(jobField('Termin für Begleitperson', facts['Termin für Begleitperson']));
             const contact = sections.find(section => /PATIENTENKONTAKT/.test(section.title));
-            contact?.fields.forEach(([label, value]) => content.append(jobField(label, value)));
+            if (contact) content.append(...patientContactRows(contact.fields));
             block.append(content);
             body.append(block);
         }
@@ -587,7 +742,7 @@
             block.append(svgSpan('job-section-icon', JOB_ICONS.clinic));
             const content = el('div', 'job-section-content');
             content.append(el('span', 'job-section-title', 'Arzt / Praxis'));
-            doctor.fields.forEach(([label, value]) => content.append(label === 'Name' ? el('strong', 'job-doctor', value) : jobField(label, value)));
+            doctor.fields.forEach(([label, value]) => content.append(label === 'Name' ? el('strong', 'job-doctor', TerminContact.singleLine(value)) : jobField(label, value)));
             block.append(content);
             body.append(block);
         }
@@ -659,12 +814,13 @@
 
     function jobCard(item) {
         const card = el('li', 'job-card');
+        card.dataset.id = item.id;
         card.dataset.response = item.response;
         const date = new Date(`${item.date}T00:00:00`);
         const parsed = parseJobMessage(item.message);
         const titleParts = String(item.title || '').split(' · ');
         const time = String(item.time || '').slice(0, 5);
-        const place = parsed?.sections.find(section => /ARZT/.test(section.title))?.fields.find(([label]) => label === 'Name')?.[1]
+        const place = TerminContact.singleLine(parsed?.sections.find(section => /ARZT/.test(section.title))?.fields.find(([label]) => label === 'Name')?.[1])
             || titleParts.filter(part => !/^\d{1,2}:\d{2}\s*Uhr$/.test(part))[0] || 'Auftrag';
         const city = parsed?.facts['Ort'] || titleParts.filter(part => !/^\d{1,2}:\d{2}\s*Uhr$/.test(part)).slice(1).join(' · ');
 
@@ -683,20 +839,70 @@
         state.dataset.status = { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
         top.append(day, main, state);
 
-        // Offene Aufträge sind aufgeklappt; beantwortete lassen sich mit einem Tipp wieder öffnen.
+        // Offene Aufträge sind aufgeklappt. Hat der Dolmetscher selbst auf- oder zugeklappt, bleibt es dabei.
         const details = document.createElement('details');
         details.className = 'job-details';
-        details.open = item.response === 'offen';
-        details.append(el('summary', '', 'Alle Angaben zum Auftrag'), jobBody(item));
+        details.open = item.id in jobDetailsOpen ? jobDetailsOpen[item.id] : item.response === 'offen';
+        const summary = el('summary', '', 'Alle Angaben zum Auftrag');
+        summary.addEventListener('click', () => window.setTimeout(() => rememberJobDetails(item.id, details.open), 0));
+        details.append(summary, jobBody(item));
 
+        // 1. Antwort (und Hinweis an die Einsatzleitung) – 2. Losfahren / Fertig – 3. Unterlagen
+        const answered = item.response !== 'offen';
+        const saved = item.response_note || '';
         const answer = el('div', 'job-answer');
-        answer.append(el('span', 'job-answer-title', item.response === 'offen' ? 'Deine Antwort' : 'Antwort ändern'));
+        answer.append(el('span', 'job-answer-title', answered ? 'Antwort ändern' : 'Deine Antwort'));
+        const noteLabel = el('label', 'job-field-label job-note-label', 'Hinweis an die Einsatzleitung (freiwillig)');
+        const noteRow = el('div', 'job-note-row');
         const note = document.createElement('input');
         note.type = 'text';
+        note.id = `jobNote-${item.id}`;
+        noteLabel.htmlFor = note.id;
         note.maxLength = 300;
-        note.placeholder = 'Hinweis an die Einsatzleitung (optional)';
-        note.value = item.response_note || '';
-        note.setAttribute('aria-label', 'Hinweis zur Antwort');
+        note.placeholder = 'z. B. komme 10 Minuten später';
+        note.value = item.id in jobNoteDrafts ? jobNoteDrafts[item.id] : saved;
+        note.enterKeyHint = 'send';
+        const send = el('button', 'button-secondary job-note-send', 'Senden');
+        send.type = 'button';
+        const noteState = el('p', 'job-note-state');
+        noteState.setAttribute('aria-live', 'polite');
+        const showNoteState = () => {
+            const text = note.value.trim();
+            const changed = text !== saved;
+            if (changed) jobNoteDrafts[item.id] = note.value; else delete jobNoteDrafts[item.id];
+            send.disabled = !changed;
+            send.textContent = !changed && saved ? 'Gesendet' : 'Senden';
+            noteState.dataset.state = changed ? 'offen' : saved ? 'gesendet' : 'leer';
+            noteState.textContent = changed
+                ? (text ? 'Noch nicht gesendet – tippe auf „Senden“.' : 'Der Hinweis wird gelöscht – tippe auf „Senden“.')
+                : saved ? `Hinweis gesendet${item.responded_at ? ` um ${clock(item.responded_at)} Uhr` : ''} – die Einsatzleitung sieht ihn.` : '';
+        };
+        // purpose: 'antwort' | 'hinweis' | 'zurueck' – nur für die passende Meldung, falls etwas nicht geht.
+        const respond = async (response, text, purpose = 'antwort') => {
+            const { error: rpcError } = await client.rpc('tt_respond_assignment', { p_id: item.id, p_response: response, p_note: text });
+            if (!rpcError) { delete jobNoteDrafts[item.id]; return true; }
+            // Ohne Update 16 kennt die Datenbank weder „Hinweis ohne Antwort“ noch „Antwort zurücknehmen“.
+            toast(/unbekannte antwort/i.test(rpcError.message || '')
+                ? (purpose === 'hinweis'
+                    ? 'Bitte wähle zuerst Zusage, Unter Vorbehalt oder Absage – dein Hinweis wird mitgeschickt.'
+                    : 'Zurücknehmen ist in der Datenbank noch nicht eingerichtet (Update 16). Wähle einfach die richtige Antwort.')
+                : TerminCloud.germanError(rpcError), 'error');
+            return false;
+        };
+        const sendNote = async () => {
+            if (send.disabled) return;
+            send.disabled = true;
+            const text = note.value.trim();
+            if (!(await respond(item.response, text, 'hinweis'))) { showNoteState(); return; }
+            toast(text ? 'Hinweis gesendet. Die Einsatzleitung sieht ihn jetzt.' : 'Hinweis gelöscht.', 'success');
+            await loadJobs();
+        };
+        note.addEventListener('input', showNoteState);
+        note.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); sendNote(); } });
+        send.addEventListener('click', sendNote);
+        noteRow.append(note, send);
+        showNoteState();
+
         const buttons = el('div', 'job-buttons');
         RESPONSES.forEach(([value, text]) => {
             const button = el('button', 'workday-button', text);
@@ -704,18 +910,37 @@
             button.dataset.response = value;
             button.setAttribute('aria-pressed', String(item.response === value));
             button.addEventListener('click', async () => {
-                const { error: rpcError } = await client.rpc('tt_respond_assignment', { p_id: item.id, p_response: value, p_note: note.value.trim() });
-                if (rpcError) { toast(TerminCloud.germanError(rpcError), 'error'); return; }
-                toast(`${text} gesendet`, 'success');
+                const noteText = note.value.trim();
+                if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
+                const before = { response: item.response, note: saved };
+                if (!(await respond(value, noteText))) return;
+                // Wer gerade die Angaben liest, soll sie nach der Antwort weiter vor sich haben.
+                if (details.open) rememberJobDetails(item.id, true);
+                // Vertippt? „Rückgängig“ stellt den Stand von vorher wieder her (auch „noch keine Antwort“).
+                toast(`${text} gesendet`, 'success', null, { label: 'Rückgängig', run: async () => {
+                    if (!(await respond(before.response, before.note, 'zurueck'))) return;
+                    toast(before.response === 'offen' ? 'Zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.' : `Zurückgenommen. Es gilt wieder „${RESPONSE_LABEL[before.response]}“.`, 'success');
+                    await loadJobs();
+                } });
                 await loadJobs();
             });
             buttons.append(button);
         });
-        answer.append(note, buttons);
-        card.append(top, details);
+        answer.append(noteLabel, noteRow, noteState, buttons);
+        // Antwort ganz zurücknehmen – solange der Auftrag noch nicht läuft.
+        if (answered && !jobStarted(item) && !jobFinished(item)) {
+            const undo = el('button', 'link-button job-answer-undo', 'Antwort zurücknehmen');
+            undo.type = 'button';
+            undo.addEventListener('click', async () => {
+                if (!(await respond('offen', '', 'zurueck'))) return;
+                toast('Antwort zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.', 'success');
+                await loadJobs();
+            });
+            answer.append(undo);
+        }
+        card.append(top, details, answer);
         const progress = jobProgress(item);
         if (progress) card.append(progress);
-        card.append(answer);
         // Ab dem Tag des Termins: Arztbericht, Rezept oder Überweisung direkt zu diesem Auftrag fotografieren.
         if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
             const docs = el('button', 'job-docs-button');
@@ -730,6 +955,8 @@
     async function loadJobs() {
         const { data, error } = await client.from('tt_assignments').select('*').eq('interpreter_id', profile.id).order('date', { ascending: false }).limit(200);
         if (error) { $('jobsSummary').textContent = 'Aufträge konnten nicht geladen werden.'; return; }
+        // Ältere Aufträge können im Titel noch einen Zeilenumbruch aus der Terminliste tragen (Name der Praxis).
+        data.forEach(item => { item.title = TerminContact.singleLine(item.title); });
         jobsData = data;
         const today = TerminCloud.todayIso();
         // Oben stehen kommende Aufträge – und ältere, die gestartet, aber noch nicht beendet wurden.
@@ -746,9 +973,29 @@
         if (knownJobIds && [...ids].some(id => !knownJobIds.has(id))) toast('Du hast einen neuen Auftrag.', 'success');
         knownJobIds = ids;
 
+        // Aufgeräumt wird nur, was es nicht mehr gibt.
+        const allIds = new Set(data.map(item => item.id));
+        let pruned = false;
+        Object.keys(jobDetailsOpen).forEach(id => { if (!allIds.has(id)) { delete jobDetailsOpen[id]; pruned = true; } });
+        if (pruned) saveJobDetails();
+        Object.keys(jobNoteDrafts).forEach(id => { if (!allIds.has(id)) delete jobNoteDrafts[id]; });
+
+        // Nur neu aufbauen, wenn sich etwas geändert hat. Sonst bleibt alles, wie es ist: Position, Eingaben, Aufgeklapptes.
+        const signature = JSON.stringify([today, data]);
+        if (signature === jobsRendered) return;
+        jobsRendered = signature;
         const list = $('jobList');
+        const position = window.scrollY;
+        const focused = document.activeElement?.closest?.('.job-card input') ? document.activeElement : null;
+        const focusedId = focused?.closest('.job-card')?.dataset.id;
+        const caret = focused ? [focused.selectionStart, focused.selectionEnd] : null;
         list.replaceChildren();
         upcoming.forEach(item => list.append(jobCard(item)));
+        if (focusedId) {
+            const again = [...list.querySelectorAll('.job-card')].find(card => card.dataset.id === focusedId)?.querySelector('.job-note-row input');
+            if (again) { again.focus({ preventScroll: true }); try { again.setSelectionRange(caret[0], caret[1]); } catch (error) { /* Position ist nicht wichtig */ } }
+        }
+        if (position && Math.abs(window.scrollY - position) > 1) window.scrollTo({ top: position, behavior: 'instant' });
 
         const history = $('jobHistory');
         history.replaceChildren();
@@ -1741,12 +1988,22 @@
         }
     });
 
-    async function signOut() { await TerminCloud.signOut(); currentView = 'vehicle'; loadMessages.loaded = false; await refresh(); }
+    async function signOut() {
+        await TerminCloud.signOut();
+        currentView = 'vehicle';
+        try { localStorage.removeItem(LAST_VIEW_KEY); } catch (error) { /* nichts gemerkt */ }
+        loadMessages.loaded = false;
+        await refresh();
+    }
     $('portalSignOut').addEventListener('click', signOut);
     $('pendingSignOut').addEventListener('click', signOut);
     $('portalRecheck').addEventListener('click', refresh);
     const poll = () => { if (!document.hidden && profile?.active && !profile.must_change_password) Promise.all([loadJobs(), loadMessages(), window.PortalRequests?.load(), window.PortalPlan?.load()]).then(renderHome); };
     document.addEventListener('visibilitychange', () => { if (!document.hidden && profile?.active && !profile.must_change_password) { loadFleet(); poll(); } });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) rememberPlace(); });
+    // contactParse.js wurde nachgeladen (siehe ganz oben): die Auftragskarten mit der richtigen Auswertung neu aufbauen.
+    window.addEventListener('termincontact-ready', () => { jobsRendered = ''; if (profile?.active && !profile.must_change_password) loadJobs(); });
+    window.addEventListener('pagehide', rememberPlace);
     window.setInterval(poll, 45000);
 
     // ---------- Als App installieren ----------

@@ -442,7 +442,8 @@ function formatFleetDate(value) {
 function refreshDriverSuggestions() {
     const datalist = document.getElementById('knownDrivers');
     if (!datalist) return;
-    const interpreters = typeof readInterpreterDirectory === 'function' ? readInterpreterDirectory() : [];
+    // Vorgeschlagen werden die Dolmetscher mit Portal-Konto (ohne Konten: die eigene Namensliste) und wer schon gefahren ist.
+    const interpreters = typeof interpreterSuggestionNames === 'function' ? interpreterSuggestionNames() : typeof readInterpreterDirectory === 'function' ? readInterpreterDirectory() : [];
     const drivers = [...readFleetList(FLEET_DRIVERS_KEY), ...interpreters]
         .filter((name, index, names) => names.findIndex(other => sameFleetDriver(other, name)) === index)
         .sort((a, b) => a.localeCompare(b, 'de'));
