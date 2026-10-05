@@ -301,7 +301,8 @@ function renderTrackingTable(data) {
             `<div class="interpreter-line"><input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben"><span class="job-count" data-index="${index}" hidden></span></div>`
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
                 + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button></div>`
-                + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>` : ''),
+                + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>`
+                    + (cloudReady ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : ''),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
                 + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : ''),
             `<div class="tracking-row-actions">`
@@ -529,6 +530,8 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         if (button.classList.contains('whatsapp-button')) openWhatsAppModal(index);
         else if (button.classList.contains('delete-button')) deleteRow(index);
         else if (button.classList.contains('assign-button')) window.sendTrackingAssignment?.(index);
+        else if (button.classList.contains('assign-remind')) window.remindTrackingAssignment?.(index, button);
+        else if (button.classList.contains('assign-withdraw')) window.withdrawTrackingAssignment?.(index, button);
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
         else if (button.classList.contains('special-button')) openSpecialDialog(index);
     });

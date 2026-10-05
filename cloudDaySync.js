@@ -246,13 +246,13 @@
             if (lastResponses && responseBefore !== assignment.response && assignment.response === 'zugesagt' && !assignment.response_note) {
                 accepted.set(assignment.interpreter_name, [...(accepted.get(assignment.interpreter_name) || []), assignment.title]);
             } else if (lastResponses && responseBefore !== assignment.response && assignment.response !== 'offen') {
-                showToast(`${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${noteText}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000, keep: true });
+                showToast(`Termin · ${assignment.interpreter_name}: ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${noteText}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000, keep: true });
             } else if (lastResponses && responseBefore && responseBefore !== 'offen' && assignment.response === 'offen') {
                 // Der Dolmetscher hat sich vertippt und seine Antwort zurückgenommen.
-                showToast(`${assignment.interpreter_name} hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000, keep: true });
+                showToast(`Termin · ${assignment.interpreter_name} hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000, keep: true });
             } else if (lastNotes && lastNotes.has(assignment.appointment_id) && lastNotes.get(assignment.appointment_id) !== (assignment.response_note || '') && assignment.response_note) {
                 // Neuer Hinweis, ohne dass sich die Antwort geändert hat (z. B. „Pat geht alleine“).
-                showToast(`Hinweis von ${assignment.interpreter_name}: „${assignment.response_note}“ – ${assignment.title}`, 'info', { duration: 15000, keep: true });
+                showToast(`Termin · Hinweis von ${assignment.interpreter_name}: „${assignment.response_note}“ – ${assignment.title}`, 'info', { duration: 15000, keep: true });
             }
             // „Losfahren“ und „Fertig“ aus dem Portal: jede Meldung wird genau einmal in den Tagesstand übernommen.
             if (applyProgress(record, assignment)) changed = true;
@@ -274,9 +274,9 @@
         }
         // Mehrere Zusagen derselben Person auf einmal (z. B. „Zusage für den ganzen Tag“) stehen in EINER Anzeige.
         accepted.forEach((titles, name) => {
-            if (titles.length === 1) { showToast(`${name}: ${RESPONSE_TEXT.zugesagt} für ${titles[0]}`, 'success', { duration: 12000, keep: true }); return; }
+            if (titles.length === 1) { showToast(`Termin · ${name}: ${RESPONSE_TEXT.zugesagt} für ${titles[0]}`, 'success', { duration: 12000, keep: true }); return; }
             const short = titles.map(title => title.split(' · ').slice(0, 2).join(' · '));
-            showToast(`${name}: Zusage für ${titles.length} Aufträge – ${short.slice(0, 4).join('; ')}${short.length > 4 ? ` und ${short.length - 4} weitere` : ''}`, 'success', { duration: 15000, keep: true });
+            showToast(`Termin · ${name}: Zusage für ${titles.length} Aufträge – ${short.slice(0, 4).join('; ')}${short.length > 4 ? ` und ${short.length - 4} weitere` : ''}`, 'success', { duration: 15000, keep: true });
         });
         lastResponses = responses;
         lastNotes = notes;
@@ -320,6 +320,58 @@
         showToast(`Auftrag an ${target.full_name} gesendet`, 'success');
         // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
         TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · ') });
+        syncDay();
+    };
+
+    // Gesendeten Auftrag dieses Termins holen (nur der gültige, nicht zurückgezogene).
+    async function sentAssignment(index) {
+        const record = records()[index];
+        if (!record) return {};
+        if (!(await loadProfile())) { showToast('Melde dich zuerst auf der Seite „Team“ als Einsatzleitung an.', 'error'); return {}; }
+        const { data: assignment, error } = await client.from('tt_assignments').select('*').eq('appointment_id', record._id).maybeSingle();
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return {}; }
+        if (!assignment || assignment.cancelled) { showToast('Für diesen Termin ist kein Auftrag (mehr) im Portal.', 'info'); record['Rückmeldung'] = ''; persistTerminRecords(records(), 'tracking'); window.refreshTrackingRows?.(); return {}; }
+        return { record, assignment };
+    }
+
+    // Erinnern: Mitteilung aufs Handy und Nachricht im Portal – der Auftrag selbst bleibt unverändert.
+    window.remindTrackingAssignment = async function (index, button) {
+        if (button) button.disabled = true;
+        try {
+            const { assignment } = await sentAssignment(index);
+            if (!assignment) return;
+            const waiting = assignment.response === 'offen';
+            const body = waiting ? `Erinnerung: Bitte antworte auf den Auftrag ${assignment.title} (${formatFleetDate(assignment.date)}).` : `Erinnerung an deinen Auftrag ${assignment.title} (${formatFleetDate(assignment.date)}).`;
+            const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [assignment.interpreter_id], body });
+            if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+            const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: waiting ? 'Erinnerung: Auftrag wartet auf Antwort' : 'Erinnerung an deinen Auftrag', body: `${formatFleetDate(assignment.date)} · ${assignment.title}` });
+            showToast(`Erinnerung an ${assignment.interpreter_name} gesendet – ${push?.ok && push.data?.sent ? 'als Mitteilung aufs Handy und als Nachricht im Portal.' : 'als Nachricht im Portal (Mitteilungen aufs Handy sind dort nicht eingeschaltet).'}`, 'success', { duration: 9000 });
+        } finally { if (button) button.disabled = false; }
+    };
+
+    // Zurückziehen: Der Auftrag verschwindet im Portal. Der Termin und der eingetragene Name bleiben in der Liste.
+    window.withdrawTrackingAssignment = async function (index, button) {
+        const { record, assignment } = await sentAssignment(index);
+        if (!assignment) return;
+        const running = assignment.started_at && !assignment.finished_at;
+        const answer = { zugesagt: ' Er wurde schon zugesagt.', vorbehalt: ' Er wurde unter Vorbehalt angenommen.', abgesagt: ' Er wurde abgesagt.' }[assignment.response] || '';
+        if (!await confirmDialog(`Den Auftrag ${assignment.title} von ${assignment.interpreter_name} zurückziehen?${answer}${running ? `\n\n${assignment.interpreter_name} ist für diesen Auftrag schon losgefahren.` : ''}\n\nDer Auftrag verschwindet im Portal, ${assignment.interpreter_name} bekommt eine Mitteilung. Der Termin bleibt in deiner Liste.`, 'Auftrag zurückziehen')) return;
+        const { error } = await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        const before = record['Rückmeldung'];
+        record['Rückmeldung'] = '';
+        persistTerminRecords(records(), 'tracking');
+        window.refreshTrackingRows?.();
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: 'Auftrag zurückgezogen', body: `${formatFleetDate(assignment.date)} · ${assignment.title} – dieser Auftrag gilt nicht mehr.` });
+        showToast(`Auftrag von ${assignment.interpreter_name} zurückgezogen.`, 'success', { duration: 12000, actionLabel: 'Rückgängig', onAction: async () => {
+            const { error: undoError } = await client.from('tt_assignments').update({ cancelled: false }).eq('id', assignment.id);
+            if (undoError) { showToast(TerminCloud.germanError(undoError), 'error'); return; }
+            record['Rückmeldung'] = before;
+            persistTerminRecords(records(), 'tracking');
+            window.refreshTrackingRows?.();
+            showToast(`Der Auftrag steht wieder im Portal von ${assignment.interpreter_name}.`, 'success');
+            syncDay();
+        } });
         syncDay();
     };
 

@@ -1894,3 +1894,34 @@ input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border
 .payroll-why { display: block; margin-top: 3px; white-space: normal; }
 .payroll-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--muted); font-size: .86rem; }
 .payroll-hidden[hidden] { display: none; }
+
+/* 38  Aufträge: ab drei Aufträgen ist nur einer aufgeklappt, die anderen sind eine kurze Zeile */
+.job-rest { display: flex; flex-direction: column; }
+.job-rest[hidden] { display: none; }
+.job-card.is-foldable .job-top { grid-template-columns: auto minmax(0, 1fr) auto; cursor: pointer; }
+.job-card.is-foldable .job-top:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; }
+.job-fold-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--surface); color: var(--ink-soft); }
+.job-fold-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.job-card.is-foldable[data-open="true"] .job-fold-icon svg { transform: rotate(180deg); }
+.job-mini-patient { overflow: hidden; color: var(--ink); font-size: .9rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.job-mini-state { align-self: flex-start; color: #18794e; font-size: .82rem; font-weight: 700; }
+.job-card.is-foldable[data-open="true"] .job-mini-patient, .job-card.is-foldable[data-open="true"] .job-mini-state { display: none; }
+.job-card.is-foldable[data-open="false"] .job-top { padding: 10px 12px; }
+.job-card.is-foldable[data-open="false"] .job-date { width: 50px; padding: 4px 0 5px; }
+.job-card.is-foldable .job-fold-icon { grid-column: 3; grid-row: 1; }
+.job-card.is-foldable[data-open="false"] .job-top { row-gap: 4px; }
+.job-card.is-foldable[data-open="false"] .job-top .status-pill { grid-column: 2 / -1; grid-row: 2; }
+.job-card.is-foldable[data-open="false"] .job-main { flex-flow: row wrap; align-items: baseline; gap: 0 8px; }
+.job-card.is-foldable[data-open="false"] .job-time { font-size: 1.02rem; }
+.job-card.is-foldable[data-open="false"] .job-place { overflow: hidden; max-width: 100%; font-size: .98rem; text-overflow: ellipsis; white-space: nowrap; }
+.job-card.is-foldable[data-open="false"] .job-city { font-size: .86rem; }
+.job-card.is-foldable[data-open="false"] .job-mini-patient { flex: 1 1 100%; }
+.jobs-fold-toggle { align-self: flex-end; margin: 0 0 8px auto; display: block; font-size: .86rem; }
+.jobs-fold-toggle[hidden] { display: none; }
+
+/* 39  Live-Tracking: gesendeten Auftrag erinnern oder zurückziehen */
+.assign-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.assign-tools button, :root[data-theme="dark"] .assign-tools button { min-height: 26px; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink-soft); box-shadow: none; font-size: 11.5px; font-weight: 700; }
+.assign-tools button:hover, :root[data-theme="dark"] .assign-tools button:hover { border-color: var(--brand); background: var(--surface-hover); color: var(--ink); }
+.assign-tools .assign-withdraw, :root[data-theme="dark"] .assign-tools .assign-withdraw { color: var(--danger); }
+.assign-tools .assign-withdraw:hover, :root[data-theme="dark"] .assign-tools .assign-withdraw:hover { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }

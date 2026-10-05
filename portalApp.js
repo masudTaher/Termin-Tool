@@ -813,7 +813,20 @@ if (!window.TerminContact) {
         return box;
     }
 
-    function jobCard(item) {
+    // Ab drei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
+    // jobOpenId: undefined = von selbst (der nächste anstehende Auftrag), '' = alle zu, sonst der vom Dolmetscher geöffnete.
+    const JOB_FOLD_FROM = 3;
+    let jobOpenId;
+    const JOB_FOLD_KEY = 'terminTool.portal.jobsFold';
+    let jobsFoldOff = (() => { try { return localStorage.getItem(JOB_FOLD_KEY) === 'aus'; } catch (error) { return false; } })();
+    $('jobsFoldToggle')?.addEventListener('click', () => {
+        jobsFoldOff = !jobsFoldOff;
+        try { localStorage.setItem(JOB_FOLD_KEY, jobsFoldOff ? 'aus' : 'an'); } catch (error) { /* gilt dann bis zum Neuladen */ }
+        jobsRendered = '';
+        loadJobs();
+    });
+    let jobAutoOpenId = '';
+    function jobCard(item, foldable = false) {
         const card = el('li', 'job-card');
         card.dataset.id = item.id;
         card.dataset.response = item.response;
@@ -915,6 +928,8 @@ if (!window.TerminContact) {
                 if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
                 const before = { response: item.response, note: saved, draft: noteText !== saved ? note.value : null };
                 if (!(await respond(value, noteText))) return;
+                // Mitteilung „TERMIN · zugesagt / abgesagt …“ an die Einsatzleitung – getrennt von den Fahrzeug-Mitteilungen.
+                TerminCloud.callFunction?.({ action: 'response', assignmentId: item.id })?.catch?.(() => null);
                 // Wer gerade die Angaben liest, soll sie nach der Antwort weiter vor sich haben.
                 if (details.open) rememberJobDetails(item.id, true);
                 // Vertippt? „Rückgängig“ stellt den Stand von vorher wieder her (auch „noch keine Antwort“).
@@ -941,16 +956,38 @@ if (!window.TerminContact) {
             });
             answer.append(undo);
         }
-        card.append(top, details, answer);
+        const rest = el('div', 'job-rest');
+        rest.append(details, answer);
+        card.append(top, rest);
         const progress = jobProgress(item);
-        if (progress) card.append(progress);
+        if (progress) rest.append(progress);
+        if (foldable) {
+            card.classList.add('is-foldable');
+            const patientName = parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || '';
+            if (patientName) main.append(el('span', 'job-mini-patient', patientName));
+            if (jobStarted(item) && !jobFinished(item)) main.append(el('span', 'job-mini-state', 'Unterwegs'));
+            top.append(svgSpan('job-fold-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'));
+            top.setAttribute('role', 'button');
+            top.tabIndex = 0;
+            const setOpen = open => { card.dataset.open = String(open); top.setAttribute('aria-expanded', String(open)); rest.hidden = !open; };
+            setOpen((jobOpenId === undefined ? jobAutoOpenId : jobOpenId) === item.id);
+            const toggle = () => {
+                const open = card.dataset.open !== 'true';
+                jobOpenId = open ? item.id : '';
+                card.parentElement?.querySelectorAll('.job-card.is-foldable[data-open="true"]').forEach(other => { if (other !== card) { other.dataset.open = 'false'; other.querySelector('.job-top').setAttribute('aria-expanded', 'false'); other.querySelector('.job-rest').hidden = true; } });
+                setOpen(open);
+                if (open) window.requestAnimationFrame(() => { const header = document.querySelector('.portal-topbar, .portal-header')?.getBoundingClientRect().bottom || 0; const y = card.getBoundingClientRect().top; if (y < header + 8 || y > window.innerHeight * 0.5) window.scrollTo({ top: window.scrollY + y - header - 12 }); });
+            };
+            top.addEventListener('click', toggle);
+            top.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
+        }
         // Ab dem Tag des Termins: Arztbericht, Rezept oder Überweisung direkt zu diesem Auftrag fotografieren.
         if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
             const docs = el('button', 'job-docs-button');
             docs.type = 'button';
             docs.append(svgSpan('job-docs-icon', JOB_ICONS.camera), el('span', '', 'Unterlagen fotografieren'));
             docs.addEventListener('click', () => window.PortalDocs?.startFor(item));
-            card.append(docs);
+            rest.append(docs);
         }
         return card;
     }
@@ -979,6 +1016,7 @@ if (!window.TerminContact) {
             done += 1;
         }
         const day = new Date(`${date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        if (done) TerminCloud.callFunction?.({ action: 'response', assignmentIds: items.slice(0, done).map(item => item.id) })?.catch?.(() => null);
         if (failure) {
             toast(done ? `${done} von ${items.length} Aufträgen zugesagt. Dann ging es nicht weiter: ${TerminCloud.germanError(failure)}` : TerminCloud.germanError(failure), 'error');
         } else {
@@ -1062,6 +1100,13 @@ if (!window.TerminContact) {
             if (!waitingByDate.has(item.date)) waitingByDate.set(item.date, []);
             waitingByDate.get(item.date).push(item);
         });
+        const many = upcoming.length >= JOB_FOLD_FROM;
+        const foldable = many && !jobsFoldOff;
+        const foldToggle = $('jobsFoldToggle');
+        if (foldToggle) { foldToggle.hidden = !many; foldToggle.textContent = jobsFoldOff ? 'Kurz anzeigen (nur einen Auftrag aufklappen)' : 'Alle Aufträge aufklappen'; }
+        // Von selbst offen: der Auftrag, der gerade läuft – sonst der nächste, der noch ansteht.
+        jobAutoOpenId = (upcoming.find(item => jobStarted(item) && !jobFinished(item)) || upcoming.find(item => !jobFinished(item) && item.response !== 'abgesagt') || {}).id || '';
+        if (jobOpenId && !upcoming.some(item => item.id === jobOpenId)) jobOpenId = undefined;
         let shownDate = '';
         upcoming.forEach(item => {
             if (item.date !== shownDate) {
@@ -1069,7 +1114,7 @@ if (!window.TerminContact) {
                 const waiting = waitingByDate.get(item.date) || [];
                 if (waiting.length >= 2) list.append(dayBanner(item.date, waiting));
             }
-            list.append(jobCard(item));
+            list.append(jobCard(item, foldable));
         });
         if (focusedId) {
             const again = [...list.querySelectorAll('.job-card')].find(card => card.dataset.id === focusedId)?.querySelector('.job-note-row input');
@@ -1374,6 +1419,8 @@ if (!window.TerminContact) {
                 return;
             }
             const plate = take.vehicle.plate;
+            // Eigene Mitteilung „FAHRZEUG · übernommen“ an die Einsatzleitung (falls dort eingeschaltet).
+            TerminCloud.callFunction?.({ action: 'vehicle', kind: 'take' })?.catch?.(() => null);
             await loadFleet();
             await showSuccess(`${plate} übernommen`, 'Gute Fahrt!');
             goTo('vehicle');
@@ -1464,6 +1511,7 @@ if (!window.TerminContact) {
                 return;
             }
             const plate = myHandover ? vehicleById(myHandover.vehicle_id)?.plate : '';
+            TerminCloud.callFunction?.({ action: 'vehicle', kind: 'return' })?.catch?.(() => null);
             await loadFleet();
             await showSuccess(`${plate || 'Fahrzeug'} zurückgegeben`, 'Danke!');
             goTo('vehicle');

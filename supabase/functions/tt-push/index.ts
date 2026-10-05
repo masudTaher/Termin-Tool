@@ -212,9 +212,49 @@ Deno.serve(async (req) => {
       const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
       const finished = job.work_status === 'beendet';
       const result = await sendTo((staff ?? []).map((item) => item.id), {
-        title: finished ? 'Dolmetscher wieder frei' : 'Dolmetscher losgefahren',
+        title: finished ? 'TERMIN · fertig, wieder frei' : 'TERMIN · losgefahren',
         body: `${job.interpreter_name}${finished ? ' ist fertig' : ' ist unterwegs'}: ${job.title}`,
         url: 'termineTracking.html', tag: `fortschritt-${job.id}`,
+      });
+      return json(result);
+    }
+
+    if (action === 'response') {
+      // Ein Dolmetscher hat auf Aufträge geantwortet (Zusage, unter Vorbehalt, Absage): Mitteilung an Einsatzleitung und Sekretariat.
+      const ids = (Array.isArray(input.assignmentIds) ? input.assignmentIds : [input.assignmentId]).map((id) => String(id ?? '')).filter(Boolean).slice(0, 30);
+      if (!ids.length) return json({ error: 'Auftrag fehlt.' }, 400);
+      const { data: jobs } = await admin.from('tt_assignments')
+        .select('id, title, date, time, interpreter_id, interpreter_name, response, response_note').in('id', ids).eq('interpreter_id', profile.id);
+      const answered = (jobs ?? []).filter((job) => ['zugesagt', 'vorbehalt', 'abgesagt'].includes(job.response)).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+      if (!answered.length) return json({ sent: 0, devices: 0 });
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const words: Record<string, string> = { zugesagt: 'zugesagt', vorbehalt: 'unter Vorbehalt', abgesagt: 'ABGESAGT' };
+      const first = answered[0];
+      const same = answered.every((job) => job.response === first.response);
+      const result = await sendTo((staff ?? []).map((item) => item.id), {
+        title: answered.length === 1 ? `TERMIN · ${words[first.response]}` : `TERMIN · ${answered.length} Aufträge ${same ? words[first.response] : 'beantwortet'}`,
+        body: answered.length === 1
+          ? `${first.interpreter_name}: ${first.title}${first.response_note ? ` – „${String(first.response_note).slice(0, 120)}“` : ''}`
+          : `${first.interpreter_name} · ${deDate(first.date)} · ${answered.map((job) => String(job.time ?? '').slice(0, 5)).filter(Boolean).join(', ')} Uhr`,
+        url: 'termineTracking.html', tag: `antwort-${first.id}`,
+      });
+      return json(result);
+    }
+
+    if (action === 'vehicle') {
+      // Ein Fahrzeug wurde im Portal übernommen oder zurückgegeben: eigene Mitteilung, klar getrennt von den Terminen.
+      const back = String(input.kind ?? '') === 'return';
+      const { data: trips } = await admin.from('tt_handovers')
+        .select('id, vehicle_id, driver_name, date, start_time, end_time, end_mileage, created_at').eq('driver_id', profile.id).order('created_at', { ascending: false }).limit(1);
+      const trip = (trips ?? [])[0];
+      if (!trip || Boolean(trip.end_time) !== back) return json({ sent: 0, devices: 0 });
+      const { data: vehicle } = await admin.from('tt_vehicles').select('plate, brand').eq('id', trip.vehicle_id).maybeSingle();
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const clock = String((back ? trip.end_time : trip.start_time) ?? '').slice(0, 5);
+      const result = await sendTo((staff ?? []).map((item) => item.id), {
+        title: back ? 'FAHRZEUG · zurückgegeben' : 'FAHRZEUG · übernommen',
+        body: `${trip.driver_name} · ${vehicle?.plate ?? 'Fahrzeug'}${vehicle?.brand ? ` (${vehicle.brand})` : ''}${clock ? ` · ${clock} Uhr` : ''}${back && trip.end_mileage ? ` · ${trip.end_mileage} km` : ''}`,
+        url: 'fahrzeuge.html', tag: `fahrzeug-${trip.id}-${back ? 'zurueck' : 'start'}`,
       });
       return json(result);
     }
