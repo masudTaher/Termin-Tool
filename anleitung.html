@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+      <meta name="robots" content="noindex">
+      <title>Kurzanleitung · Dolmetscher-Portal</title>
+      <meta name="theme-color" content="#10243d">
+      <link rel="apple-touch-icon" href="icon-180.png">
+      <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+      <link rel="stylesheet" href="anleitung.css">
+   </head>
+   <body>
+      <!-- Kurzanleitung für Dolmetscher: Deutsch und Arabisch. Die Texte stehen in anleitungApp.js, die Bilder im Ordner „anleitung“. -->
+      <header class="guide-top">
+         <a class="guide-brand" href="portal.html">
+            <span class="guide-mark" aria-hidden="true">MO</span>
+            <span class="guide-brand-copy"><strong id="guideName">Dolmetscher-Portal</strong><small id="guideKickerTop">Kurzanleitung</small></span>
+         </a>
+         <div class="guide-actions">
+            <div class="guide-lang" role="group" aria-label="Sprache · اللغة">
+               <button type="button" data-lang="de" lang="de" aria-pressed="true">Deutsch</button>
+               <button type="button" data-lang="ar" lang="ar" dir="rtl" aria-pressed="false">العربية</button>
+            </div>
+            <a class="guide-button is-light guide-open" href="portal.html"><span id="guideOpenText">Zum Portal</span></a>
+         </div>
+      </header>
+
+      <main id="guide" class="guide-main">
+         <noscript>
+            <p class="guide-note">Bitte JavaScript im Browser einschalten – dann erscheint hier die Anleitung. · يرجى تفعيل JavaScript في المتصفح لعرض الدليل.</p>
+         </noscript>
+      </main>
+
+      <dialog id="guideZoom" class="guide-zoom" aria-labelledby="guideZoomTitle">
+         <img id="guideZoomImage" alt="" width="390" height="800">
+         <form method="dialog">
+            <p id="guideZoomTitle"></p>
+            <button id="guideZoomClose" class="guide-button is-light" type="submit">Schließen</button>
+         </form>
+      </dialog>
+
+      <script src="anleitungApp.js"></script>
+   </body>
+</html>

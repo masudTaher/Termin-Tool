@@ -1,0 +1,231 @@
+/* Kurzanleitung für das Dolmetscher-Portal (Deutsch und Arabisch).
+   Eigene, kleine Gestaltung: die Seite lädt nichts von außen – keine Schriften, keine Skripte.
+   Auf dem Handy werden die Schritte seitlich gewischt, am Bildschirm stehen sie nebeneinander,
+   beim Drucken (oder „Als PDF speichern“) entsteht eine A4-Anleitung. */
+:root {
+  color-scheme: light;
+  --navy: #10243d;
+  --navy-2: #14538a;
+  --brand: #1769aa;
+  --brand-soft: #e8f2fb;
+  --teal: #0b7f78;
+  --teal-soft: #e6f5f3;
+  --ink: #152238;
+  --soft: #44546b;
+  --muted: #6b7a90;
+  --line: #e1e7ef;
+  --line-strong: #cbd5e1;
+  --bg: #f1f4f8;
+  --card: #ffffff;
+  --warn-soft: #fff7e6;
+  --warn-line: #f0d9a8;
+  --radius: 18px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.5 Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, Arial, sans-serif;
+}
+/* Arabisch: die Systemschrift des Geräts (Windows, iPhone, Android bringen gute arabische Schriften mit) */
+html[lang="ar"] body {
+  font-family: "Segoe UI", "SF Arabic", "Geeza Pro", "Noto Sans Arabic", "Noto Naskh Arabic", Tahoma, Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.75;
+}
+h1, h2, h3, p, ol, ul { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+img { display: block; max-width: 100%; height: auto; }
+a { color: var(--brand); }
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+
+/* Namen von Schaltflächen stehen so da, wie sie im Portal heißen (deutsch, von links nach rechts) */
+.ui {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid #cfe2f3;
+  border-radius: 7px;
+  background: var(--brand-soft);
+  color: #0f4c7d;
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: .86em;
+  font-weight: 650;
+  line-height: 1.5;
+  /* Ein Name bleibt in einem Stück; nur wenn er breiter ist als die ganze Zeile, bricht er in sich um */
+  max-width: 100%;
+  white-space: normal;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+html[lang="ar"] .ui { font-size: .8em; }
+
+/* ---------- Kopfleiste ---------- */
+.guide-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px max(14px, env(safe-area-inset-left)) 10px max(14px, env(safe-area-inset-right));
+  background: var(--navy);
+  color: #fff;
+}
+.guide-brand { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
+.guide-mark { display: grid; flex: 0 0 auto; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: linear-gradient(135deg, #1b86c9, #0b7f78); font: 800 .82rem/1 Inter, "Segoe UI", system-ui, sans-serif; letter-spacing: .02em; }
+.guide-brand-copy { display: flex; min-width: 0; flex-direction: column; line-height: 1.25; }
+.guide-brand-copy strong { overflow: hidden; font-size: .95rem; text-overflow: ellipsis; white-space: nowrap; }
+.guide-brand-copy small { overflow: hidden; color: #c5d5e8; font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
+.guide-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.guide-lang { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .14); }
+.guide-lang button { min-height: 34px; padding: 4px 13px; border: 0; border-radius: 999px; background: transparent; color: #dbe7f5; font-size: .84rem; font-weight: 650; cursor: pointer; }
+.guide-lang button[aria-pressed="true"] { background: #fff; color: var(--navy); }
+.guide-lang button:focus-visible, .guide-button:focus-visible, .guide-shot:focus-visible, .guide-contents a:focus-visible { outline: 3px solid #ffd166; outline-offset: 2px; }
+.guide-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border: 1px solid transparent; border-radius: 12px; background: var(--brand); color: #fff; font-size: .9rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.guide-button.is-light { border-color: rgba(255, 255, 255, .5); background: transparent; }
+.guide-button.is-quiet { border-color: var(--line-strong); background: var(--card); color: var(--ink); }
+.guide-top .guide-button { min-height: 36px; padding: 6px 12px; font-size: .82rem; }
+/* Handy: der Knopf „Zum Portal“ steht groß im Titel – oben bleibt Platz für Name und Sprache */
+@media (max-width: 520px) { .guide-top .guide-open { display: none; } .guide-lang button { padding: 4px 11px; } }
+
+/* ---------- Titel ---------- */
+.guide-main { max-width: 1180px; margin: 0 auto; padding: 0 16px 40px; }
+.guide-hero {
+  display: grid;
+  gap: 18px;
+  margin: 16px 0 14px;
+  padding: 26px 22px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #10243d 0%, #14538a 68%, #0b7f78 130%);
+  color: #fff;
+}
+.guide-kicker { color: #9fd0f2; font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+html[lang="ar"] .guide-kicker { font-size: .92rem; letter-spacing: 0; }
+.guide-hero h1 { margin-top: 6px; font-size: clamp(1.8rem, 6vw, 2.9rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.12; }
+html[lang="ar"] .guide-hero h1 { letter-spacing: 0; line-height: 1.35; }
+.guide-lead { max-width: 46ch; margin-top: 10px; color: #dbe7f5; font-size: 1.05rem; }
+.guide-org { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, .22); color: #e8f0fa; font-size: .88rem; font-weight: 600; }
+.guide-org span { display: block; }
+.guide-org .guide-org-other { margin-top: 4px; color: #b9cbe0; font-weight: 500; }
+/* Die Zeile in der anderen Sprache steht auf derselben Seite wie der übrige Text */
+html[dir="ltr"] .guide-org-other { text-align: left; }
+html[dir="rtl"] .guide-org-other { text-align: right; }
+.guide-hero-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.guide-qr { display: none; }
+.guide-note { margin: 0 0 14px; padding: 11px 14px; border: 1px solid #cfe2f3; border-radius: 14px; background: var(--brand-soft); color: #173a5c; font-size: .92rem; }
+
+/* ---------- Inhalt (Sprungmarken) ---------- */
+.guide-contents { position: sticky; top: 58px; z-index: 10; margin: 0 -16px 6px; padding: 8px 16px; overflow-x: auto; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); scrollbar-width: none; }
+.guide-contents::-webkit-scrollbar { display: none; }
+.guide-contents ol { display: flex; gap: 8px; width: max-content; }
+.guide-contents a { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); color: var(--ink); font-size: .86rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
+html[dir="rtl"] .guide-contents a { padding: 6px 8px 6px 14px; }
+.guide-contents b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font: 800 .76rem/1 Inter, "Segoe UI", system-ui, sans-serif; }
+
+/* ---------- Abschnitte ---------- */
+.guide-section { margin-top: 16px; padding: 20px 18px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: 0 1px 2px rgba(16, 36, 61, .05); scroll-margin-top: 118px; }
+.guide-section-head { display: flex; align-items: center; gap: 12px; }
+.guide-nr { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: linear-gradient(135deg, var(--brand), var(--teal)); color: #fff; font: 800 1.15rem/1 Inter, "Segoe UI", system-ui, sans-serif; }
+.guide-section h2 { font-size: 1.32rem; font-weight: 800; letter-spacing: -.015em; line-height: 1.2; }
+html[lang="ar"] .guide-section h2 { letter-spacing: 0; line-height: 1.45; }
+.guide-badge { display: inline-block; margin-inline-start: 8px; padding: 2px 10px; border-radius: 999px; background: var(--teal-soft); color: var(--teal); font-size: .74rem; font-weight: 750; vertical-align: middle; white-space: nowrap; }
+.guide-section-lead { margin-top: 8px; color: var(--soft); }
+.guide-zoom-hint { margin-top: 4px; color: var(--muted); font-size: .8rem; }
+
+.guide-steps { display: flex; gap: 14px; margin: 14px -18px 0; padding: 2px 18px 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 18px; -webkit-overflow-scrolling: touch; }
+.guide-step { display: flex; flex: 0 0 min(70vw, 262px); flex-direction: column; gap: 12px; scroll-snap-align: start; }
+.guide-shot { display: block; width: 100%; padding: 7px; border: 0; border-radius: 30px; background: var(--navy); box-shadow: 0 10px 24px rgba(16, 36, 61, .2); cursor: zoom-in; }
+.guide-shot img { width: 100%; border-radius: 23px; background: #f1f4f8; }
+.guide-step-text { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; }
+.guide-step-nr { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: var(--brand); color: #fff; font: 800 .8rem/1 Inter, "Segoe UI", system-ui, sans-serif; }
+.guide-step h3 { font-size: 1rem; font-weight: 750; line-height: 1.35; }
+html[lang="ar"] .guide-step h3 { line-height: 1.55; }
+.guide-step p { grid-column: 2; color: var(--soft); font-size: .93rem; }
+
+.guide-tips { display: grid; gap: 10px; margin-top: 10px; }
+.guide-tip { padding: 11px 14px; border: 1px solid #cfe2f3; border-radius: 14px; background: var(--brand-soft); font-size: .92rem; }
+.guide-tip.is-warn { border-color: var(--warn-line); background: var(--warn-soft); }
+.guide-tip:only-child { grid-column: 1 / -1; }
+.guide-tip strong { display: block; font-size: .95rem; }
+.guide-tip span { color: var(--soft); }
+
+.guide-foot { margin-top: 26px; color: var(--muted); font-size: .82rem; text-align: center; }
+.guide-foot span { display: block; }
+.guide-foot .guide-foot-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 16px; }
+
+/* ---------- Großes Bild ---------- */
+.guide-zoom { width: min(94vw, 460px); max-height: 94vh; padding: 10px; border: 0; border-radius: 26px; background: var(--navy); color: #fff; }
+.guide-zoom::backdrop { background: rgba(8, 18, 32, .72); }
+.guide-zoom img { width: 100%; max-height: calc(94vh - 84px); border-radius: 18px; object-fit: contain; background: #f1f4f8; }
+.guide-zoom form { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 6px 2px; }
+.guide-zoom p { font-size: .92rem; font-weight: 650; }
+
+/* ---------- Breiter Bildschirm ---------- */
+@media (min-width: 760px) {
+  .guide-hero { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 34px 34px; }
+  .guide-qr { display: grid; width: 190px; gap: 8px; padding: 14px; border-radius: 18px; background: #fff; color: var(--ink); text-align: center; }
+  .guide-qr img { width: 100%; }
+  .guide-qr strong { font-size: .84rem; line-height: 1.35; }
+  .guide-qr small { color: var(--muted); font: 500 .66rem/1.3 Inter, "Segoe UI", system-ui, sans-serif; direction: ltr; overflow-wrap: anywhere; }
+  .guide-section { padding: 26px 26px 24px; }
+  .guide-step { flex-basis: 250px; }
+  .guide-tips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1020px) {
+  .guide-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin: 18px 0 0; padding: 0; overflow: visible; }
+  .guide-step { flex-basis: auto; }
+  .guide-zoom-hint { display: none; }
+}
+
+/* ---------- Drucken und „Als PDF speichern“: A4 ---------- */
+@media print {
+  @page { size: A4; margin: 11mm 12mm 12mm; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; font-size: 9.4pt; line-height: 1.42; }
+  html[lang="ar"] body { font-size: 10.2pt; line-height: 1.55; }
+  .guide-top, .guide-zoom-hint, .guide-hero-buttons, .guide-foot-buttons, .guide-zoom { display: none !important; }
+  /* Der Inhalt steht beim Druck als schmale Zeile unter dem Titel */
+  .guide-contents { position: static; margin: 0 0 4.4mm; padding: 0; overflow: visible; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .guide-contents ol { flex-wrap: wrap; gap: 1.6mm 1.8mm; width: auto; }
+  .guide-contents a, html[dir="rtl"] .guide-contents a { min-height: 0; gap: 1.4mm; padding: .7mm 2.6mm .7mm 1mm; border-width: .25mm; font-size: 7.8pt; }
+  html[dir="rtl"] .guide-contents a { padding: .7mm 1mm .7mm 2.6mm; }
+  html[lang="ar"] .guide-contents a { font-size: 8.6pt; }
+  .guide-contents b { width: 4.6mm; height: 4.6mm; font-size: 6.8pt; }
+  .guide-main { max-width: none; padding: 0; }
+  .guide-hero { grid-template-columns: minmax(0, 1fr) 31mm; align-items: center; gap: 8mm; margin: 0 0 4.4mm; padding: 7mm 9mm; border-radius: 5mm; }
+  .guide-hero h1 { font-size: 23pt; }
+  .guide-lead { max-width: none; font-size: 10.5pt; }
+  .guide-org { margin-top: 4mm; padding-top: 3mm; font-size: 8.4pt; }
+  .guide-qr { display: grid; width: 31mm; gap: 1.5mm; padding: 2.4mm; border-radius: 3mm; background: #fff; color: var(--ink); text-align: center; }
+  .guide-qr strong { font-size: 6.6pt; line-height: 1.3; }
+  .guide-qr small { display: none; }
+  .guide-note { margin: 0 0 4mm; padding: 2.4mm 3.4mm; border-radius: 3mm; font-size: 8.6pt; }
+  .guide-section { margin: 0 0 4.2mm; padding: 0 0 3.6mm; border: 0; border-bottom: .3mm solid var(--line); border-radius: 0; box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+  .guide-section:last-of-type { border-bottom: 0; }
+  .guide-nr { width: 8.4mm; height: 8.4mm; border-radius: 2.6mm; font-size: 11.5pt; }
+  .guide-section h2 { font-size: 14.5pt; }
+  .guide-badge { font-size: 7.4pt; }
+  .guide-section-lead { margin-top: 1.6mm; font-size: 9.4pt; }
+  .guide-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4.4mm; margin: 3mm 0 0; padding: 0; overflow: visible; }
+  .guide-step { gap: 2.2mm; }
+  .guide-shot { width: 34mm; margin: 0 auto; padding: 1.1mm; border-radius: 4.2mm; box-shadow: none; }
+  .guide-shot img { border-radius: 3.2mm; }
+  .guide-step-text { gap: .6mm 2mm; align-items: center; }
+  /* Der Text nutzt beim Druck die ganze Spaltenbreite – so bleiben je zwei Abschnitte auf einer Seite */
+  .guide-step p { grid-column: 1 / -1; }
+  .guide-step-nr { width: 5mm; height: 5mm; font-size: 7.6pt; }
+  .guide-step h3 { font-size: 9.6pt; }
+  .guide-step p { font-size: 8.2pt; }
+  html[lang="ar"] .guide-shot { width: 32mm; }
+  html[lang="ar"] .guide-step h3 { font-size: 10.2pt; line-height: 1.4; }
+  html[lang="ar"] .guide-step p { font-size: 9pt; }
+  .ui { padding: 0 1.2mm; border-radius: 1.2mm; font-size: .88em; }
+  .guide-tips { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm; margin-top: 3mm; }
+  .guide-tip { padding: 2mm 3mm; border-radius: 2.6mm; font-size: 8.3pt; }
+  .guide-tip strong { font-size: 8.8pt; }
+  .guide-foot { margin-top: 4mm; font-size: 7.4pt; }
+}

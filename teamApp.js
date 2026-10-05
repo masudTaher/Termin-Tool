@@ -48,6 +48,8 @@
         $('portalLink').value = runsLocally && window.TERMIN_CLOUD_CONFIG?.portalUrl
             ? window.TERMIN_CLOUD_CONFIG.portalUrl
             : new URL('portal.html', window.location.href).href;
+        // Die Anleitung liegt neben dem Portal (Deutsch und Arabisch auf einer Seite).
+        $('guideLink').value = new URL('anleitung.html', $('portalLink').value).href;
         const sync = await TerminCloud.syncFleet();
         if (!sync.ok && sync.reason && !['offline', 'not-admin'].includes(sync.reason)) setStatus(`Fuhrpark-Abgleich: ${sync.reason}`, 'error');
         await loadAccounts();
@@ -381,15 +383,17 @@
 
     $('teamSignOut').addEventListener('click', async () => { await TerminCloud.signOut(); await refresh(); });
     $('teamReload').addEventListener('click', refresh);
-    $('copyPortalLink').addEventListener('click', async () => {
+    const copyLink = async field => {
         try {
-            await navigator.clipboard.writeText($('portalLink').value);
+            await navigator.clipboard.writeText(field.value);
             showToast('Link kopiert', 'success');
         } catch (error) {
-            $('portalLink').select();
+            field.select();
             showToast('Bitte den markierten Link mit Strg+C kopieren.', 'info');
         }
-    });
+    };
+    $('copyPortalLink').addEventListener('click', () => copyLink($('portalLink')));
+    $('copyGuideLink').addEventListener('click', () => copyLink($('guideLink')));
 
     refresh();
 })();
