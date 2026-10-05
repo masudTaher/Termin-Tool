@@ -9,50 +9,146 @@
    </head>
    <body data-page="dolmetscher">
       <main class="container directory-page">
-         <div class="page-heading">
+         <div class="page-heading fleet-heading">
             <div>
-               <p class="page-kicker">STAMMDATEN</p>
-               <h1>Dolmetscherliste</h1>
-               <p>Gespeicherte Namen erscheinen beim Zuweisen als Vorschlag, sobald du die ersten Buchstaben eingibst.</p>
+               <p class="page-kicker">DOLMETSCHER</p>
+               <h1>Dolmetscher</h1>
+               <p>Wer ist unterwegs, wer ist frei, wer fehlt – und wer kann morgen arbeiten.</p>
+            </div>
+            <div class="fleet-heading-actions"><button type="button" id="crewReload" class="button-secondary">Aktualisieren</button></div>
+         </div>
+
+         <div class="portal-tabs crew-tabs" role="tablist" aria-label="Bereiche">
+            <button type="button" role="tab" data-crew-tab="board" class="is-active" aria-selected="true">Übersicht</button>
+            <button type="button" role="tab" data-crew-tab="names" aria-selected="false">Namensliste</button>
+         </div>
+         <p id="crewStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <!-- ===== Übersicht: alle Dolmetscher eines Tages nach Zustand ===== -->
+         <div data-crew-panel="board">
+            <section class="crew-board" id="crewBoard" aria-labelledby="crewDayLabel" hidden>
+               <div class="board-toolbar" id="crewToolbar">
+                  <div class="view-switch crew-day" role="group" aria-label="Tag wählen">
+                     <button type="button" data-crew-day="heute" aria-pressed="true">Heute</button>
+                     <button type="button" data-crew-day="morgen" aria-pressed="false">Morgen</button>
+                  </div>
+                  <label class="crew-date"><span class="visually-hidden">Anderen Tag wählen</span><input type="date" id="crewDate" aria-label="Anderen Tag wählen"></label>
+                  <h2 id="crewDayLabel" class="board-title"></h2>
+                  <label class="board-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="crewSearch" type="search" autocomplete="off" placeholder="Name, Telefon oder Kennzeichen suchen" aria-label="Dolmetscher durchsuchen"></label>
+                  <label class="board-sort"><span>Sortierung</span><select id="crewSort"><option value="standard">Wichtiges zuerst</option><option value="name">Name</option><option value="auftraege">Meiste Aufträge</option></select></label>
+               </div>
+
+               <div class="crew-filter" id="crewFilter" role="group" aria-label="Nach Zustand filtern">
+                  <button type="button" class="overview-card is-active" data-crew-filter="alle" aria-pressed="true"><span class="overview-label">Alle</span><strong id="crewCountAll">0</strong><small id="crewSubAll"></small></button>
+                  <button type="button" class="overview-card overview-card-departed" data-crew-filter="unterwegs" aria-pressed="false"><span class="overview-label">Unterwegs</span><strong id="crewCountOut">0</strong><small id="crewSubOut"></small></button>
+                  <button type="button" class="overview-card overview-card-done" data-crew-filter="frei" aria-pressed="false"><span class="overview-label" id="crewLabelFree">Frei</span><strong id="crewCountFree">0</strong><small id="crewSubFree"></small></button>
+                  <button type="button" class="overview-card overview-card-cancelled" data-crew-filter="abwesend" aria-pressed="false"><span class="overview-label">Abwesend</span><strong id="crewCountAway">0</strong><small id="crewSubAway"></small></button>
+                  <button type="button" class="overview-card overview-card-service" data-crew-filter="nichtda" aria-pressed="false"><span class="overview-label" id="crewLabelNo">Nicht da</span><strong id="crewCountNo">0</strong><small id="crewSubNo"></small></button>
+                  <button type="button" class="overview-card overview-card-open" data-crew-filter="offen" aria-pressed="false"><span class="overview-label" id="crewLabelOpen">Keine Angabe</span><strong id="crewCountOpen">0</strong><small id="crewSubOpen"></small></button>
+               </div>
+               <div class="board-chips" id="crewChips" role="group" aria-label="Weitere Filter" hidden></div>
+
+               <!-- Tagesanfrage: „Kannst du morgen arbeiten?“ -->
+               <section class="crew-ask" id="crewAsk" aria-labelledby="crewAskTitle" hidden>
+                  <div class="crew-ask-text">
+                     <h3 id="crewAskTitle">Tagesanfrage</h3>
+                     <p id="crewAskInfo"></p>
+                     <p id="crewAskState" class="crew-ask-state" hidden></p>
+                  </div>
+                  <div class="crew-ask-actions">
+                     <input id="crewAskNote" type="text" maxlength="120" autocomplete="off" placeholder="Hinweis dazu (optional), z. B. viele Termine in Köln" aria-label="Hinweis zur Anfrage">
+                     <button type="button" id="crewAskSend" class="button-primary">Jetzt anfragen</button>
+                     <button type="button" id="crewAskCancel" class="button-quiet-danger" hidden>Anfrage zurückziehen</button>
+                  </div>
+               </section>
+
+               <p id="crewResult" class="board-result" role="status" aria-live="polite"></p>
+               <div id="crewGrid" class="vehicle-board crew-list"></div>
+            </section>
+         </div>
+
+         <!-- ===== Namensliste: Vorschläge beim Zuweisen im Live-Tracking ===== -->
+         <div data-crew-panel="names" hidden>
+            <p class="crew-names-hint">Gespeicherte Namen erscheinen im Live-Tracking als Vorschlag, sobald du die ersten Buchstaben eingibst. Wer ein freigeschaltetes Portal-Konto hat, steht automatisch in dieser Liste.</p>
+            <div class="directory-layout">
+               <section class="directory-card" aria-labelledby="directoryAddTitle">
+                  <div class="directory-card-heading">
+                     <span class="directory-step">01</span>
+                     <div><h2 id="directoryAddTitle">Namen hinzufügen</h2><p>Du kannst einzelne Namen erfassen oder eine ganze Liste einfügen.</p></div>
+                  </div>
+                  <form id="addInterpreterForm" class="directory-single-form">
+                     <label for="interpreterNameInput">Name der Dolmetscherin oder des Dolmetschers</label>
+                     <div class="directory-input-row">
+                        <input id="interpreterNameInput" type="text" list="dolmetscherSuggestions" autocomplete="off" maxlength="100" placeholder="Zum Beispiel: Sara Jadaa" required>
+                        <button type="submit" class="button-primary">Namen speichern</button>
+                     </div>
+                  </form>
+                  <form id="addInterpreterBulkForm" class="directory-bulk-form">
+                     <label for="interpreterNamesBulk">Mehrere Namen – einen Namen pro Zeile</label>
+                     <textarea id="interpreterNamesBulk" rows="5" placeholder="Sara Jadaa&#10;Malak Taher&#10;..." spellcheck="false"></textarea>
+                     <button type="submit" class="button-secondary">Alle Namen übernehmen</button>
+                  </form>
+                  <datalist id="dolmetscherSuggestions"></datalist>
+                  <p id="interpreterDirectoryStatus" class="directory-status" role="status" aria-live="polite"></p>
+               </section>
+
+               <section class="directory-card directory-list-card" aria-labelledby="directoryListTitle">
+                  <div class="directory-card-heading">
+                     <span class="directory-step directory-step-teal">02</span>
+                     <div><h2 id="directoryListTitle">Gespeicherte Namen</h2><p id="interpreterDirectoryCount">Liste wird geladen …</p></div>
+                  </div>
+                  <ul id="interpreterDirectoryList" class="directory-list"></ul>
+                  <div class="directory-tools">
+                     <button type="button" id="exportInterpreterNames" class="button-secondary">Liste exportieren</button>
+                     <label class="button-secondary import-name-button" for="importInterpreterFile">Liste importieren</label>
+                     <input id="importInterpreterFile" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
+                  </div>
+                  <p class="directory-storage-note">Die Namensliste wird auf diesem Gerät gespeichert – und zusätzlich in der Datenbank, sobald du unter „Team“ angemeldet bist. Dann hat auch das Sekretariat dieselbe Liste.</p>
+               </section>
             </div>
          </div>
 
-         <div class="directory-layout">
-            <section class="directory-card" aria-labelledby="directoryAddTitle">
-               <div class="directory-card-heading">
-                  <span class="directory-step">01</span>
-                  <div><h2 id="directoryAddTitle">Namen hinzufügen</h2><p>Du kannst einzelne Namen erfassen oder eine ganze Liste einfügen.</p></div>
-               </div>
-               <form id="addInterpreterForm" class="directory-single-form">
-                  <label for="interpreterNameInput">Name der Dolmetscherin oder des Dolmetschers</label>
-                  <div class="directory-input-row">
-                     <input id="interpreterNameInput" type="text" list="dolmetscherSuggestions" autocomplete="off" maxlength="100" placeholder="Zum Beispiel: Sara Jadaa" required>
-                     <button type="submit" class="button-primary">Namen speichern</button>
-                  </div>
-               </form>
-               <form id="addInterpreterBulkForm" class="directory-bulk-form">
-                  <label for="interpreterNamesBulk">Mehrere Namen – einen Namen pro Zeile</label>
-                  <textarea id="interpreterNamesBulk" rows="5" placeholder="Sara Jadaa&#10;Malak Taher&#10;..." spellcheck="false"></textarea>
-                  <button type="submit" class="button-secondary">Alle Namen übernehmen</button>
-               </form>
-               <datalist id="dolmetscherSuggestions"></datalist>
-               <p id="interpreterDirectoryStatus" class="directory-status" role="status" aria-live="polite"></p>
-            </section>
+         <!-- ===== Eine Person: Seitenfenster ===== -->
+         <div id="crewBackdrop" class="drawer-backdrop" hidden></div>
+         <section id="crewFile" class="directory-card crew-drawer" role="dialog" aria-labelledby="crewFileTitle" tabindex="-1" hidden>
+            <div class="drawer-bar">
+               <button type="button" id="crewFileClose" class="button-secondary">← Zur Übersicht</button>
+               <span id="crewFilePosition" class="drawer-position" aria-live="polite"></span>
+               <span class="drawer-nav"><button type="button" id="crewFilePrev" class="button-quiet">‹ Vorige</button><button type="button" id="crewFileNext" class="button-quiet">Nächste ›</button></span>
+            </div>
+            <div class="crew-hero">
+               <span class="crew-avatar" id="crewFileAvatar" aria-hidden="true"></span>
+               <div><h2 id="crewFileTitle"></h2><p id="crewFileSubtitle"></p><div id="crewFileBadges" class="vehicle-card-badges"></div></div>
+            </div>
+            <div class="crew-contact" id="crewFileContact"></div>
 
-            <section class="directory-card directory-list-card" aria-labelledby="directoryListTitle">
-               <div class="directory-card-heading">
-                  <span class="directory-step directory-step-teal">02</span>
-                  <div><h2 id="directoryListTitle">Gespeicherte Namen</h2><p id="interpreterDirectoryCount">Liste wird geladen …</p></div>
+            <h3 class="file-heading" id="crewFileDayTitle">Heute</h3>
+            <dl id="crewFileState" class="vehicle-state"></dl>
+            <div class="crew-answer" id="crewFileAnswer" hidden>
+               <span class="field-label" id="crewFileAnswerLabel">Antwort für diesen Tag eintragen (z. B. nach einem Anruf)</span>
+               <div class="crew-answer-buttons">
+                  <button type="button" class="workday-button" data-crew-answer="verfügbar" aria-pressed="false">Kann arbeiten</button>
+                  <button type="button" class="workday-button" data-crew-answer="nicht verfügbar" aria-pressed="false">Kann nicht</button>
+                  <button type="button" class="button-quiet" data-crew-answer="" id="crewFileAnswerClear" hidden>Antwort löschen</button>
                </div>
-               <ul id="interpreterDirectoryList" class="directory-list"></ul>
-               <div class="directory-tools">
-                  <button type="button" id="exportInterpreterNames" class="button-secondary">Liste exportieren</button>
-                  <label class="button-secondary import-name-button" for="importInterpreterFile">Liste importieren</label>
-                  <input id="importInterpreterFile" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
-               </div>
-               <p class="directory-storage-note">Die Namensliste wird auf diesem Gerät gespeichert – und zusätzlich in der Datenbank, sobald du unter „Team“ angemeldet bist. Dann hat auch das Sekretariat dieselbe Liste.</p>
-            </section>
-         </div>
+            </div>
+
+            <h3 class="file-heading">Aufträge an diesem Tag</h3>
+            <ul id="crewFileJobs" class="directory-list file-list"></ul>
+
+            <h3 class="file-heading">Die nächsten 14 Tage</h3>
+            <div id="crewFileDays" class="crew-days" aria-live="polite"></div>
+            <p class="field-hint" id="crewFileDaysHint"></p>
+
+            <h3 class="file-heading" id="crewFileAbsenceTitle">Abwesenheiten</h3>
+            <ul id="crewFileAbsences" class="directory-list file-list"></ul>
+
+            <div class="file-manage-buttons crew-file-links">
+               <a class="button-secondary" id="crewFileMessage" href="nachrichten.html">Nachricht schreiben</a>
+               <a class="button-secondary" id="crewFileAbsenceLink" href="festangestellte.html?reiter=abwesenheiten">Abwesenheiten verwalten</a>
+               <a class="button-secondary" id="crewFileTeam" href="team.html">Konto bearbeiten</a>
+            </div>
+         </section>
       </main>
       <script src="teamDirectory.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -60,5 +156,8 @@
       <script src="cloudClient.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="absenceLogic.js"></script>
+      <script src="peopleLive.js"></script>
+      <script src="dolmetscherApp.js"></script>
    </body>
 </html>

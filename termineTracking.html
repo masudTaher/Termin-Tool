@@ -34,10 +34,17 @@
                <summary><span class="people-title">Dolmetscher heute</span><span id="peopleSummary" class="people-summary">noch niemand eingeteilt</span></summary>
                <div class="people-body">
                   <p class="field-hint">Die Zahl zeigt, wie viele Aufträge die Person heute hat. Klicke zuerst in das Dolmetscher-Feld eines Termins und dann auf einen Namen – so wird er eingetragen.</p>
+                  <div class="people-gender" id="peopleGender" role="group" aria-label="Anzeigen" hidden>
+                     <button type="button" class="board-chip" data-people-gender="" aria-pressed="true">Alle</button>
+                     <button type="button" class="board-chip" data-people-gender="weiblich" aria-pressed="false">Dolmetscherinnen</button>
+                     <button type="button" class="board-chip" data-people-gender="männlich" aria-pressed="false">Dolmetscher</button>
+                  </div>
                   <h3 class="people-heading">Frei</h3>
                   <div id="peopleFree" class="people-list"></div>
                   <h3 class="people-heading">Unterwegs</h3>
                   <div id="peopleBusy" class="people-list"></div>
+                  <h3 class="people-heading" id="peopleAwayHeading" hidden>Abwesend</h3>
+                  <div id="peopleAway" class="people-list" hidden></div>
                </div>
             </details>
             <div id="reminderBanner" class="reminder-banner" role="alert" aria-live="assertive" hidden></div>
@@ -219,6 +226,7 @@
       <script src="cloudFleetSync.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="absenceLogic.js"></script>
       <script src="cloudDaySync.js"></script>
       <script src="trackingReminders.js"></script>
 

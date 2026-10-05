@@ -10,7 +10,7 @@
    <body data-page="team">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · DOLMETSCHER-PORTAL</p><h1>Team und Arbeitstage</h1><p>Konten freischalten, feste und temporäre Dolmetscher kennzeichnen und sehen, wer wann arbeiten kann.</p></div>
+            <div><p class="page-kicker">ONLINE · DOLMETSCHER-PORTAL</p><h1>Team und Arbeitstage</h1><p>Konten freischalten, bearbeiten oder löschen, feste und temporäre Dolmetscher kennzeichnen und sehen, wer wann arbeiten kann.</p></div>
             <div class="fleet-heading-actions"><button type="button" id="teamReload" class="button-secondary">Aktualisieren</button><span id="teamUser" class="tracking-filter-info"></span><button type="button" id="teamSignOut" class="button-secondary" hidden>Abmelden</button></div>
          </div>
          <p id="teamStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
@@ -40,8 +40,11 @@
 
             <div class="fleet-layout">
                <section class="directory-card" aria-labelledby="accountsTitle">
-                  <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="accountsTitle">Dolmetscher-Konten</h2><p id="accountsSummary">Wird geladen …</p></div></div>
-                  <ul id="accountList" class="directory-list"></ul>
+                  <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="accountsTitle">Konten</h2><p id="accountsSummary">Wird geladen …</p></div></div>
+                  <label class="board-search account-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="accountSearch" type="search" autocomplete="off" placeholder="Name oder Telefon suchen" aria-label="Konten durchsuchen"></label>
+                  <div class="board-chips" id="accountChips" role="group" aria-label="Konten filtern"></div>
+                  <p id="accountResult" class="board-result" role="status" aria-live="polite"></p>
+                  <ul id="accountList" class="directory-list account-list"></ul>
                </section>
                <section class="directory-card" aria-labelledby="workdaysTitle">
                   <div class="directory-card-heading"><span class="directory-step directory-step-dark">02</span><div><h2 id="workdaysTitle">Arbeitstage</h2><p>Wer hat sich für die nächsten 7 Tage eingetragen?</p></div></div>
@@ -52,6 +55,55 @@
 
          </div>
       </main>
+      <!-- Ein Konto bearbeiten: Name, Handy, Anstellung, Angabe, Rolle, sperren, neues Passwort, löschen (nur Admin) -->
+      <dialog id="accountDialog" class="confirm-dialog absence-dialog" aria-labelledby="accountDialogTitle">
+         <form id="accountForm" class="fleet-form" novalidate>
+            <h2 id="accountDialogTitle">Konto bearbeiten</h2>
+            <p class="field-hint" id="accountDialogInfo"></p>
+            <label for="accountName">Vor- und Nachname</label>
+            <input id="accountName" type="text" maxlength="100" autocomplete="off" required>
+            <label for="accountPhone">Handynummer</label>
+            <input id="accountPhone" type="tel" maxlength="30" autocomplete="off" placeholder="Zum Beispiel: 0170 1234567">
+            <div id="accountEmploymentRow">
+               <span class="field-label" id="accountEmploymentLabel">Anstellung</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="accountEmploymentLabel">
+                  <label><input type="radio" name="accountEmployment" value="temporär"><span>Temporär</span></label>
+                  <label><input type="radio" name="accountEmployment" value="fest"><span>Fest angestellt</span></label>
+               </div>
+            </div>
+            <div id="accountGenderRow">
+               <span class="field-label" id="accountGenderLabel">Dolmetscherin oder Dolmetscher</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="accountGenderLabel">
+                  <label><input type="radio" name="accountGender" value="weiblich"><span>Dolmetscherin</span></label>
+                  <label><input type="radio" name="accountGender" value="männlich"><span>Dolmetscher</span></label>
+                  <label><input type="radio" name="accountGender" value=""><span>keine Angabe</span></label>
+               </div>
+            </div>
+            <div id="accountRoleRow">
+               <span class="field-label" id="accountRoleLabel">Rolle</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="accountRoleLabel">
+                  <label><input type="radio" name="accountRole" value="dolmetscher"><span>Dolmetscher/in</span></label>
+                  <label><input type="radio" name="accountRole" value="sekretariat"><span>Sekretariat</span></label>
+               </div>
+               <p class="field-hint">Das Sekretariat sieht und bearbeitet alles wie du – Termine, Fahrzeuge, Schäden und Aufträge. Konten verwaltet nur der Admin.</p>
+            </div>
+            <div id="accountActiveRow">
+               <span class="field-label" id="accountActiveLabel">Zugang</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="accountActiveLabel">
+                  <label><input type="radio" name="accountActive" value="ja"><span>Freigeschaltet</span></label>
+                  <label><input type="radio" name="accountActive" value="nein"><span id="accountLockedText">Gesperrt</span></label>
+               </div>
+            </div>
+            <div class="account-danger" id="accountDanger">
+               <button type="button" class="button-secondary" id="accountReset">Neues Passwort vergeben</button>
+               <button type="button" class="button-quiet-danger" id="accountDelete">Konto endgültig löschen</button>
+            </div>
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-secondary" id="accountCancel">Abbrechen</button>
+               <button type="submit" class="button-primary" id="accountSave">Speichern</button>
+            </div>
+         </form>
+      </dialog>
       <dialog id="passwordDialog" class="confirm-dialog">
          <p id="passwordDialogText"></p>
          <output id="passwordDialogValue" class="password-output"></output>

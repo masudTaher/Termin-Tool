@@ -76,6 +76,32 @@
             <p id="fleetLogEmpty" class="directory-empty" hidden>Für diesen Tag gibt es noch keine Einträge.</p>
          </section>
       </main>
+
+      <!-- Einen Eintrag des Protokolls korrigieren oder löschen -->
+      <dialog id="handoverEditDialog" class="confirm-dialog absence-dialog" aria-labelledby="handoverEditTitle">
+         <form id="handoverEditForm" class="fleet-form" novalidate>
+            <h2 id="handoverEditTitle">Eintrag korrigieren</h2>
+            <p class="field-hint" id="handoverEditInfo"></p>
+            <label for="handoverEditDriver">Fahrer/in</label>
+            <input id="handoverEditDriver" type="text" maxlength="100" list="knownDrivers" autocomplete="off" required>
+            <div class="time-pair">
+               <label class="time-box" for="handoverEditStart"><span>Beginn</span><input id="handoverEditStart" type="time" required></label>
+               <label class="time-box" for="handoverEditEnd"><span>Übergabe / Ende</span><input id="handoverEditEnd" type="time"><small>leer = noch unterwegs</small></label>
+            </div>
+            <div class="time-pair">
+               <label class="time-box" for="handoverEditStartKm"><span>Kilometer bei Beginn</span><input id="handoverEditStartKm" type="number" inputmode="numeric" min="0" step="1"></label>
+               <label class="time-box" for="handoverEditEndKm"><span>Kilometer am Ende</span><input id="handoverEditEndKm" type="number" inputmode="numeric" min="0" step="1"></label>
+            </div>
+            <label for="handoverEditNote">Notiz</label>
+            <input id="handoverEditNote" type="text" maxlength="200">
+            <p id="handoverEditStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-quiet-danger" id="handoverEditDelete">Eintrag löschen</button>
+               <button type="button" class="button-secondary" id="handoverEditCancel">Abbrechen</button>
+               <button type="submit" class="button-primary" id="handoverEditSave">Speichern</button>
+            </div>
+         </form>
+      </dialog>
       <script src="workflowStorage.js"></script>
       <script src="teamDirectory.js"></script>
       <script src="fleetStore.js"></script>

@@ -14,6 +14,33 @@
                <div><p class="page-kicker">ÜBERSICHT</p><h1 id="startGreeting">Guten Tag</h1><p id="startToday"></p></div>
             </div>
 
+            <!-- Heute live: der Stand aus der Datenbank – auf dem Handy der schnellste Blick auf den Tag -->
+            <section class="start-section start-live" id="startLive" aria-labelledby="startLiveTitle" hidden>
+               <div class="start-live-head">
+                  <h2 id="startLiveTitle" class="start-section-title">Heute live</h2>
+                  <span id="startLiveTime" class="start-live-time" role="status"></span>
+                  <button type="button" id="startLiveReload" class="button-quiet">Aktualisieren</button>
+               </div>
+               <div class="live-tiles">
+                  <a class="overview-card overview-card-open" href="termineTracking.html"><span class="overview-label">Termine offen</span><strong id="liveOpen">–</strong><small id="liveOpenSub"></small></a>
+                  <a class="overview-card overview-card-departed" href="dolmetscher.html"><span class="overview-label">Unterwegs</span><strong id="liveOut">0</strong><small id="liveOutSub"></small></a>
+                  <a class="overview-card overview-card-done" href="dolmetscher.html"><span class="overview-label">Dolmetscher frei</span><strong id="liveFree">0</strong><small id="liveFreeSub"></small></a>
+                  <a class="overview-card overview-card-cancelled" href="dolmetscher.html"><span class="overview-label">Abwesend</span><strong id="liveAway">0</strong><small id="liveAwaySub"></small></a>
+                  <a class="overview-card overview-card-reserved" href="fahrzeugakte.html"><span class="overview-label">Fahrzeuge draußen</span><strong id="liveCars">0</strong><small id="liveCarsSub"></small></a>
+               </div>
+               <div class="live-columns">
+                  <div class="directory-card live-card">
+                     <h3 class="people-heading">Gerade unterwegs</h3>
+                     <ul id="liveRunning" class="live-list"></ul>
+                  </div>
+                  <div class="directory-card live-card">
+                     <h3 class="people-heading" id="liveTomorrowTitle">Morgen</h3>
+                     <p id="liveTomorrow" class="live-tomorrow"></p>
+                     <a id="liveTomorrowLink" class="button-secondary live-link" href="dolmetscher.html?tag=morgen">Wer kommt morgen?</a>
+                  </div>
+               </div>
+            </section>
+
             <section class="start-section" aria-labelledby="startFlowTitle">
                <h2 id="startFlowTitle" class="start-section-title">Tagesablauf – in zwei Schritten</h2>
                <div class="flow-steps">
@@ -64,6 +91,8 @@
       <script src="cloudClient.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="absenceLogic.js"></script>
+      <script src="peopleLive.js"></script>
       <script src="startApp.js"></script>
    </body>
 </html>

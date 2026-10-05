@@ -55,6 +55,7 @@
             client.from('tt_days').select('*').gte('date', range.start).lte('date', range.end),
             client.from('tt_profiles').select('*').order('full_name')
         ]);
+        if (window.PhotoRequest) await PhotoRequest.load().catch(() => []);
         const statementResult = await client.from('tt_statements').select('*').eq('month', month);
         statements = statementResult.error ? [] : statementResult.data;
         const failed = [receiptResult, specialResult, payrollResult, monthResult].find(item => item.error);
@@ -100,7 +101,15 @@
         $('sumPersons').textContent = `${result.rows.length} Personen · ${range.label}`;
         $('sumTotal').textContent = euro(result.totals.total);
         const check = $('payrollCheck');
-        check.textContent = result.checks.length ? `Noch offen: ${result.checks.join(' · ')}` : 'Alles in Ordnung – alle Personen haben Arbeitstage, alle Belege und Sondertage sind geklärt.';
+        // Bei vielen Personen wird die Namensliste gekürzt (die volle Liste steht im Hinweis beim Darüberfahren und unten in der Endliste).
+        const compactCheck = text => {
+            const cut = text.indexOf(': ');
+            if (cut < 0) return text;
+            const names = text.slice(cut + 2).split(', ');
+            return names.length > 6 ? `${text.slice(0, cut)}: ${names.length} Personen (${names.slice(0, 3).join(', ')} und ${names.length - 3} weitere)` : text;
+        };
+        check.textContent = result.checks.length ? `Noch offen: ${result.checks.map(compactCheck).join(' · ')}` : 'Alles in Ordnung – alle Personen haben Arbeitstage, alle Belege und Sondertage sind geklärt.';
+        check.title = result.checks.length ? result.checks.join('\n') : '';
         check.dataset.kind = result.checks.length ? 'warn' : 'ok';
 
         $('payrollNames').replaceChildren(...result.rows.map(row => { const option = el('option'); option.value = row.name; return option; }));
@@ -165,18 +174,58 @@
             if (row.statement?.response_note) state.title = row.statement.response_note;
             portalCell.append(account, state);
             if (row.statement?.response === 'einwand') portalCell.append(el('small', 'payroll-sub payroll-objection', `„${row.statement.response_note}“`));
-            const actionCell = el('td');
+            // Zwei Zeilen statt vier: oben die beiden Hauptknöpfe nebeneinander, darunter klein die Korrekturen.
+            const actionCell = el('td', 'payroll-actions');
+            const mainActions = el('div', 'payroll-actions-main');
+            const moreActions = el('div', 'payroll-actions-more');
+            actionCell.append(mainActions, moreActions);
             const release = el('button', 'button-primary fleet-end-button', row.statement ? 'Neu freigeben' : 'Freigeben');
             release.type = 'button';
             release.title = 'Abrechnung für diese Person im Portal sichtbar machen';
             release.disabled = !row.profileId || row.salary == null;
             release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} freigegeben`, 'success'); await refresh(); } });
-            actionCell.append(release);
-            const print = el('button', 'button-secondary fleet-end-button', 'Abrechnung');
+            mainActions.append(release);
+            // Drucken und Entfernen als Symbol-Knöpfe: so bleibt jede Person eine flache Zeile (wichtig bei 40 Namen).
+            const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
+            print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span class="visually-hidden">Abrechnung</span>';
             print.type = 'button';
             print.title = 'Abrechnung der Belege für diese Person drucken';
+            print.setAttribute('aria-label', `Abrechnung für ${row.name} drucken`);
             print.addEventListener('click', () => printPerson(row));
-            actionCell.append(print);
+            mainActions.append(print);
+            // Eine freigegebene Abrechnung lässt sich wieder aus dem Portal nehmen (z. B. wenn sie zu früh oder falsch freigegeben wurde).
+            if (row.statement) {
+                const withdraw = el('button', 'button-quiet-danger', 'Freigabe zurückziehen');
+                withdraw.type = 'button';
+                withdraw.addEventListener('click', async () => {
+                    const answered = row.statement.response !== 'offen' ? ` ${row.name} hat sie bereits ${row.statement.response === 'bestätigt' ? 'bestätigt' : 'mit einem Einwand beantwortet'} – auch diese Antwort wird gelöscht.` : '';
+                    if (!await confirmDialog(`Die Abrechnung ${Abrechnung.monthRange(month).label} für ${row.name} wieder aus dem Portal nehmen?${answered}\n\nDie Zahlen hier bleiben erhalten; du kannst jederzeit neu freigeben.`, 'Freigabe zurückziehen')) return;
+                    const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                    showToast(`Freigabe für ${row.name} zurückgezogen.`, 'success');
+                    await refresh();
+                    window.refreshCloudInbox?.();
+                });
+                moreActions.append(withdraw);
+            }
+            // Eine von Hand hinzugefügte Person (oder ihre Einträge für diesen Monat) wieder aus der Endliste nehmen.
+            if (payroll.some(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name))) {
+                const remove = el('button', 'button-quiet-danger payroll-icon-button');
+                remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg><span class="visually-hidden">Entfernen</span>';
+                remove.type = 'button';
+                remove.title = 'Arbeitstage, Bemerkung und Konto-Verknüpfung dieser Person für diesen Monat löschen';
+                remove.setAttribute('aria-label', `${row.name} aus der Endliste nehmen`);
+                remove.addEventListener('click', async () => {
+                    const stays = row.workdaysAuto ? `\n\n${row.name} bleibt in der Liste, weil im Tagesarchiv ${row.workdaysAuto} ${row.workdaysAuto === 1 ? 'Arbeitstag steht' : 'Arbeitstage stehen'} – es werden nur die hier eingetragenen Angaben gelöscht.` : '';
+                    if (!await confirmDialog(`Die Einträge für ${row.name} im ${Abrechnung.monthRange(month).label} löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${stays}\n\nBelege und Sondertage bleiben erhalten.`, 'Entfernen')) return;
+                    const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
+                    const { error } = await client.from('tt_payroll').delete().eq('month', month).eq('person_name', existing.person_name);
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                    showToast(`${row.name}: Einträge für diesen Monat gelöscht.`, 'success');
+                    await refresh();
+                });
+                mainActions.append(remove);
+            }
             tr.append(nameCell, daysCell, el('td', null, row.specialText || '–'), el('td', 'payroll-number', row.receiptCount ? `${euro(row.receiptSum)} (${row.receiptCount})` : '–'),
                 el('td', 'payroll-number', row.salary == null ? '–' : euro(row.salary)), el('td', 'payroll-number payroll-total', row.total == null ? '–' : euro(row.total)), remarkCell, portalCell, actionCell);
             body.append(tr);
@@ -241,6 +290,14 @@
     });
 
     // ---------- Sondertage ----------
+    function editButton(label, onEdit) {
+        const button = el('button', 'button-quiet', 'Korrigieren');
+        button.type = 'button';
+        button.setAttribute('aria-label', label);
+        button.addEventListener('click', onEdit);
+        return button;
+    }
+
     function deleteButton(label, onDelete) {
         const button = el('button', 'button-quiet-danger', 'Löschen');
         button.type = 'button';
@@ -274,10 +331,12 @@
             });
             countsCell.append(select);
             const actionCell = el('td');
-            actionCell.append(deleteButton(`Sondertag von ${item.person_name} löschen`, async () => {
+            actionCell.append(editButton(`Sondertag von ${item.person_name} korrigieren`, () => editSpecial(item)), deleteButton(`Sondertag von ${item.person_name} löschen`, async () => {
+                if (!await confirmDialog(`Den Sondertag von ${item.person_name} am ${Abrechnung.longDate(item.date)} (${euro(item.amount)}) löschen?`, 'Löschen')) return;
                 const { error } = await client.from('tt_special_days').delete().eq('id', item.id);
                 if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
                 specialDays = specialDays.filter(other => other.id !== item.id);
+                if (editingSpecial === item.id) cancelSpecialEdit();
                 render();
             }));
             tr.append(el('td', null, item.person_name), el('td', null, Abrechnung.longDate(item.date)), el('td', null, item.job || '–'), el('td', 'payroll-number', euro(item.amount)), countsCell, el('td', null, [item.mark, item.hint].filter(Boolean).join(' · ') || '–'), actionCell);
@@ -285,15 +344,43 @@
         });
     }
 
+    // Korrigieren: Der Eintrag wird ins Formular darüber geladen und beim Speichern geändert statt neu angelegt.
+    let editingSpecial = null;
+    function editSpecial(item) {
+        editingSpecial = item.id;
+        $('specialName').value = item.person_name;
+        $('specialDate').value = item.date;
+        $('specialJob').value = item.job || '';
+        $('specialAmount').value = String(Number(item.amount));
+        $('specialCounts').value = item.counts;
+        $('specialHint').value = item.hint || '';
+        $('specialSubmit').textContent = 'Änderung speichern';
+        $('specialEditCancel').hidden = false;
+        $('specialForm').classList.add('is-editing');
+        $('specialForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('specialAmount').focus({ preventScroll: true });
+    }
+    function cancelSpecialEdit() {
+        editingSpecial = null;
+        $('specialForm').reset();
+        $('specialSubmit').textContent = 'Sondertag speichern';
+        $('specialEditCancel').hidden = true;
+        $('specialForm').classList.remove('is-editing');
+    }
+    $('specialEditCancel').addEventListener('click', cancelSpecialEdit);
+
     $('specialForm').addEventListener('submit', async event => {
         event.preventDefault();
-        const row = { person_name: $('specialName').value.trim().replace(/\s+/g, ' '), date: $('specialDate').value, job: $('specialJob').value.trim(), amount: Number($('specialAmount').value), counts: $('specialCounts').value, hint: $('specialHint').value.trim(), source: 'manuell' };
+        const row = { person_name: $('specialName').value.trim().replace(/\s+/g, ' '), date: $('specialDate').value, job: $('specialJob').value.trim(), amount: Number($('specialAmount').value), counts: $('specialCounts').value, hint: $('specialHint').value.trim() };
         const range = Abrechnung.monthRange(month);
         if (row.date < range.start || row.date > range.end) { showToast(`Das Datum liegt nicht im ${range.label}.`, 'error'); return; }
-        const { error } = await client.from('tt_special_days').insert(row);
+        const { error } = editingSpecial
+            ? await client.from('tt_special_days').update(row).eq('id', editingSpecial)
+            : await client.from('tt_special_days').insert({ ...row, source: 'manuell' });
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        event.target.reset();
-        showToast('Sondertag gespeichert', 'success');
+        const changed = Boolean(editingSpecial);
+        cancelSpecialEdit();
+        showToast(changed ? 'Sondertag geändert' : 'Sondertag gespeichert', 'success');
         await refresh();
     });
 
@@ -319,6 +406,14 @@
                 open.addEventListener('click', () => showPhoto(item.photo_path));
                 photoCell.append(open);
             } else photoCell.textContent = '–';
+            // Beleg aus dem Portal: Ist das Foto unleserlich (oder fehlt es), die Person um ein neues bitten.
+            if (window.PhotoRequest && item.profile_id && item.source === 'portal') {
+                photoCell.classList.add('photo-cell');
+                photoCell.append(PhotoRequest.button({ kind: 'beleg', refId: item.id, profileId: item.profile_id, profileName: item.person_name,
+                    title: ['Beleg', item.place, euro(item.amount), Abrechnung.longDate(item.date)].filter(Boolean).join(' · '), paths: [item.photo_path] }, render));
+                const state = PhotoRequest.pill(item.id);
+                if (state) photoCell.append(state);
+            }
             const statusCell = el('td');
             const select = el('select');
             [['eingereicht', 'Eingereicht'], ['geprüft', 'Geprüft'], ['abgelehnt', 'Abgelehnt']].forEach(([value, text]) => { const option = el('option', null, text); option.value = value; option.selected = item.status === value; select.append(option); });
@@ -331,16 +426,46 @@
             });
             statusCell.append(select);
             const actionCell = el('td');
-            actionCell.append(deleteButton(`Beleg von ${item.person_name} löschen`, async () => {
+            actionCell.append(editButton(`Beleg von ${item.person_name} korrigieren`, () => editReceipt(item)), deleteButton(`Beleg von ${item.person_name} löschen`, async () => {
+                if (!await confirmDialog(`Den Beleg von ${item.person_name} vom ${Abrechnung.longDate(item.date)} (${euro(item.amount)}) löschen?${item.photo_path ? ' Auch das Foto wird gelöscht.' : ''}`, 'Löschen')) return;
                 const { error } = await client.from('tt_receipts').delete().eq('id', item.id);
                 if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                if (item.photo_path) await client.storage.from('schaeden').remove([item.photo_path]).catch(() => null);
                 receipts = receipts.filter(other => other.id !== item.id);
+                if (editingReceipt === item.id) cancelReceiptEdit();
                 render();
+                window.refreshCloudInbox?.();
             }));
             tr.append(el('td', null, item.person_name), el('td', null, Abrechnung.longDate(item.date)), el('td', null, item.place || '–'), el('td', 'payroll-number', euro(item.amount)), el('td', null, [item.kind, item.proof].filter(Boolean).join(' · ')), el('td', null, item.note || '–'), photoCell, statusCell, actionCell);
             body.append(tr);
         });
     }
+
+    // Korrigieren: Der Beleg wird ins Formular darüber geladen und beim Speichern geändert statt neu angelegt.
+    let editingReceipt = null;
+    function editReceipt(item) {
+        editingReceipt = item.id;
+        $('receiptName').value = item.person_name;
+        $('receiptDate').value = item.date;
+        $('receiptPlace').value = item.place || '';
+        $('receiptAmount').value = String(Number(item.amount));
+        $('receiptKind').value = item.kind;
+        if ([...$('receiptProof').options].some(option => option.value === item.proof)) $('receiptProof').value = item.proof;
+        $('receiptNote').value = item.note || '';
+        $('receiptSubmit').textContent = 'Änderung speichern';
+        $('receiptEditCancel').hidden = false;
+        $('receiptForm').classList.add('is-editing');
+        $('receiptForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('receiptAmount').focus({ preventScroll: true });
+    }
+    function cancelReceiptEdit() {
+        editingReceipt = null;
+        $('receiptForm').reset();
+        $('receiptSubmit').textContent = 'Beleg speichern';
+        $('receiptEditCancel').hidden = true;
+        $('receiptForm').classList.remove('is-editing');
+    }
+    $('receiptEditCancel').addEventListener('click', cancelReceiptEdit);
 
     $('receiptForm').addEventListener('submit', async event => {
         event.preventDefault();
@@ -348,12 +473,17 @@
         const row = { person_name: name, profile_id: profiles.find(item => Abrechnung.key(item.full_name) === Abrechnung.key(name))?.id || null, date: $('receiptDate').value, place: $('receiptPlace').value.trim(), amount: Number($('receiptAmount').value), kind: $('receiptKind').value, proof: $('receiptProof').value, note: $('receiptNote').value.trim(), status: 'geprüft', source: 'manuell' };
         const range = Abrechnung.monthRange(month);
         if (row.date < range.start || row.date > range.end) { showToast(`Das Datum liegt nicht im ${range.label}.`, 'error'); return; }
-        const { error } = await client.from('tt_receipts').insert(row);
+        // Beim Korrigieren bleiben Status, Herkunft und Foto des Belegs, wie sie sind.
+        const changes = { person_name: row.person_name, profile_id: row.profile_id, date: row.date, place: row.place, amount: row.amount, kind: row.kind, proof: row.proof, note: row.note };
+        const { error } = editingReceipt
+            ? await client.from('tt_receipts').update(changes).eq('id', editingReceipt)
+            : await client.from('tt_receipts').insert(row);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        const changed = Boolean(editingReceipt);
         const keepName = name;
-        event.target.reset();
-        $('receiptName').value = keepName;
-        showToast('Beleg gespeichert', 'success');
+        cancelReceiptEdit();
+        if (!changed) $('receiptName').value = keepName;
+        showToast(changed ? 'Beleg geändert' : 'Beleg gespeichert', 'success');
         await refresh();
     });
 

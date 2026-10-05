@@ -72,6 +72,11 @@
                   <label><input type="radio" name="signUpEmployment" value="temporär" required><span>Temporär</span></label>
                   <label><input type="radio" name="signUpEmployment" value="fest"><span>Fest angestellt</span></label>
                </div>
+               <span class="field-label" id="signUpGenderLabel">Du bist …</span>
+               <div class="segmented" role="radiogroup" aria-labelledby="signUpGenderLabel">
+                  <label><input type="radio" name="signUpGender" value="weiblich" required><span>Dolmetscherin</span></label>
+                  <label><input type="radio" name="signUpGender" value="männlich"><span>Dolmetscher</span></label>
+               </div>
                <label for="signUpEmail">E-Mail</label>
                <input id="signUpEmail" type="email" autocomplete="email" required>
                <label for="signUpPassword">Passwort (mindestens 8 Zeichen)</label>
@@ -108,6 +113,8 @@
             <!-- ===== Bereich 1: Fahrzeug (Startseite) ===== -->
             <section data-panel="vehicle" class="portal-page" aria-labelledby="helloTitle">
                <div class="portal-hello"><h1 id="helloTitle">Hallo</h1><p id="helloDate"></p></div>
+               <ul id="requestBanner" class="request-banner" aria-label="Bitten der Einsatzleitung" hidden></ul>
+               <ul id="planBanner" class="request-banner plan-banner" aria-label="Fragen der Einsatzleitung" hidden></ul>
                <ul id="startNotices" class="start-notices"></ul>
                <p id="fuelCardBanner" class="fuel-card-banner" hidden></p>
 
@@ -163,7 +170,9 @@
                <div data-take-step="1">
                   <h2 id="takeTitle" class="wizard-title">Welches Auto nimmst du?</h2>
                   <p class="wizard-hint">Es werden nur freie Fahrzeuge angezeigt.</p>
+                  <div class="car-search" id="takeSearchRow" hidden><input id="takeSearch" type="search" inputmode="search" autocomplete="off" aria-label="Kennzeichen suchen" placeholder="Kennzeichen suchen, z. B. 0 152"></div>
                   <div id="takeCars" class="car-list"></div>
+                  <p id="takeNoMatch" class="directory-empty" hidden>Kein freies Fahrzeug mit diesem Kennzeichen. Prüfe die Eingabe – oder das Auto ist gerade vergeben oder in der Werkstatt.</p>
                </div>
 
                <div data-take-step="2" hidden>
@@ -282,6 +291,37 @@
                   <button type="submit" class="button-primary big-button">Meldung senden</button>
                </form>
                <ul id="openAlerts" class="directory-list portal-list"></ul>
+            </section>
+
+            <!-- ===== Bitte der Einsatzleitung: neues Foto ===== -->
+            <section class="directory-card" data-panel="requests" aria-labelledby="requestTitle" hidden>
+               <button type="button" class="back-button" data-go="vehicle">← Zurück</button>
+               <h2 id="requestTitle" class="wizard-title">Bitte neues Foto</h2>
+               <p class="wizard-hint" id="requestWhat"></p>
+               <blockquote id="requestMessage" class="request-message"></blockquote>
+               <p class="field-hint" id="requestFrom"></p>
+               <span class="field-label" id="requestOldLabel">Bisher gesendet</span>
+               <div id="requestOld" class="request-photos"></div>
+               <div id="requestPhotoPart" class="fleet-form">
+                  <span class="field-label">Neues Foto</span>
+                  <div id="requestNew" class="request-photos"></div>
+                  <div class="doc-capture request-capture">
+                     <label class="button-primary big-button doc-capture-button" for="requestCamera">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
+                        <span id="requestCameraLabel">Foto aufnehmen</span>
+                     </label>
+                     <input id="requestCamera" class="visually-hidden" type="file" accept="image/*" capture="environment">
+                     <label class="button-secondary doc-gallery-button" for="requestGallery">Foto aus der Galerie wählen</label>
+                     <input id="requestGallery" class="visually-hidden" type="file" accept="image/*" multiple>
+                  </div>
+                  <label for="requestNote">Hinweis <span class="optional-label">optional</span></label>
+                  <input id="requestNote" type="text" maxlength="300" placeholder="Zum Beispiel: jetzt bei Tageslicht aufgenommen">
+                  <button type="button" id="requestSend" class="button-primary big-button" disabled>Neues Foto senden</button>
+               </div>
+               <div id="requestDocPart" class="fleet-form" hidden>
+                  <p class="field-hint">Du fotografierst die Unterlage noch einmal Seite für Seite. Patient, Arzt und Art sind schon eingetragen.</p>
+                  <button type="button" id="requestRetake" class="button-primary big-button">Unterlage neu fotografieren</button>
+               </div>
             </section>
 
             <!-- ===== Bereich 2: Aufträge ===== -->
@@ -416,6 +456,12 @@
 
             <!-- ===== Bereich 3 (fest): Überstunden ===== -->
             <div data-panel="overtime" class="portal-page" hidden>
+               <!-- Zwei Teile: Überstunden melden · Urlaub beantragen, Krankheit oder Notfall melden -->
+               <div class="portal-tabs zeiten-tabs" id="zeitenTabs" role="tablist" aria-label="Zeiten" hidden>
+                  <button type="button" role="tab" data-zeiten-tab="overtime" class="is-active" aria-selected="true">Überstunden</button>
+                  <button type="button" role="tab" data-zeiten-tab="absence" aria-selected="false">Urlaub · Krank · Notfall<b class="count-badge" id="zeitenBadge" hidden></b></button>
+               </div>
+               <div data-zeiten="overtime">
                <section class="directory-card" aria-labelledby="overtimeTitle">
                   <h2 id="overtimeTitle" class="wizard-title">Überstunden melden</h2>
                   <p class="wizard-hint" id="overtimeHint">Arbeitszeit ist 9 bis 16 Uhr. Alles davor oder danach zählt.</p>
@@ -441,6 +487,31 @@
                   <p class="wizard-hint" id="overtimeSummary">Wird geladen …</p>
                   <div class="portal-tabs" id="overtimeMonths"></div>
                   <ul id="overtimeList" class="directory-list portal-list"></ul>
+               </section>
+               </div>
+               <!-- Urlaub beantragen, Krankheit oder Notfall melden (nur fest angestellt) -->
+               <section class="directory-card" aria-labelledby="absenceTitle" id="absenceCard" data-zeiten="absence" hidden>
+                  <h2 id="absenceTitle" class="wizard-title">Urlaub, Krankheit, Notfall</h2>
+                  <p class="wizard-hint">Urlaub beantragst du hier. Krankheit oder einen Notfall meldest du sofort – die Einsatzleitung bekommt eine Mitteilung.</p>
+                  <form id="absenceForm" class="fleet-form" novalidate>
+                     <span class="field-label" id="absenceKindLabel">Worum geht es?</span>
+                     <div class="segmented" role="radiogroup" aria-labelledby="absenceKindLabel">
+                        <label><input type="radio" name="absenceKind" value="urlaub" checked><span>Urlaub</span></label>
+                        <label><input type="radio" name="absenceKind" value="krank"><span>Krank</span></label>
+                        <label><input type="radio" name="absenceKind" value="notfall"><span>Notfall</span></label>
+                     </div>
+                     <div class="time-pair">
+                        <label class="time-box" for="absenceFrom"><span>Von</span><input id="absenceFrom" type="date"></label>
+                        <label class="time-box" for="absenceTo"><span>Bis einschließlich</span><input id="absenceTo" type="date"></label>
+                     </div>
+                     <p id="absenceDays" class="overtime-result" data-kind="empty">Wähle die Tage.</p>
+                     <label for="absenceNote">Hinweis <span class="optional-label">optional</span></label>
+                     <input id="absenceNote" type="text" maxlength="200" placeholder="Zum Beispiel: Familienbesuch">
+                     <button type="submit" class="button-primary big-button" id="absenceSubmit">Urlaub beantragen</button>
+                  </form>
+                  <h3 class="card-title absence-list-title">Meine Anträge und Meldungen</h3>
+                  <p class="wizard-hint" id="absenceSummary">Wird geladen …</p>
+                  <ul id="absenceList" class="directory-list portal-list"></ul>
                </section>
             </div>
 
@@ -536,6 +607,15 @@
       <!-- Untere Leiste: fünf feste Bereiche (je nach Anstellung) -->
       <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden></nav>
 
+      <!-- Einmalige Angabe für Konten, die es schon gab, bevor danach gefragt wurde -->
+      <dialog id="genderDialog" class="confirm-dialog gender-dialog" aria-labelledby="genderDialogTitle">
+         <h2 id="genderDialogTitle">Eine kurze Angabe</h2>
+         <p>Für die Planung der Termine braucht die Einsatzleitung diese Angabe. Du wirst nur einmal gefragt.</p>
+         <div class="gender-choice">
+            <button type="button" class="button-primary big-button" data-gender="weiblich">Dolmetscherin</button>
+            <button type="button" class="button-primary big-button" data-gender="männlich">Dolmetscher</button>
+         </div>
+      </dialog>
       <!-- Bestätigung nach Übernahme / Rückgabe -->
       <div id="successOverlay" class="success-overlay" role="status" aria-live="assertive" hidden>
          <div class="success-card">
@@ -555,5 +635,8 @@
       <script src="docPdf.js"></script>
       <script src="portalApp.js"></script>
       <script src="portalDocs.js"></script>
+      <script src="portalRequests.js"></script>
+      <script src="absenceLogic.js"></script>
+      <script src="portalPlan.js"></script>
    </body>
 </html>

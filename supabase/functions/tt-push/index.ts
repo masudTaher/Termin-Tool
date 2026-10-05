@@ -1,12 +1,16 @@
 // Medical Office Bonn · Transport und Dolmetscher · Server-Funktion "tt-push"
 // Aufgaben:
 //   publicKey      – öffentlichen Schlüssel für Mitteilungen liefern (legt das Schlüsselpaar beim ersten Mal an)
-//   notify         – Mitteilung aufs Handy senden (nur Einsatzleitung/Sekretariat)
+//   notify         – Mitteilung aufs Handy senden (nur Einsatzleitung/Sekretariat); „page“ wählt die Seite, die sich öffnet
 //   remind         – Erinnerungen (ruft die Datenbank alle 10 Minuten auf):
 //                    · ab 16 Uhr an die Rückgabe des Fahrzeugs (je Person einmal am Tag)
 //                    · Auftrag gestartet, aber nicht beendet: nach 4 Stunden, danach alle 2 Stunden (Nachtruhe 22–7 Uhr)
+//                    · Wochenplan der temporären Dolmetscher: Freitag 15 Uhr die Frage nach den Arbeitstagen der
+//                      nächsten Woche, Samstag und Sonntag um 11 Uhr eine Erinnerung an alle, die noch nichts eingetragen haben
 //   progress       – „Losgefahren“ / „Fertig“ eines Dolmetschers an die Einsatzleitung melden
+//   absence        – Urlaubsantrag, Krankmeldung oder Notfall einer fest angestellten Person an die Einsatzleitung melden
 //   resetPassword  – neues vorläufiges Passwort für ein Konto vergeben (nur Admin)
+//   deleteAccount  – ein Konto endgültig löschen (nur Admin; nie das eigene, nie ein Admin-Konto)
 // Einrichtung: Supabase → Edge Functions → neue Funktion "tt-push" → diesen Text einfügen → Deploy.
 // Der Schalter "Verify JWT" darf an oder aus sein – die Funktion prüft die Anmeldung selbst.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -71,10 +75,19 @@ async function sendTo(profileIds: string[], payload: { title: string; body: stri
 function berlinNow() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(new Date());
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) % 24 };
+  const date = `${get('year')}-${get('month')}-${get('day')}`;
+  // Wochentag des Berliner Datums: 0 = Sonntag … 5 = Freitag, 6 = Samstag
+  return { date, hour: Number(get('hour')) % 24, weekday: new Date(`${date}T12:00:00Z`).getUTCDay() };
 }
 
 const HOUR = 60 * 60 * 1000;
+// Rechnen mit Datumsangaben der Form 2026-10-09 (ohne Uhrzeit, also ohne Zeitzonen-Fallen)
+const addDays = (isoDate: string, count: number) => {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+};
+const deDate = (isoDate: string) => `${isoDate.slice(8, 10)}.${isoDate.slice(5, 7)}.`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -133,7 +146,34 @@ Deno.serve(async (req) => {
           jobs += 1;
         }
       }
-      return json({ reminded, open, jobs });
+      // 3) Wochenplan der temporären Dolmetscher: Freitag ab 15 Uhr die Frage nach den Arbeitstagen der nächsten Woche,
+      //    Samstag und Sonntag ab 11 Uhr eine Erinnerung – nur an Personen, die für die nächste Woche noch keinen Tag
+      //    eingetragen haben. Jede der drei Stufen geht je Woche genau einmal hinaus (Merkzettel tt_push_log).
+      let plan = 0;
+      const stage = now.weekday === 5 && now.hour >= 15 ? 'fr' : now.weekday === 6 && now.hour >= 11 ? 'sa' : now.weekday === 0 && now.hour >= 11 ? 'so' : '';
+      if (stage && now.hour < 21) {
+        const monday = addDays(now.date, stage === 'fr' ? 3 : stage === 'sa' ? 2 : 1);
+        // Der Eintrag gelingt nur beim ersten Mal; fehlt die Tabelle noch (Update 15), wird nichts gesendet.
+        const { error: logError } = await admin.from('tt_push_log').insert({ key: `wochenplan:${monday}:${stage}` });
+        if (!logError) {
+          const [{ data: people }, { data: days }] = await Promise.all([
+            admin.from('tt_profiles').select('id').eq('active', true).eq('role', 'dolmetscher').eq('employment', 'temporär'),
+            admin.from('tt_workdays').select('user_id').gte('date', monday).lte('date', addDays(monday, 6)),
+          ]);
+          const answered = new Set((days ?? []).map((item) => item.user_id));
+          const waiting = (people ?? []).map((item) => item.id).filter((id) => !answered.has(id));
+          const week = `${deDate(monday)} bis ${deDate(addDays(monday, 4))}`;
+          const result = await sendTo(waiting, {
+            title: stage === 'fr' ? 'Wochenplan: Wann kannst du arbeiten?' : stage === 'sa' ? 'Erinnerung: Arbeitstage eintragen' : 'Letzte Erinnerung: Arbeitstage eintragen',
+            body: stage === 'fr'
+              ? `Bitte trag im Portal ein, an welchen Tagen du nächste Woche (${week}) arbeiten kannst.`
+              : `Für nächste Woche (${week}) fehlen noch deine Arbeitstage. Bitte trag sie im Portal ein.`,
+            url: 'portal.html?seite=arbeitstage', tag: 'wochenplan',
+          });
+          plan = result.sent;
+        }
+      }
+      return json({ reminded, open, jobs, plan });
     }
 
     const profile = await caller(req);
@@ -149,10 +189,17 @@ Deno.serve(async (req) => {
       else if (audience === 'fest' || audience === 'temporär') query = query.eq('employment', audience).eq('role', 'dolmetscher');
       else query = query.neq('id', profile.id);
       const { data: people } = await query;
+      // Wohin führt ein Tipp auf die Mitteilung? Nur diese Seiten des Portals sind erlaubt.
+      const pages: Record<string, string> = {
+        nachrichten: 'portal.html?seite=nachrichten', auftraege: 'portal.html?seite=auftraege', rueckfragen: 'portal.html?seite=rueckfragen',
+        start: 'portal.html', arbeitstage: 'portal.html?seite=arbeitstage', zeiten: 'portal.html?seite=zeiten',
+      };
+      const tags: Record<string, string> = { rueckfragen: 'rueckfrage', start: 'anfrage', arbeitstage: 'wochenplan', zeiten: 'abwesenheit' };
+      const page = String(input.page ?? 'nachrichten');
       const result = await sendTo((people ?? []).map((item) => item.id), {
         title: String(input.title ?? 'Nachricht von der Einsatzleitung').slice(0, 80),
         body: String(input.body ?? '').slice(0, 300),
-        url: 'portal.html?seite=nachrichten', tag: 'nachricht',
+        url: pages[page] ?? pages.nachrichten, tag: tags[page] ?? 'nachricht',
       });
       return json({ ...result, people: (people ?? []).length });
     }
@@ -170,6 +217,44 @@ Deno.serve(async (req) => {
         url: 'termineTracking.html', tag: `fortschritt-${job.id}`,
       });
       return json(result);
+    }
+
+    if (action === 'absence') {
+      // Eine fest angestellte Person hat Urlaub beantragt oder Krankheit / einen Notfall gemeldet:
+      // Mitteilung an Einsatzleitung und Sekretariat.
+      const { data: item } = await admin.from('tt_absences')
+        .select('id, profile_id, person_name, kind, date_from, date_to, note').eq('id', String(input.absenceId ?? '')).maybeSingle();
+      if (!item || item.profile_id !== profile.id) return json({ error: 'Eintrag nicht gefunden.' }, 404);
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const range = item.date_from === item.date_to ? deDate(item.date_from) : `${deDate(item.date_from)} bis ${deDate(item.date_to)}`;
+      const titles: Record<string, string> = { urlaub: 'Urlaubsantrag', krank: 'Krankmeldung', notfall: 'Notfall gemeldet' };
+      const result = await sendTo((staff ?? []).map((entry) => entry.id), {
+        title: titles[item.kind] ?? 'Abwesenheit gemeldet',
+        body: `${item.person_name || profile.full_name || 'Unbekannt'}: ${range}${item.note ? ` – ${String(item.note).slice(0, 120)}` : ''}`,
+        url: 'festangestellte.html?reiter=abwesenheiten', tag: `abwesenheit-${item.id}`,
+      });
+      return json(result);
+    }
+
+    if (action === 'deleteAccount') {
+      // Ein Konto endgültig löschen. Arbeitstage, Aufträge, Überstunden, Abrechnungen und Abwesenheiten der Person gehen mit;
+      // Fahrten, Schäden, Belege und Unterlagen bleiben erhalten (ohne Konto). Wer nur nicht mehr arbeiten soll, wird gesperrt.
+      if (profile.role !== 'admin') return json({ error: 'Nur der Admin darf Konten löschen.' }, 403);
+      const profileId = String(input.profileId ?? '');
+      if (!profileId || profileId === profile.id) return json({ error: 'Das eigene Konto kann hier nicht gelöscht werden.' }, 400);
+      const { data: target } = await admin.from('tt_profiles').select('id, full_name, role').eq('id', profileId).maybeSingle();
+      if (!target) return json({ error: 'Dieses Konto gibt es nicht (mehr).' }, 404);
+      if (target.role === 'admin') return json({ error: 'Ein Admin-Konto kann hier nicht gelöscht werden.' }, 400);
+      const name = target.full_name || 'Die Person';
+      const { data: trips } = await admin.from('tt_handovers').select('id').eq('driver_id', profileId).is('end_time', null);
+      if ((trips ?? []).length) return json({ error: `${name} hat gerade ein Fahrzeug. Bitte zuerst die Rückgabe eintragen.` }, 409);
+      const { data: cards } = await admin.from('tt_fuel_cards').select('number').eq('holder_id', profileId);
+      if ((cards ?? []).length) return json({ error: `${name} hat noch die Tankkarte ${cards?.[0]?.number ?? ''}. Bitte zuerst zurücknehmen.` }, 409);
+      const { error } = await admin.auth.admin.deleteUser(profileId);
+      if (error && !/not found/i.test(error.message ?? '')) return json({ error: error.message }, 400);
+      // Mit der Anmeldung verschwindet auch das Profil. Gab es die Anmeldung schon nicht mehr, wird das Profil hier entfernt.
+      await admin.from('tt_profiles').delete().eq('id', profileId);
+      return json({ deleted: true, name: target.full_name ?? '' });
     }
 
     if (action === 'resetPassword') {

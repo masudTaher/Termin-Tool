@@ -54,7 +54,7 @@
                      <div class="fleet-field"><label for="specialAmount">Betrag für den Tag (€)</label><input id="specialAmount" type="number" min="0" step="0.01" required></div>
                      <div class="fleet-field"><label for="specialCounts">Zählt</label><select id="specialCounts"><option>Ja</option><option>Nein</option><option>prüfen</option></select></div>
                      <div class="fleet-field fleet-field-wide"><label for="specialHint">Vermerk / Hinweis <span class="optional-label">optional</span></label><input id="specialHint" type="text" maxlength="300"></div>
-                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary">Sondertag speichern</button></div>
+                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary" id="specialSubmit">Sondertag speichern</button><button type="button" class="button-secondary" id="specialEditCancel" hidden>Abbrechen</button></div>
                   </form>
                   <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Einsatz</th><th>Betrag</th><th>Zählt</th><th>Vermerk / Hinweis</th><th>Aktion</th></tr></thead><tbody id="specialBody"></tbody></table></div>
                </div>
@@ -68,7 +68,7 @@
                      <div class="fleet-field"><label for="receiptKind">Art</label><select id="receiptKind"><option>Parken</option><option>Tanken</option><option>Sonstiges</option></select></div>
                      <div class="fleet-field"><label for="receiptProof">Nachweis</label><select id="receiptProof"><option>Parkbeleg</option><option>Parkschein</option><option>Kartenbeleg</option><option>Digitaler Beleg</option><option>Kontoumsatz (App)</option><option>Quittung</option><option>Sonstiges</option></select></div>
                      <div class="fleet-field fleet-field-wide"><label for="receiptNote">Bemerkung <span class="optional-label">optional</span></label><input id="receiptNote" type="text" maxlength="200"></div>
-                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary">Beleg speichern</button></div>
+                     <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary" id="receiptSubmit">Beleg speichern</button><button type="button" class="button-secondary" id="receiptEditCancel" hidden>Abbrechen</button></div>
                   </form>
                   <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Ort</th><th>Betrag</th><th>Art · Nachweis</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
                </div>
@@ -86,6 +86,7 @@
       <script src="teamDirectory.js"></script>
       <script src="fleetStore.js"></script>
       <script src="cloudClient.js"></script>
+      <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
       <script src="abrechnungLogic.js"></script>

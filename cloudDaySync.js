@@ -151,13 +151,21 @@
     // ---------- Dolmetscher aus dem Portal ----------
     // Jeder freigeschaltete Dolmetscher steht automatisch in der Dolmetscherliste (Vorschläge beim Eintippen).
     // Wer heute arbeiten kann (fest angestellt oder Tag als „verfügbar“ gemeldet), erscheint unter „Dolmetscher heute“.
-    function publishPeople(workdays) {
+    // Wer an dem Tag Urlaub hat, krank ist oder einen Notfall gemeldet hat, steht dort unter „Abwesend“.
+    function publishPeople(workdays, absences, date) {
         const available = new Map((workdays || []).map(item => [item.user_id, item.status]));
+        const away = new Map();
+        if (window.AbsenceLogic) (absences || []).forEach(item => { if (AbsenceLogic.blocksDay(item, date)) away.set(item.profile_id, item); });
         const interpreters = profiles.filter(item => item.active && item.role === 'dolmetscher' && String(item.full_name || '').trim());
         if (typeof addInterpreterName === 'function') interpreters.forEach(item => addInterpreterName(item.full_name));
         window.trackingPeopleOnline = interpreters
+            .filter(item => !away.has(item.id))
             .filter(item => item.employment === 'fest' ? available.get(item.id) !== 'nicht verfügbar' : available.get(item.id) === 'verfügbar')
-            .map(item => ({ name: String(item.full_name).trim(), employment: item.employment }));
+            .map(item => ({ name: String(item.full_name).trim(), employment: item.employment, gender: item.gender || '' }));
+        window.trackingPeopleAway = interpreters.filter(item => away.has(item.id))
+            .map(item => ({ name: String(item.full_name).trim(), gender: item.gender || '', reason: AbsenceLogic.awayText(away.get(item.id), date) }));
+        // Angabe weiblich/männlich für alle Konten – auch für Personen, die heute nicht als verfügbar gemeldet sind
+        window.trackingPeopleGender = new Map(interpreters.map(item => [String(item.full_name).trim().toLocaleLowerCase('de'), item.gender || '']));
         window.refreshInterpreterLoad?.();
     }
 
@@ -193,14 +201,15 @@
 
     // ---------- Aufträge ----------
     async function syncAssignments(date) {
-        const [{ data: assignments, error }, profileResult, workdayResult] = await Promise.all([
+        const [{ data: assignments, error }, profileResult, workdayResult, absenceResult] = await Promise.all([
             client.from('tt_assignments').select('*').eq('date', date),
-            client.from('tt_profiles').select('id, full_name, active, role, employment'),
-            client.from('tt_workdays').select('user_id, status').eq('date', date)
+            client.from('tt_profiles').select('*'),
+            client.from('tt_workdays').select('user_id, status').eq('date', date),
+            client.from('tt_absences').select('profile_id, kind, date_from, date_to, status, minutes').lte('date_from', date).gte('date_to', date)
         ]);
         if (error) return;
         profiles = profileResult.data || [];
-        publishPeople(workdayResult.error ? [] : workdayResult.data);
+        publishPeople(workdayResult.error ? [] : workdayResult.data, absenceResult.error ? [] : absenceResult.data, date);
         const byAppointment = new Map(assignments.map(item => [item.appointment_id, item]));
         const responses = new Map();
         let changed = false;

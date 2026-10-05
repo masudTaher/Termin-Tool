@@ -5,6 +5,7 @@
     const RESPONSE_LABEL = { offen: 'keine Antwort', zugesagt: 'Zusage', vorbehalt: 'Unter Vorbehalt', abgesagt: 'Absage' };
     const WORK_LABEL = { beendet: 'gearbeitet', alleine: 'Patient ging alleine', storniert: 'storniert', losgefahren: 'unterwegs', offen: 'offen' };
     let days = [];
+    let profile = null;
 
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -24,7 +25,6 @@
     async function refresh() {
         setStatus('');
         if (!client) { setStatus('Die Verbindung zur Datenbank konnte nicht geladen werden. Prüfe das Internet und lade die Seite neu.', 'error'); return; }
-        let profile;
         try { profile = await TerminCloud.getProfile(true); } catch (error) { setStatus(error.message, 'error'); return; }
         if (!TerminCloud.isStaff(profile)) {
             $('archiveApp').hidden = true;
@@ -39,7 +39,8 @@
             setStatus(`${TerminCloud.germanError(dayResult.error)} Falls die Tabelle fehlt: supabase/update-3.sql im SQL Editor ausführen.`, 'error');
             return;
         }
-        days = dayResult.data;
+        // Gelöschte Tage bleiben als leerer Eintrag mit Löschvermerken in der Datenbank (für den Abgleich) – hier erscheinen sie nicht.
+        days = dayResult.data.filter(day => Array.isArray(day.records) && day.records.length > 0);
         $('archiveApp').hidden = false;
         renderDays();
 
@@ -76,9 +77,41 @@
             open.type = 'button';
             open.addEventListener('click', () => openDay(day));
             action.append(open);
+            // Ein falsch geladener oder doppelter Tag lässt sich ganz entfernen – nur durch den Admin.
+            if (TerminCloud.isAdmin(profile)) {
+                const remove = el('button', 'button-quiet-danger', 'Löschen');
+                remove.type = 'button';
+                remove.setAttribute('aria-label', `Tag ${formatDate(day.date)} löschen`);
+                remove.addEventListener('click', () => deleteDay(day));
+                action.append(remove);
+            }
             row.append(action);
             body.append(row);
         });
+    }
+
+    // Löscht einen ganzen Tag: alle Termine und die dazu gesendeten Aufträge. Der Tag bleibt als leerer Eintrag mit
+    // Löschvermerken stehen – so verschwinden die Termine auch auf Geräten, die den Tag noch geöffnet haben.
+    async function deleteDay(day) {
+        const records = Array.isArray(day.records) ? day.records : [];
+        const jobResult = await client.from('tt_assignments').select('id').eq('date', day.date);
+        const jobs = jobResult.error ? 0 : jobResult.data.length;
+        const message = `Den Tag ${formatDate(day.date)} endgültig löschen?\n\n${records.length} ${records.length === 1 ? 'Termin wird' : 'Termine werden'} gelöscht${jobs ? ` – dazu ${jobs} ${jobs === 1 ? 'gesendeter Auftrag' : 'gesendete Aufträge'} im Portal der Dolmetscher` : ''}. Der Tag zählt dann auch nicht mehr für die Abrechnung und das Patienten-Archiv.\n\nUnterlagen, Fahrten und Überstunden dieses Tages bleiben erhalten. Das lässt sich nicht rückgängig machen.`;
+        if (!await confirmDialog(message, 'Tag löschen')) return;
+        const now = new Date().toISOString();
+        const tombstones = { ...(day.deleted || {}) };
+        records.forEach(record => { if (record._id) tombstones[record._id] = now; });
+        const { data, error } = await client.from('tt_days').update({ records: [], deleted: tombstones, archived: false, updated_at: now, updated_by: profile.full_name || '' }).eq('date', day.date).select();
+        if (error || !data?.length) { showToast(error ? TerminCloud.germanError(error) : 'Der Tag konnte nicht gelöscht werden.', 'error'); return; }
+        const jobDelete = await client.from('tt_assignments').delete().eq('date', day.date);
+        // Hält dieser Tab den Tag noch im Arbeitsstand, wird er auch hier geleert.
+        const local = readTerminRecords() || [];
+        if (local.some(record => typeof normalizeFleetDate === 'function' && normalizeFleetDate(String(record.Termin_Datum || '')) === day.date)) {
+            saveTerminRecords([], '', { filtered: [], removed: [] });
+            sessionStorage.removeItem('terminTool.trackingUndo.v1');
+        }
+        showToast(`Der Tag ${formatDate(day.date)} ist gelöscht.${jobDelete.error ? ' Die gesendeten Aufträge konnten nicht entfernt werden.' : ''}`, jobDelete.error ? 'error' : 'success');
+        await refresh();
     }
 
     // Lädt den Tag in den Arbeitsstand dieses Tabs; von dort aus sind Excel- und PDF-Export möglich.

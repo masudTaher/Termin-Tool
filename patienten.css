@@ -96,3 +96,16 @@
     .recipient-form { grid-template-columns: minmax(0, 1fr); }
     .forward-dialog, .report-dialog { padding: 16px; }
 }
+/* Zuständigkeit je Empfänger: welche Art von Unterlage geht automatisch an welche Stelle */
+.recipient-checks li.has-duty-editor { flex-wrap: wrap; }
+.recipient-checks small.recipient-duty { margin-top: 1px; color: var(--brand-dark); font-weight: 600; }
+.recipient-checks small.recipient-duty.is-open { color: var(--muted); font-weight: 400; font-style: italic; }
+.recipient-duty-editor { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 6px; padding-top: 8px; border-top: 1px dashed var(--line-strong); }
+.recipient-duty-title { flex: 1 0 100%; color: var(--muted); font-size: .8rem; font-weight: 600; }
+.duty-chip { min-height: 34px; padding: 5px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; }
+.duty-chip:hover { border-color: var(--brand); }
+.duty-chip[aria-pressed="true"] { border-color: var(--brand); background: var(--brand); color: #fff; }
+.duty-chip[aria-pressed="true"]::before { content: "✓ "; }
+.duty-chip:disabled { opacity: .6; cursor: progress; }
+.recipient-hint:empty { display: none; }
+.recipient-hint { margin: 2px 0 4px; }

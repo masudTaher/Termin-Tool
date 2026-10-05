@@ -205,7 +205,8 @@ function renderVehicleOptions(termin) {
     const selectedKey = normalizeFleetPlateKey(termin.Fahrzeug);
     const openToday = new Map(getTodaysOpenFleetHandovers().map(item => [item.vehicleId, item.driver]));
     const interpreter = getAppointmentInterpreterName(termin);
-    const vehicles = readActiveFleetVehicles();
+    // Fahrzeuge in der Werkstatt oder gesperrte werden nicht angeboten (außer es ist bereits eingetragen).
+    const vehicles = readActiveFleetVehicles().filter(vehicle => !vehicle.service || normalizeFleetPlateKey(vehicle.plate) === selectedKey);
     let hasSelected = !selectedKey;
     const options = vehicles.map(vehicle => {
         const selected = normalizeFleetPlateKey(vehicle.plate) === selectedKey;
@@ -302,6 +303,7 @@ function renderTrackingTable(data) {
 
 // ---------- Dolmetscher heute: wer ist frei, wer ist unterwegs, wie viele Aufträge hat jeder ----------
 let activeInterpreterIndex = null;      // Termin, dessen Dolmetscher-Feld zuletzt angeklickt wurde
+let peopleGenderFilter = '';            // '' = alle, sonst 'weiblich' oder 'männlich'
 
 function interpreterLoad(data = trackingData) {
     const load = new Map();
@@ -345,7 +347,18 @@ function refreshInterpreterLoad() {
         const entry = people.get(key) || { name: person.name, total: 0, open: 0, running: 0, done: 0 };
         people.set(key, { ...entry, employment: person.employment, online: true });
     });
-    const sorted = [...people.values()].sort((left, right) => left.total - right.total || left.name.localeCompare(right.name, 'de'));
+    // Dolmetscherin oder Dolmetscher? (aus dem Portal-Konto; wichtig, wenn ein Termin eine Frau oder einen Mann braucht)
+    const genders = window.trackingPeopleGender instanceof Map ? window.trackingPeopleGender : new Map();
+    people.forEach((entry, key) => { entry.gender = genders.get(key) || ''; });
+    const knownGender = [...people.values()].some(entry => entry.gender);
+    const genderBox = document.getElementById('peopleGender');
+    if (genderBox) {
+        genderBox.hidden = !knownGender;
+        if (!knownGender) peopleGenderFilter = '';
+        genderBox.querySelectorAll('[data-people-gender]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.peopleGender === peopleGenderFilter)));
+    }
+    const sorted = [...people.values()].filter(entry => !peopleGenderFilter || entry.gender === peopleGenderFilter)
+        .sort((left, right) => left.total - right.total || left.name.localeCompare(right.name, 'de'));
     const chip = entry => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -359,6 +372,14 @@ function refreshInterpreterLoad() {
         count.textContent = String(entry.total);
         count.dataset.load = entry.total >= 4 ? 'hoch' : entry.total === 3 ? 'mittel' : 'normal';
         button.append(name, count);
+        if (entry.gender) {
+            const sign = document.createElement('i');
+            sign.className = 'person-gender';
+            sign.textContent = entry.gender === 'weiblich' ? '♀' : '♂';
+            sign.title = entry.gender === 'weiblich' ? 'Dolmetscherin' : 'Dolmetscher';
+            sign.setAttribute('aria-label', sign.title);
+            button.insertBefore(sign, count);
+        }
         const meta = [entry.employment === 'fest' ? 'fest' : '', vehicle].filter(Boolean).join(' · ');
         if (meta) { const small = document.createElement('small'); small.textContent = meta; button.append(small); }
         button.addEventListener('click', () => assignFromPeoplePanel(entry.name));
@@ -367,12 +388,35 @@ function refreshInterpreterLoad() {
     const freeList = sorted.filter(entry => !entry.running);
     const busyList = sorted.filter(entry => entry.running);
     const empty = text => { const note = document.createElement('p'); note.className = 'people-empty'; note.textContent = text; return note; };
-    free.replaceChildren(...(freeList.length ? freeList.map(chip) : [empty('Im Moment ist niemand frei.')]));
+    free.replaceChildren(...(freeList.length ? freeList.map(chip) : [empty(peopleGenderFilter ? 'In dieser Auswahl ist im Moment niemand frei.' : 'Im Moment ist niemand frei.')]));
     busy.replaceChildren(...(busyList.length ? busyList.map(chip) : [empty('Niemand ist gerade unterwegs.')]));
-    document.getElementById('peopleSummary').textContent = people.size
-        ? `${freeList.length} frei · ${busyList.length} unterwegs`
+    // Abwesend (Urlaub, krank, Notfall): zur Auskunft – diese Namen lassen sich hier nicht eintragen.
+    const awayList = (window.trackingPeopleAway || []).filter(person => !peopleGenderFilter || person.gender === peopleGenderFilter);
+    const awayBox = document.getElementById('peopleAway');
+    if (awayBox) {
+        awayBox.hidden = !awayList.length;
+        document.getElementById('peopleAwayHeading').hidden = !awayList.length;
+        awayBox.replaceChildren(...awayList.map(person => {
+            const node = document.createElement('span');
+            node.className = 'person-chip is-away';
+            const name = document.createElement('span');
+            name.textContent = person.name;
+            const reason = document.createElement('small');
+            reason.textContent = person.reason;
+            node.append(name, reason);
+            return node;
+        }));
+    }
+    document.getElementById('peopleSummary').textContent = people.size || awayList.length
+        ? `${freeList.length} frei · ${busyList.length} unterwegs${awayList.length ? ` · ${awayList.length} abwesend` : ''}`
         : 'noch niemand eingeteilt';
 }
+document.getElementById('peopleGender')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-people-gender]');
+    if (!button) return;
+    peopleGenderFilter = button.dataset.peopleGender;
+    refreshInterpreterLoad();
+});
 
 function assignFromPeoplePanel(name) {
     const input = activeInterpreterIndex == null ? null : document.querySelector(`#tableBody .interpreter-input[data-index="${activeInterpreterIndex}"]`);
@@ -1243,6 +1287,9 @@ function updateInterpreterFromInput(input) {
     applyTrackingFilter();
     refreshInterpreterLoad();
     if (typeof refreshTrackingReminders === 'function') refreshTrackingReminders();
+    // Die Person hat an diesem Tag Urlaub, ist krank gemeldet oder hat einen Notfall: deutlich darauf hinweisen.
+    const away = value ? (window.trackingPeopleAway || []).find(person => String(person.name).toLocaleLowerCase('de') === value.toLocaleLowerCase('de')) : null;
+    if (away) showToast(`Achtung: ${away.name} ist an diesem Tag abwesend – ${away.reason}. Der Name wurde trotzdem eingetragen.`, 'error', { duration: 12000, target: input });
     offerInterpreterForSiblings(termin, value);
 }
 

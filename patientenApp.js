@@ -5,6 +5,10 @@
     const client = TerminCloud.client;
     const BUCKET = 'dokumente';
     const REPORT_KIND = 'Dolmetscherbericht';
+    // Arten von Unterlagen (wie im Portal) – ältere Bezeichnungen werden der heutigen Art zugeordnet.
+    const KIND_ALIAS = { 'Überweisung MRT / CT / Röntgen': 'Überweisung Radiologie' };
+    const kindKey = kind => { const text = String(kind ?? '').trim(); return KIND_ALIAS[text] || text; };
+    const ALL_KINDS = [...new Set([...((window.TERMIN_CLOUD_CONFIG || {}).documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges']), REPORT_KIND])];
     const RECIPIENT_KEY = 'document_recipients';
     const LINK_SECONDS = 60 * 60 * 24 * 7;      // Links in der Nachricht gelten 7 Tage
     const MAIL_LIMIT = 1800;                    // längere Texte nimmt nicht jedes E-Mail-Programm über „mailto:“ an
@@ -97,7 +101,8 @@
         const { data, error } = await client.from('tt_settings').select('*').eq('key', RECIPIENT_KEY).maybeSingle();
         if (error) return null;
         return (Array.isArray(data?.value?.list) ? data.value.list : [])
-            .map(item => ({ name: clean(item?.name), email: clean(item?.email) })).filter(item => item.email);
+            .map(item => ({ name: clean(item?.name), email: clean(item?.email), kinds: [...new Set((Array.isArray(item?.kinds) ? item.kinds : []).map(kindKey).filter(Boolean))] }))
+            .filter(item => item.email);
     }
 
     // Tagesstände der letzten 120 Tage – einmal je Seitenaufruf („Aktualisieren“ lädt sie neu). null = nicht lesbar.
@@ -123,7 +128,7 @@
         let result;
         let recipientList;
         try {
-            [result, recipientList] = await Promise.all([loadDocuments(), loadRecipients()]);
+            [result, recipientList] = await Promise.all([loadDocuments(), loadRecipients(), window.PhotoRequest ? PhotoRequest.load().catch(() => []) : null]);
         } catch (error) {
             result = { error };
         }
@@ -252,6 +257,9 @@
         const head = el('span', 'doc-head');
         const [statusColor, statusText] = DOC_STATUS[doc.status] || ['bekannt', doc.status || '–'];
         head.append(el('strong', null, doc.kind || 'Sonstiges'), pill(statusColor, statusText));
+        if (doc.replaced_by) head.append(pill('bekannt', 'ersetzt durch neue Aufnahme'));
+        const requestPill = window.PhotoRequest?.pill(doc.id);
+        if (requestPill) head.append(requestPill);
         meta.append(head);
         // Ein Tipp auf den Patienten öffnet seine Akte. In der Akte selbst steht er schon in der Überschrift –
         // dort erscheint die Zeile nur, wenn es um einen anderen Patienten geht.
@@ -283,10 +291,17 @@
             button('button-secondary fleet-end-button', 'Herunterladen', node => downloadDocument(doc, node))
         );
         if (doc.status === 'neu') actions.append(button('button-primary fleet-end-button', 'Geprüft ✓', node => markChecked(doc, node)));
-        actions.append(
-            button(`${doc.status === 'geprüft' ? 'button-primary' : 'button-secondary'} fleet-end-button`, 'Weiterleiten', () => startForward([doc])),
-            button('button-quiet-danger', 'Löschen', node => deleteDocument(doc, node))
-        );
+        actions.append(button(`${doc.status === 'geprüft' ? 'button-primary' : 'button-secondary'} fleet-end-button`, 'Weiterleiten', () => startForward([doc])));
+        // Unscharf, zu dunkel, Seite fehlt? Die Person, die fotografiert hat, um eine neue Aufnahme bitten.
+        if (window.PhotoRequest && !isReport(doc) && doc.file_path && doc.uploader_id) {
+            actions.append(PhotoRequest.button({
+                kind: 'unterlage', refId: doc.id, profileId: doc.uploader_id, profileName: clean(doc.uploader_name), bucket: 'dokumente', paths: [doc.file_path],
+                title: [doc.kind, patientLabel(doc)].filter(Boolean).join(' · '),
+                picked: warnings.filter(text => /fehlt|dunkel|unscharf|überbelichtet|klein|Schrift|lesbar|abgeschnitten/i.test(text)),
+                context: { patient_nr: clean(doc.patient_nr), patient_name: clean(doc.patient_name), doctor: clean(doc.doctor), date: doc.date || '', kind: doc.kind || '', assignment_id: doc.assignment_id || null, appointment_id: doc.appointment_id || null }
+            }, render));
+        }
+        actions.append(button('button-quiet', 'Korrigieren', () => editDocument(doc)), button('button-quiet-danger', 'Löschen', node => deleteDocument(doc, node)));
         row.append(check, meta, actions);
         return row;
     }
@@ -431,12 +446,39 @@
         const active = document.activeElement;
         if (active?.closest?.('.doc-entry, .patient-card')) active.blur();
         renderTiles();
+        renderRequestNotes();
         renderList();
         renderSearch();
         renderFile();
         updateSelection();
         $('patientFile').scrollTop = fileTop;
         if (window.scrollY !== top) window.scrollTo(0, top);
+    }
+
+    // Auf Bitte neu fotografiert: Hinweis ganz oben – neue Aufnahme öffnen, alte löschen, als gesehen abhaken.
+    function renderRequestNotes() {
+        const list = $('requestNotes');
+        const answered = window.PhotoRequest ? PhotoRequest.unseen().filter(item => item.kind === 'unterlage') : [];
+        list.hidden = !answered.length;
+        list.replaceChildren(...answered.map(request => {
+            const fresh = documents.find(doc => doc.id === request.answer_ref);
+            const old = documents.find(doc => doc.id === request.ref_id);
+            const row = el('li', 'vehicle-entry request-note');
+            const meta = el('span', 'doc-meta');
+            meta.append(el('strong', null, `Neu fotografiert: ${request.title || 'Unterlage'}`),
+                el('small', null, `von ${clean(request.profile_name) || 'unbekannt'} am ${formatStamp(request.answered_at)}${clean(request.answer_note) ? ` · „${clean(request.answer_note)}“` : ''}`));
+            const actions = el('span', 'vehicle-entry-actions');
+            if (fresh) actions.append(button('button-primary fleet-end-button', 'Neue Aufnahme öffnen', node => openDocument(fresh, node)));
+            if (old) actions.append(button('button-quiet-danger', 'Alte löschen', node => deleteDocument(old, node)));
+            actions.append(button('button-secondary fleet-end-button', 'Gesehen ✓', async node => {
+                node.disabled = true;
+                const error = await PhotoRequest.markSeen(request);
+                if (error) { node.disabled = false; showToast(TerminCloud.germanError(error), 'error'); return; }
+                render();
+            }));
+            row.append(pill('erledigt', 'Neue Aufnahme'), meta, actions);
+            return row;
+        }));
     }
 
     function openPatient(key) {
@@ -569,6 +611,48 @@
         await refresh();
     }
 
+    // ---------- Angaben einer Unterlage korrigieren (falsche Art, falscher Patient, falsches Datum …) ----------
+    let editedDoc = null;
+    function editDocument(doc) {
+        editedDoc = doc;
+        const kinds = isReport(doc) ? [REPORT_KIND] : [...new Set([...ALL_KINDS.filter(kind => kind !== REPORT_KIND), kindKey(doc.kind) || 'Sonstiges'])];
+        $('docEditKind').replaceChildren(...kinds.map(kind => { const option = el('option', null, kind); option.value = kind; return option; }));
+        $('docEditKind').value = isReport(doc) ? REPORT_KIND : kindKey(doc.kind) || 'Sonstiges';
+        $('docEditKind').disabled = isReport(doc);
+        $('docEditInfo').textContent = `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`;
+        $('docEditNr').value = clean(doc.patient_nr);
+        $('docEditName').value = clean(doc.patient_name);
+        $('docEditDate').value = clean(doc.date).slice(0, 10);
+        $('docEditDoctor').value = clean(doc.doctor);
+        $('docEditNote').value = clean(doc.note);
+        $('docEditStatus').value = DOC_STATUS[doc.status] ? doc.status : 'neu';
+        dialogStatus('docEditStatusLine', '');
+        $('docEditDialog').showModal();
+    }
+    $('docEditCancel').addEventListener('click', () => $('docEditDialog').close());
+    $('docEditForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const doc = editedDoc;
+        const status = $('docEditStatus').value;
+        if (!clean($('docEditNr').value) && !clean($('docEditName').value)) { dialogStatus('docEditStatusLine', 'Bitte gib die Patienten-Nr. oder den Namen an – sonst lässt sich die Unterlage keinem Patienten zuordnen.', 'error'); return; }
+        const changes = {
+            kind: $('docEditKind').value, patient_nr: clean($('docEditNr').value), patient_name: clean($('docEditName').value).replace(/\s+/g, ' '),
+            date: $('docEditDate').value || null, doctor: clean($('docEditDoctor').value), note: clean($('docEditNote').value), status
+        };
+        // Stand zurückgesetzt: die Vermerke „geprüft“ / „weitergeleitet“ passen dann nicht mehr.
+        if (status === 'neu') Object.assign(changes, { checked_at: null, checked_by: '', forwarded_at: null, forwarded_to: '', forwarded_by: '' });
+        else if (status === 'geprüft') Object.assign(changes, { checked_at: doc.checked_at || new Date().toISOString(), checked_by: doc.checked_by || profile.full_name || '', forwarded_at: null, forwarded_to: '', forwarded_by: '' });
+        else if (status === 'weitergeleitet' && !doc.forwarded_at) Object.assign(changes, { forwarded_at: new Date().toISOString(), forwarded_by: profile.full_name || '' });
+        $('docEditSave').disabled = true;
+        const { data, error } = await client.from('tt_documents').update(changes).eq('id', doc.id).select();
+        $('docEditSave').disabled = false;
+        if (error || !data?.length) { dialogStatus('docEditStatusLine', error ? TerminCloud.germanError(error) : 'Die Unterlage gibt es nicht mehr.', 'error'); return; }
+        $('docEditDialog').close();
+        showToast('Angaben gespeichert', 'success');
+        await refresh();
+        window.refreshCloudInbox?.();
+    });
+
     // ---------- Bericht eines Dolmetschers: ganzer Text im Dialog, auf Wunsch als PDF ----------
     let reportDoc = null;
     const reportRows = doc => [
@@ -607,6 +691,7 @@
     let forwardFiles = null;           // vorbereitete Dateien für „PDF teilen“
     let forwardRun = 0;                // ändert sich, sobald der Dialog geschlossen oder neu geöffnet wird
     const picked = new Set();          // angekreuzte Empfänger (E-Mail in Kleinbuchstaben)
+    let dutyEditor = '';               // E-Mail des Empfängers, dessen Zuständigkeit gerade bearbeitet wird
     const visitText = doc => [formatDay(doc.date), clean(doc.doctor) ? `bei ${clean(doc.doctor)}` : ''].filter(Boolean).join(' ');
     const sharedName = docs => docs.map(doc => clean(doc.patient_name)).find(Boolean) || '';
 
@@ -666,6 +751,33 @@
                 : '„E-Mail-Programm öffnen“ kopiert deshalb den Text – füge ihn dann in die E-Mail ein.'}`;
     }
 
+    // Wer ist für welche Art von Unterlage zuständig? Damit geht z. B. „Rezept Medikamente“ von selbst an die richtige Stelle.
+    const dutyText = item => item.kinds.length ? `Zuständig für: ${item.kinds.join(', ')}` : 'Noch keine Zuständigkeit festgelegt';
+
+    // Kreuzt die Empfänger an, die für die Art der gewählten Unterlagen zuständig sind, und erklärt die Vorauswahl.
+    function pickResponsible(tick = true) {
+        const kinds = [...new Set(forwardDocs.map(doc => kindKey(doc.kind)).filter(Boolean))];
+        const hint = $('recipientHint');
+        if (!recipients || !recipients.length) { hint.textContent = ''; return; }
+        const responsible = recipients.filter(item => item.kinds.some(kind => kinds.includes(kind)));
+        if (tick) responsible.forEach(item => picked.add(lower(item.email)));
+        const open = kinds.filter(kind => !recipients.some(item => item.kinds.includes(kind)));
+        hint.textContent = [
+            responsible.length ? `Vorausgewählt nach Art der Unterlage: ${responsible.map(item => item.name || item.email).join(', ')}.` : '',
+            open.length ? `Für „${open.join('“, „')}“ ist noch niemand zuständig – wähle einen Empfänger und lege über „Zuständigkeit“ fest, wer diese Art künftig bekommt.` : ''
+        ].filter(Boolean).join(' ');
+    }
+
+    async function toggleDuty(item, kind, node) {
+        node.disabled = true;
+        const failed = await changeRecipients(list => list.map(entry => lower(entry.email) !== lower(item.email) ? entry
+            : { ...entry, kinds: entry.kinds.includes(kind) ? entry.kinds.filter(value => value !== kind) : ALL_KINDS.filter(value => value === kind || entry.kinds.includes(value)) }));
+        if (failed) { node.disabled = false; dialogStatus('recipientStatus', failed, 'error'); return; }
+        pickResponsible();             // wer gerade zuständig geworden ist, bekommt diese Unterlage gleich mit
+        renderRecipients();
+        dialogStatus('recipientStatus', `Zuständigkeit für ${item.name || item.email} gespeichert.`, 'success');
+    }
+
     function renderRecipients() {
         const list = $('recipientList');
         if (list.contains(document.activeElement)) document.activeElement.blur();      // siehe render(): sonst springt der Dialog nach oben
@@ -679,9 +791,24 @@
             box.checked = picked.has(lower(item.email));
             box.addEventListener('change', () => { if (box.checked) picked.add(lower(item.email)); else picked.delete(lower(item.email)); });
             const text = el('span', null, item.name || item.email);
-            text.append(el('small', null, item.email));
+            text.append(el('small', null, item.email), el('small', item.kinds.length ? 'recipient-duty' : 'recipient-duty is-open', dutyText(item)));
             label.append(box, text);
-            row.append(label, button('button-quiet-danger', 'Entfernen', node => removeRecipient(item, node)));
+            const editing = dutyEditor === lower(item.email);
+            const dutyButton = button('button-quiet', editing ? 'Fertig' : 'Zuständigkeit', () => { dutyEditor = editing ? '' : lower(item.email); renderRecipients(); });
+            dutyButton.setAttribute('aria-expanded', String(editing));
+            row.append(label, dutyButton, button('button-quiet-danger', 'Entfernen', node => removeRecipient(item, node)));
+            if (editing) {
+                row.classList.add('has-duty-editor');
+                const editor = el('div', 'recipient-duty-editor');
+                editor.setAttribute('role', 'group');
+                editor.setAttribute('aria-label', `Zuständigkeit von ${item.name || item.email}`);
+                editor.append(el('span', 'recipient-duty-title', 'Bekommt automatisch:'), ...ALL_KINDS.map(kind => {
+                    const chip = button('duty-chip', kind, node => toggleDuty(item, kind, node));
+                    chip.setAttribute('aria-pressed', String(item.kinds.includes(kind)));
+                    return chip;
+                }));
+                row.append(editor);
+            }
             return row;
         }));
         if (!recipients.length) list.append(el('li', 'recipient-empty', 'Noch keine Empfänger gespeichert. Lege unten den ersten an.'));
@@ -699,6 +826,7 @@
         }, { onConflict: 'key' });
         if (error) return TerminCloud.germanError(error);
         recipients = next;
+        pickResponsible(false);
         renderRecipients();
         return '';
     }
@@ -711,12 +839,13 @@
         if (!MAIL_PATTERN.test(email)) { dialogStatus('recipientStatus', 'Bitte trage eine gültige E-Mail-Adresse ein, zum Beispiel name@example.de.', 'error'); $('recipientEmail').focus(); return; }
         const failed = await changeRecipients(list => list.some(item => lower(item.email) === lower(email))
             ? `${email} ist schon als Empfänger gespeichert.`
-            : [...list, { name, email }].sort((left, right) => left.name.localeCompare(right.name, 'de')));
+            : [...list, { name, email, kinds: [] }].sort((left, right) => left.name.localeCompare(right.name, 'de')));
         if (failed) { dialogStatus('recipientStatus', failed, 'error'); return; }
         picked.add(lower(email));      // wer gerade angelegt wurde, soll die Nachricht auch bekommen
+        dutyEditor = lower(email);     // gleich fragen, wofür die neue Stelle zuständig ist
         $('recipientForm').reset();
         renderRecipients();
-        dialogStatus('recipientStatus', `${name} ist als Empfänger gespeichert.`, 'success');
+        dialogStatus('recipientStatus', `${name} ist als Empfänger gespeichert. Tippe an, welche Unterlagen diese Stelle künftig automatisch bekommt.`, 'success');
     }
 
     async function removeRecipient(item, node) {
@@ -724,6 +853,7 @@
         const failed = await changeRecipients(list => list.filter(entry => lower(entry.email) !== lower(item.email)));
         if (failed) { node.disabled = false; dialogStatus('recipientStatus', failed, 'error'); return; }
         picked.delete(lower(item.email));
+        if (dutyEditor === lower(item.email)) dutyEditor = '';
         dialogStatus('recipientStatus', `${item.name || item.email} wurde aus der Empfängerliste entfernt.`, 'success');
     }
 
@@ -768,6 +898,8 @@
         forwardLinks = new Map();
         forwardFiles = null;
         picked.clear();
+        dutyEditor = '';
+        pickResponsible();
         $('forwardTitle').textContent = forwardDocs.length === 1 ? 'Unterlage weiterleiten' : `${forwardDocs.length} Unterlagen weiterleiten`;
         $('forwardItems').replaceChildren(...forwardDocs.map((doc, index) => {
             const row = el('li');

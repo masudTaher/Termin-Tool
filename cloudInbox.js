@@ -88,7 +88,7 @@
         try { counts = await TerminCloud.inboxCounts(); } catch (error) { return; }
         if (!counts) { BADGES.forEach(page => setBadge(page, 0)); const box = document.getElementById('navStorage'); if (box) box.hidden = true; return; }
         setBadge('abrechnung', counts.payroll);
-        setBadge('fahrzeugakte', counts.damages + counts.alerts);
+        setBadge('fahrzeugakte', counts.damages + counts.alerts + (counts.requests || 0));
         setBadge('team', counts.accounts);
         setBadge('fest', counts.fest);
         setBadge('patienten', counts.documents || 0);
@@ -102,8 +102,10 @@
             if (counts.damages > seen.damages) messages.push('Neuer Schaden gemeldet');
             if (counts.accounts > seen.accounts) messages.push('Ein Konto wartet: neue Anmeldung oder Passwort vergessen');
             if (counts.payroll > (seen.payroll || 0)) messages.push('Abrechnung: neuer Beleg oder Einwand');
-            if (counts.fest > (seen.fest || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
+            if ((counts.absences || 0) > (seen.absences || 0)) messages.push('Festangestellte: neuer Urlaubsantrag oder neue Krank-/Notfallmeldung');
+            if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
             if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage oder neuer Bericht eines Dolmetschers');
+            if ((counts.requests || 0) > (seen.requests || 0)) messages.push('Ein angefordertes Foto ist da (Fuhrpark)');
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
         messages.forEach(message => {

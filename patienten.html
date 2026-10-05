@@ -31,6 +31,7 @@
                      <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="docTitle">Unterlagen</h2><p id="docSummary">Wird geladen …</p></div></div>
                      <div class="fleet-log-controls"><button type="button" id="forwardSelected" class="button-primary fleet-end-button" data-forward-selected disabled>Auswahl weiterleiten (0)</button><button type="button" id="jumpSearch" class="button-quiet jump-search">Patient suchen ↓</button></div>
                   </div>
+                  <ul id="requestNotes" class="directory-list request-notes" aria-label="Neu fotografierte Unterlagen" hidden></ul>
                   <ul id="docList" class="directory-list file-list"></ul>
                   <div id="patientList" class="patient-grid" hidden></div>
                   <button type="button" id="docMore" class="button-secondary fleet-end-button doc-more" hidden>Weitere anzeigen</button>
@@ -70,6 +71,7 @@
          <div class="fleet-form">
             <span class="field-label" id="recipientLabel">Empfänger</span>
             <ul id="recipientList" class="recipient-checks" aria-labelledby="recipientLabel"></ul>
+            <p id="recipientHint" class="field-hint recipient-hint" role="status" aria-live="polite"></p>
             <form id="recipientForm" class="recipient-form" novalidate>
                <input id="recipientName" type="text" maxlength="80" autocomplete="off" placeholder="Name" aria-label="Name des neuen Empfängers">
                <input id="recipientEmail" type="email" maxlength="120" autocomplete="off" placeholder="E-Mail-Adresse" aria-label="E-Mail-Adresse des neuen Empfängers">
@@ -94,6 +96,33 @@
          </div>
       </dialog>
 
+      <!-- Angaben einer Unterlage korrigieren: falsche Art, falscher Patient, falsches Datum … -->
+      <dialog id="docEditDialog" class="confirm-dialog absence-dialog" aria-labelledby="docEditTitle">
+         <form id="docEditForm" class="fleet-form" novalidate>
+            <h2 id="docEditTitle">Angaben korrigieren</h2>
+            <p class="field-hint" id="docEditInfo"></p>
+            <label for="docEditKind">Art der Unterlage</label>
+            <select id="docEditKind"></select>
+            <div class="time-pair">
+               <label class="time-box" for="docEditNr"><span>Patienten-Nr.</span><input id="docEditNr" type="text" maxlength="40" autocomplete="off"></label>
+               <label class="time-box" for="docEditDate"><span>Datum des Termins</span><input id="docEditDate" type="date"></label>
+            </div>
+            <label for="docEditName">Name des Patienten</label>
+            <input id="docEditName" type="text" maxlength="120" autocomplete="off">
+            <label for="docEditDoctor">Arzt / Praxis</label>
+            <input id="docEditDoctor" type="text" maxlength="160" autocomplete="off">
+            <label for="docEditNote">Hinweis <span class="optional-label">optional</span></label>
+            <input id="docEditNote" type="text" maxlength="300" autocomplete="off">
+            <label for="docEditStatus">Stand</label>
+            <select id="docEditStatus"><option value="neu">Neu</option><option value="geprüft">Geprüft</option><option value="weitergeleitet">Weitergeleitet</option></select>
+            <p id="docEditStatusLine" class="workflow-status" role="status" aria-live="polite" hidden></p>
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-secondary" id="docEditCancel">Abbrechen</button>
+               <button type="submit" class="button-primary" id="docEditSave">Speichern</button>
+            </div>
+         </form>
+      </dialog>
+
       <dialog id="reportDialog" class="confirm-dialog report-dialog" aria-labelledby="reportTitle">
          <h2 id="reportTitle" tabindex="-1" autofocus>Bericht des Dolmetschers</h2>
          <dl id="reportMeta" class="vehicle-state"></dl>
@@ -109,6 +138,7 @@
       <script src="cloudConfig.js"></script>
       <script src="workflowStorage.js"></script>
       <script src="cloudClient.js"></script>
+      <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="docPdf.js"></script>
       <script src="patientenApp.js"></script>

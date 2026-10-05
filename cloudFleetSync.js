@@ -4,6 +4,7 @@
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     let syncing = false;
     let timer = null;
+    let lastProblem = '';
 
     async function syncFleetNow() {
         if (syncing) return;
@@ -11,6 +12,10 @@
         try {
             const result = await TerminCloud.syncFleet();
             if (result.ok && result.changed) document.dispatchEvent(new CustomEvent('fleet-synced'));
+            // Eine Änderung an einem Fahrzeug konnte nicht online gespeichert werden (z. B. Kennzeichen doppelt): einmal melden.
+            const problem = result.ok && result.problems?.length ? result.problems.join(' · ') : '';
+            if (problem && problem !== lastProblem && typeof showToast === 'function') showToast(`Fahrzeug nicht online gespeichert – ${problem}`, 'error');
+            lastProblem = problem;
         } catch (error) {
             console.warn('Fuhrpark-Abgleich nicht möglich:', error);
         } finally {

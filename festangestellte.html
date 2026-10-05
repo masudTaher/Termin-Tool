@@ -3,14 +3,14 @@
    <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Überstunden und Belege · Medical Office Bonn</title>
+      <title>Festangestellte · Medical Office Bonn</title>
       <link rel="stylesheet" href="style.css">
       <script src="appShell.js"></script>
    </head>
    <body data-page="fest">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · FESTANGESTELLTE</p><h1>Überstunden und Belege</h1><p>Was die Festangestellten im Portal melden: Überstunden vor 9 und nach 16 Uhr – mit dem Termin dazu – und ihre Park- und Tankbelege.</p></div>
+            <div><p class="page-kicker">ONLINE · FESTANGESTELLTE</p><h1>Festangestellte</h1><p>Überstunden, Belege und Abwesenheiten – Urlaub, Krankheit, Verspätung, Fehlstunden und Notfälle werden getrennt geführt.</p></div>
             <div class="fleet-heading-actions">
                <button type="button" id="festExport" class="button-secondary">Excel exportieren</button>
                <button type="button" id="festReload" class="button-secondary">Aktualisieren</button>
@@ -19,33 +19,69 @@
          <p id="festStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
          <div id="festApp" hidden>
-            <section class="directory-card payroll-settings">
-               <div class="fleet-field"><label for="festMonth">Monat</label><input id="festMonth" type="month"></div>
-               <p id="festCheck" class="payroll-check" role="status"></p>
-            </section>
-
-            <div class="fleet-summary payroll-summary">
-               <article class="overview-card overview-card-done"><span class="overview-label">Überstunden bestätigt</span><strong id="sumConfirmed">0 Min</strong><small id="sumConfirmedPeople"></small></article>
-               <article class="overview-card overview-card-departed"><span class="overview-label">Noch zu prüfen</span><strong id="sumOpen">0 Min</strong><small id="sumOpenCount"></small></article>
-               <article class="overview-card"><span class="overview-label">Belege</span><strong id="sumFestReceipts">0 €</strong><small id="sumFestReceiptCount"></small></article>
+            <div class="portal-tabs payroll-tabs fest-tabs" role="tablist" aria-label="Bereiche">
+               <button type="button" role="tab" data-fest-tab="overtime" class="is-active">Überstunden<b class="count-badge" id="festBadgeOvertime" hidden></b></button>
+               <button type="button" role="tab" data-fest-tab="receipts">Belege<b class="count-badge" id="festBadgeReceipts" hidden></b></button>
+               <button type="button" role="tab" data-fest-tab="absences">Abwesenheiten<b class="count-badge" id="festBadgeAbsences" hidden></b></button>
             </div>
 
-            <section class="directory-card">
-               <div class="fleet-log-heading">
-                  <div class="portal-tabs payroll-tabs fest-tabs"><button type="button" data-fest-tab="overtime" class="is-active">Überstunden</button><button type="button" data-fest-tab="receipts">Belege</button></div>
-               </div>
+            <!-- ===== Überstunden und Belege: je Monat ===== -->
+            <div data-fest-scope="month">
+               <section class="directory-card payroll-settings">
+                  <div class="fleet-field"><label for="festMonth">Monat</label><input id="festMonth" type="month"></div>
+                  <p id="festCheck" class="payroll-check" role="status"></p>
+               </section>
 
-               <div data-fest-panel="overtime">
-                  <h2 class="card-title fest-subtitle">Summe pro Person</h2>
-                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Bestätigt</th><th>Noch zu prüfen</th><th>Abgelehnt</th><th>Einträge</th></tr></thead><tbody id="personBody"></tbody></table></div>
-                  <h2 class="card-title fest-subtitle">Alle Meldungen</h2>
-                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Termin</th><th>Zeiten</th><th>Überstunden</th><th>Bemerkung</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="overtimeBody"></tbody></table></div>
+               <div class="fleet-summary payroll-summary">
+                  <article class="overview-card overview-card-done"><span class="overview-label">Überstunden bestätigt</span><strong id="sumConfirmed">0 Min</strong><small id="sumConfirmedPeople"></small></article>
+                  <article class="overview-card overview-card-departed"><span class="overview-label">Noch zu prüfen</span><strong id="sumOpen">0 Min</strong><small id="sumOpenCount"></small></article>
+                  <article class="overview-card"><span class="overview-label">Belege</span><strong id="sumFestReceipts">0 €</strong><small id="sumFestReceiptCount"></small></article>
                </div>
+            </div>
 
-               <div data-fest-panel="receipts" hidden>
-                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Ort</th><th>Art</th><th>Betrag</th><th>Bemerkung</th><th>Foto</th><th>Status</th></tr></thead><tbody id="festReceiptBody"></tbody></table></div>
-               </div>
+            <section class="directory-card" data-fest-panel="overtime">
+               <h2 class="card-title fest-subtitle">Summe pro Person</h2>
+               <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Bestätigt</th><th>Noch zu prüfen</th><th>Abgelehnt</th><th>Einträge</th></tr></thead><tbody id="personBody"></tbody></table></div>
+               <h2 class="card-title fest-subtitle">Alle Meldungen</h2>
+               <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Termin</th><th>Zeiten</th><th>Überstunden</th><th>Bemerkung</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="overtimeBody"></tbody></table></div>
             </section>
+
+            <section class="directory-card" data-fest-panel="receipts" hidden>
+               <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Name</th><th>Ort</th><th>Art</th><th>Betrag</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="festReceiptBody"></tbody></table></div>
+            </section>
+
+            <!-- ===== Abwesenheiten: je Jahr ===== -->
+            <div data-fest-panel="absences" hidden>
+               <p id="absenceSetup" class="workflow-status" data-kind="error" hidden>Die Abwesenheiten sind in der Datenbank noch nicht eingerichtet. Bitte supabase/update-15.sql im SQL Editor ausführen.</p>
+
+               <section class="directory-card absence-inbox" id="absenceInboxCard" aria-labelledby="absenceInboxTitle" hidden>
+                  <h2 id="absenceInboxTitle" class="card-title">Wartet auf dich</h2>
+                  <ul id="absenceInbox" class="directory-list"></ul>
+               </section>
+
+               <section class="directory-card">
+                  <div class="absence-toolbar">
+                     <div class="fleet-field"><label for="absenceYear">Jahr</label><select id="absenceYear"></select></div>
+                     <div class="fleet-field absence-person-field"><label for="absencePerson">Person</label><select id="absencePerson"><option value="">Alle Festangestellten</option></select></div>
+                     <button type="button" class="button-primary" id="absenceAdd">Eintrag hinzufügen</button>
+                  </div>
+
+                  <div class="absence-tiles" role="group" aria-label="Nach Art filtern">
+                     <button type="button" class="overview-card overview-card-done" data-absence-kind="urlaub" aria-pressed="false"><span class="overview-label">Urlaub</span><strong id="absSumUrlaub">0 Tage</strong><small id="absSubUrlaub"></small></button>
+                     <button type="button" class="overview-card overview-card-cancelled" data-absence-kind="krank" aria-pressed="false"><span class="overview-label">Krank</span><strong id="absSumKrank">0 Tage</strong><small id="absSubKrank"></small></button>
+                     <button type="button" class="overview-card overview-card-departed" data-absence-kind="verspätung" aria-pressed="false"><span class="overview-label">Verspätung</span><strong id="absSumVerspaetung">0 ×</strong><small id="absSubVerspaetung"></small></button>
+                     <button type="button" class="overview-card overview-card-open" data-absence-kind="fehlstunden" aria-pressed="false"><span class="overview-label">Fehlstunden</span><strong id="absSumFehlstunden">0 Min</strong><small id="absSubFehlstunden"></small></button>
+                     <button type="button" class="overview-card overview-card-alert" data-absence-kind="notfall" aria-pressed="false"><span class="overview-label">Notfall</span><strong id="absSumNotfall">0 ×</strong><small id="absSubNotfall"></small></button>
+                  </div>
+                  <p class="field-hint" id="absenceRule">Tage zählen von Montag bis Freitag, ohne Feiertage in NRW. Die Zahl lässt sich je Eintrag korrigieren.</p>
+
+                  <h2 class="card-title fest-subtitle" id="absencePersonTitle">Übersicht pro Person</h2>
+                  <div class="fleet-table-wrap"><table class="fleet-table absence-table"><thead><tr><th>Name</th><th>Urlaub</th><th>Krank</th><th>Verspätungen</th><th>Fehlstunden</th><th>Notfälle</th></tr></thead><tbody id="absencePersonBody"></tbody><tfoot id="absencePersonFoot"></tfoot></table></div>
+
+                  <h2 class="card-title fest-subtitle" id="absenceListTitle">Alle Einträge</h2>
+                  <div class="fleet-table-wrap"><table class="fleet-table absence-table"><thead><tr><th>Zeitraum</th><th>Name</th><th>Art</th><th>Dauer</th><th>Hinweis</th><th>Stand</th><th>Aktion</th></tr></thead><tbody id="absenceBody"></tbody></table></div>
+               </section>
+            </div>
          </div>
       </main>
       <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto des Belegs"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
@@ -57,12 +93,108 @@
             <div class="modal-buttons"><button type="button" class="button-secondary" id="rejectCancel">Abbrechen</button><button type="submit" class="button-primary">Ablehnen</button></div>
          </form>
       </dialog>
+
+      <!-- Abwesenheit eintragen oder korrigieren -->
+      <dialog id="absenceDialog" class="confirm-dialog absence-dialog" aria-labelledby="absenceDialogTitle">
+         <form id="absenceEditForm" class="fleet-form" novalidate>
+            <h2 id="absenceDialogTitle">Abwesenheit eintragen</h2>
+            <label for="absenceEditPerson">Person</label>
+            <select id="absenceEditPerson" required></select>
+            <span class="field-label" id="absenceEditKindLabel">Art</span>
+            <div class="segmented segmented-wrap absence-kinds" role="radiogroup" aria-labelledby="absenceEditKindLabel">
+               <label><input type="radio" name="absenceEditKind" value="urlaub" checked><span>Urlaub</span></label>
+               <label><input type="radio" name="absenceEditKind" value="krank"><span>Krank</span></label>
+               <label><input type="radio" name="absenceEditKind" value="verspätung"><span>Verspätung</span></label>
+               <label><input type="radio" name="absenceEditKind" value="fehlstunden"><span>Fehlstunden</span></label>
+               <label><input type="radio" name="absenceEditKind" value="notfall"><span>Notfall</span></label>
+            </div>
+            <div class="time-pair">
+               <label class="time-box" for="absenceEditFrom"><span id="absenceEditFromLabel">Von</span><input id="absenceEditFrom" type="date"></label>
+               <label class="time-box" for="absenceEditTo" id="absenceEditToBox"><span>Bis einschließlich</span><input id="absenceEditTo" type="date"></label>
+            </div>
+            <div id="absenceEditDurationRow" hidden>
+               <span class="field-label" id="absenceEditDurationLabel">Dauer</span>
+               <div class="time-pair">
+                  <label class="time-box" for="absenceEditHours"><span>Stunden</span><input id="absenceEditHours" type="number" inputmode="numeric" min="0" max="24" step="1" placeholder="0"></label>
+                  <label class="time-box" for="absenceEditMinutes"><span>Minuten</span><input id="absenceEditMinutes" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="0"></label>
+               </div>
+            </div>
+            <div id="absenceEditDaysRow">
+               <label for="absenceEditDays">Zählt als so viele Tage <span class="optional-label">leer = automatisch</span></label>
+               <input id="absenceEditDays" type="text" inputmode="decimal" maxlength="6" autocomplete="off" placeholder="automatisch">
+            </div>
+            <p id="absenceEditInfo" class="overtime-result" data-kind="empty">Wähle die Tage.</p>
+            <label for="absenceEditNote">Hinweis <span class="optional-label">optional</span></label>
+            <input id="absenceEditNote" type="text" maxlength="200" placeholder="Zum Beispiel: Krankschreibung liegt vor">
+            <span class="field-label" id="absenceEditStatusLabel">Stand</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="absenceEditStatusLabel">
+               <label><input type="radio" name="absenceEditStatus" value="beantragt"><span data-status-text="beantragt">beantragt</span></label>
+               <label><input type="radio" name="absenceEditStatus" value="genehmigt" checked><span data-status-text="genehmigt">genehmigt</span></label>
+               <label><input type="radio" name="absenceEditStatus" value="abgelehnt"><span data-status-text="abgelehnt">abgelehnt</span></label>
+            </div>
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-quiet-danger" id="absenceEditDelete" hidden>Endgültig löschen</button>
+               <button type="button" class="button-secondary" id="absenceEditCancel">Abbrechen</button>
+               <button type="submit" class="button-primary" id="absenceEditSave">Speichern</button>
+            </div>
+         </form>
+      </dialog>
+
+      <!-- Überstunden korrigieren -->
+      <dialog id="overtimeDialog" class="confirm-dialog absence-dialog" aria-labelledby="overtimeDialogTitle">
+         <form id="overtimeEditForm" class="fleet-form" novalidate>
+            <h2 id="overtimeDialogTitle">Überstunden korrigieren</h2>
+            <p class="field-hint" id="overtimeEditWho"></p>
+            <label for="overtimeEditDate">Datum</label>
+            <input id="overtimeEditDate" type="date" required>
+            <label for="overtimeEditAppointment">Termin</label>
+            <input id="overtimeEditAppointment" type="text" maxlength="200">
+            <div class="time-pair">
+               <label class="time-box" for="overtimeEditStart"><span>Angefangen um</span><input id="overtimeEditStart" type="time"><small>nur wenn vor Arbeitsbeginn</small></label>
+               <label class="time-box" for="overtimeEditEnd"><span>Fertig um</span><input id="overtimeEditEnd" type="time"><small>nur wenn nach Arbeitsende</small></label>
+            </div>
+            <p class="field-hint">Die Minuten rechnet die Datenbank aus den Uhrzeiten aus (auf volle 10 Minuten aufgerundet).</p>
+            <label for="overtimeEditNote">Bemerkung</label>
+            <input id="overtimeEditNote" type="text" maxlength="200">
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-quiet-danger" id="overtimeEditDelete" hidden>Endgültig löschen</button>
+               <button type="button" class="button-secondary" id="overtimeEditCancel">Abbrechen</button>
+               <button type="submit" class="button-primary">Speichern</button>
+            </div>
+         </form>
+      </dialog>
+
+      <!-- Beleg korrigieren -->
+      <dialog id="receiptDialog" class="confirm-dialog absence-dialog" aria-labelledby="receiptDialogTitle">
+         <form id="receiptEditForm" class="fleet-form" novalidate>
+            <h2 id="receiptDialogTitle">Beleg korrigieren</h2>
+            <p class="field-hint" id="receiptEditWho"></p>
+            <label for="receiptEditDate">Datum</label>
+            <input id="receiptEditDate" type="date" required>
+            <label for="receiptEditPlace">Ort</label>
+            <input id="receiptEditPlace" type="text" maxlength="120">
+            <label for="receiptEditKind">Art</label>
+            <select id="receiptEditKind"><option>Parken</option><option>Tanken</option><option>Sonstiges</option></select>
+            <label for="receiptEditAmount">Betrag in €</label>
+            <input id="receiptEditAmount" type="text" inputmode="decimal" maxlength="12" required>
+            <label for="receiptEditNote">Bemerkung</label>
+            <input id="receiptEditNote" type="text" maxlength="200">
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-quiet-danger" id="receiptEditDelete" hidden>Endgültig löschen</button>
+               <button type="button" class="button-secondary" id="receiptEditCancel">Abbrechen</button>
+               <button type="submit" class="button-primary">Speichern</button>
+            </div>
+         </form>
+      </dialog>
+
       <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="cloudClient.js"></script>
+      <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="absenceLogic.js"></script>
       <script src="festApp.js"></script>
    </body>
 </html>

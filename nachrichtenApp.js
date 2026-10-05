@@ -34,9 +34,14 @@
         $('audienceInfo').textContent = audience === 'einzeln' && !count ? 'Noch niemand ausgewählt.' : `Geht an ${count} ${count === 1 ? 'Person' : 'Personen'}.`;
     }
 
+    // Bei vielen Personen hilft die Suche; schon Gewählte bleiben immer sichtbar.
+    let recipientQuery = '';
+    const foldName = text => String(text ?? '').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     function renderRecipients() {
         const list = $('recipientList');
-        list.replaceChildren(...people.filter(person => person.active && person.id !== profile.id).map(person => {
+        const all = people.filter(person => person.active && person.id !== profile.id);
+        $('recipientSearch').hidden = all.length < 13;
+        list.replaceChildren(...all.filter(person => !recipientQuery || picked.has(person.id) || foldName(person.full_name).includes(foldName(recipientQuery))).map(person => {
             const button = el('button', 'recipient-chip', person.full_name || '(ohne Namen)');
             button.type = 'button';
             button.setAttribute('aria-pressed', String(picked.has(person.id)));
@@ -47,8 +52,9 @@
             });
             return button;
         }));
-        if (!list.children.length) list.append(el('p', 'directory-empty', 'Es gibt noch keine freigeschalteten Dolmetscher-Konten.'));
+        if (!list.children.length) list.append(el('p', 'directory-empty', all.length ? 'Kein Name passt zur Suche.' : 'Es gibt noch keine freigeschalteten Dolmetscher-Konten.'));
     }
+    $('recipientSearch').addEventListener('input', () => { recipientQuery = $('recipientSearch').value.trim(); renderRecipients(); });
 
     async function refresh() {
         setStatus('');
@@ -63,6 +69,17 @@
         if (messageResult.error) { $('messageApp').hidden = true; setStatus(`${TerminCloud.germanError(messageResult.error)} Bitte supabase/update-8.sql im SQL Editor ausführen.`, 'error'); return; }
         people = peopleResult.data || [];
         $('messageApp').hidden = false;
+        // Direkter Sprung aus der Dolmetscher-Übersicht: nachrichten.html?an=<Konto> wählt die Person schon aus.
+        const wanted = new URLSearchParams(location.search).get('an');
+        if (wanted) {
+            history.replaceState(null, '', location.pathname);
+            if (people.some(person => person.id === wanted && person.active && person.id !== profile.id)) {
+                picked.clear();
+                picked.add(wanted);
+                document.querySelector('input[name="audience"][value="einzeln"]').checked = true;
+                window.setTimeout(() => $('messageBody').focus(), 60);
+            }
+        }
         renderRecipients();
         renderAudience();
         renderSent(messageResult.data, readResult.error ? [] : readResult.data);
@@ -88,6 +105,42 @@
                     : 'Keine Empfänger')
             );
             const actions = el('span', 'vehicle-entry-actions');
+            // Tippfehler? Der Text lässt sich direkt in der Liste korrigieren; im Portal steht danach der neue Text.
+            const edit = el('button', 'button-quiet', 'Korrigieren');
+            edit.type = 'button';
+            edit.addEventListener('click', () => {
+                if (item.classList.contains('is-editing')) return;
+                item.classList.add('is-editing');
+                const shown = meta.querySelector('.message-entry-body');
+                const box = el('textarea', 'message-edit-box');
+                box.value = message.body;
+                box.maxLength = 1000;
+                box.rows = 4;
+                box.setAttribute('aria-label', 'Text der Nachricht korrigieren');
+                const save = el('button', 'button-primary', 'Speichern');
+                const cancel = el('button', 'button-quiet', 'Abbrechen');
+                save.type = 'button';
+                cancel.type = 'button';
+                const row = el('span', 'message-edit-actions');
+                row.append(save, cancel);
+                shown.hidden = true;
+                shown.after(box, row);
+                box.focus();
+                const close = () => { box.remove(); row.remove(); shown.hidden = false; item.classList.remove('is-editing'); };
+                cancel.addEventListener('click', close);
+                save.addEventListener('click', async () => {
+                    const text = box.value.trim();
+                    if (!text) { showToast('Der Text darf nicht leer sein. Zum Entfernen nimm „Löschen“.', 'error'); return; }
+                    if (text === message.body) { close(); return; }
+                    save.disabled = true;
+                    const { error } = await client.from('tt_messages').update({ body: text }).eq('id', message.id);
+                    save.disabled = false;
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                    showToast('Text korrigiert. Im Portal steht jetzt der neue Text.', 'success');
+                    refresh();
+                });
+            });
+            actions.append(edit);
             const remove = el('button', 'button-quiet-danger', 'Löschen');
             remove.type = 'button';
             remove.addEventListener('click', async () => {

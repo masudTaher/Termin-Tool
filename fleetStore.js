@@ -70,6 +70,11 @@ function readActiveFleetVehicles() {
         .sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de'));
 }
 
+// Fahrzeuge, die man heute ausgeben kann: im Fuhrpark und weder in der Werkstatt noch gesperrt.
+function readAvailableFleetVehicles() {
+    return readActiveFleetVehicles().filter(vehicle => !vehicle.service);
+}
+
 function findFleetVehicleByPlate(plate) {
     const key = normalizeFleetPlateKey(plate);
     if (!key) return null;

@@ -189,7 +189,21 @@ window.PortalDocs = (function () {
         list.append(other);
         const direct = pending;
         pending = null;
-        if (direct) chooseSource(sourceOf(direct));
+        if (direct?.retake) {
+            // Die Einsatzleitung bittet um eine neue Aufnahme: Patient, Arzt, Datum und Art sind schon bekannt.
+            const known = direct.retake.context || {};
+            draft.requestId = direct.retake.id;
+            draft.source = {
+                assignmentId: known.assignment_id || null, appointmentId: known.appointment_id || null, date: known.date || today(), time: '',
+                patientNr: String(known.patient_nr || '').trim(), patientName: String(known.patient_name || '').trim(), doctor: String(known.doctor || '').trim(), title: direct.retake.title || ''
+            };
+            if (KINDS.includes(known.kind)) {
+                draft.kind = known.kind;
+                $('docPatientLine').textContent = patientLine();
+                $('docCameraLabel').textContent = 'Seite fotografieren';
+                wizard.show(3);
+            } else showKinds();
+        } else if (direct) chooseSource(sourceOf(direct));
     }
 
     function leaveWizard() {
@@ -554,20 +568,23 @@ window.PortalDocs = (function () {
             const upload = await client.storage.from('dokumente').upload(path, pdf, { contentType: 'application/pdf' });
             if (upload.error) throw upload.error;
             const text = draft.pages.map((page, index) => page.text ? `--- Seite ${index + 1} ---\n${page.text.trim()}` : '').filter(Boolean).join('\n\n').slice(0, 60000);
+            const documentId = crypto.randomUUID();
             const { error } = await client.from('tt_documents').insert({
-                patient_nr: source.patientNr, patient_name: source.patientName, date: source.date, doctor: source.doctor,
+                id: documentId, patient_nr: source.patientNr, patient_name: source.patientName, date: source.date, doctor: source.doctor,
                 appointment_id: source.appointmentId || null, assignment_id: source.assignmentId || null,
                 kind: draft.kind, note: $('docNote').value.trim(), pages: draft.pages.length, file_path: path, file_bytes: pdf.size,
                 text_content: text, warnings: found, uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu'
             });
             if (error) { await client.storage.from('dokumente').remove([path]); throw error; }
             const label = `${draft.kind}${source.patientName ? ` für ${source.patientName}` : ''}`;
+            // War es eine erbetene neue Aufnahme? Dann ist die Bitte damit erledigt.
+            const answered = session.requestId ? await window.PortalRequests?.answerDocument(session.requestId, documentId, $('docNote').value.trim()) : null;
             stopOcr();
             draft = null;
             await load();
-            await core.showSuccess('Gesendet', label);
-            toast('Unterlage gesendet. Danke!', 'success');
-            core.goTo('docs');
+            await core.showSuccess(session.requestId ? 'Danke!' : 'Gesendet', session.requestId ? 'Die neue Aufnahme ist angekommen.' : label);
+            toast(answered ? 'Unterlage gesendet. Die Bitte der Einsatzleitung konnte aber nicht als erledigt gemeldet werden – bitte gib kurz Bescheid.' : 'Unterlage gesendet. Danke!', answered ? 'info' : 'success');
+            core.goTo(session.requestId ? 'vehicle' : 'docs');
         } catch (error) {
             const message = /does not exist|schema cache|bucket not found/i.test(error?.message || '')
                 ? 'Die Unterlagen sind in der Datenbank noch nicht eingerichtet (Update 10 fehlt). Bitte sag der Einsatzleitung Bescheid.'
@@ -664,5 +681,5 @@ window.PortalDocs = (function () {
         }
     });
 
-    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }) };
+    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }) };
 })();

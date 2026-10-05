@@ -108,6 +108,66 @@
         renderPush(profile);
     });
 
+    // ---------- Heute live: Stand aus der Datenbank (Termine, Dolmetscher, Fahrzeuge) und der Blick auf morgen ----------
+    const liveEl = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
+    const liveDuration = minutes => minutes == null ? '' : minutes < 1 ? 'gerade eben' : minutes < 60 ? `${minutes} Min` : `${Math.floor(minutes / 60)} Std ${String(minutes % 60).padStart(2, '0')} Min`;
+    let liveBusy = false;
+    async function loadLive(profile) {
+        const section = $('startLive');
+        if (!section || typeof PeopleLive === 'undefined' || !TerminCloud.isStaff(profile) || liveBusy) { if (section && !TerminCloud.isStaff(profile)) section.hidden = true; return; }
+        liveBusy = true;
+        try {
+            const today = TerminCloud.todayIso();
+            const tomorrow = AbsenceLogic.addDays(today, 1);
+            const [live, next] = await Promise.all([PeopleLive.load(today), PeopleLive.load(tomorrow)]);
+            section.hidden = false;
+            // Die Zahlen des Tages kommen jetzt aus der Datenbank; die Anzeige aus dem Speicher dieses Geräts wäre doppelt.
+            if (live.day) $('startDay').hidden = true;
+            $('liveOpen').textContent = live.day ? String(live.day.offen) : '–';
+            $('liveOpenSub').textContent = live.day ? `von ${plural(live.day.total, 'Termin', 'Terminen')} · ${live.day.erledigt} erledigt${live.day.storniert ? ` · ${live.day.storniert} storniert` : ''}` : 'der Tag ist noch nicht geladen';
+            $('liveOut').textContent = String(live.counts.unterwegs);
+            $('liveOutSub').textContent = live.day ? plural(live.day.unterwegs, 'Termin läuft', 'Termine laufen') : '';
+            $('liveFree').textContent = String(live.counts.frei);
+            const noJob = live.people.filter(person => person.state === 'frei' && !person.jobs.total).length;
+            $('liveFreeSub').textContent = live.counts.frei ? `${noJob} ohne Auftrag` : '';
+            $('liveAway').textContent = String(live.counts.abwesend);
+            $('liveAwaySub').textContent = live.people.filter(person => person.state === 'abwesend').slice(0, 2).map(person => person.name.split(' ')[0]).join(', ') + (live.counts.abwesend > 2 ? ' …' : '');
+            $('liveCars').textContent = String(live.vehicles?.out ?? 0);
+            $('liveCarsSub').textContent = live.vehicles ? `${live.vehicles.free} frei${live.vehicles.service ? ` · ${live.vehicles.service} in der Werkstatt` : ''}` : '';
+            // Gerade unterwegs: am längsten unterwegs zuerst
+            const running = live.people.filter(person => person.state === 'unterwegs').sort((left, right) => (right.sinceMinutes ?? -1) - (left.sinceMinutes ?? -1));
+            const list = $('liveRunning');
+            list.replaceChildren(...running.slice(0, 8).map(person => {
+                const item = liveEl('li', 'live-entry');
+                const text = liveEl('span');
+                text.append(liveEl('strong', null, person.name), liveEl('small', null, [person.current.time ? `${person.current.time} Uhr` : '', person.current.title].filter(Boolean).join(' · ')));
+                const side = liveEl('span', 'live-side');
+                side.append(liveEl('b', null, person.current.since ? `seit ${person.current.since}` : ''), liveEl('small', null, [liveDuration(person.sinceMinutes), person.vehicle?.plate].filter(Boolean).join(' · ')));
+                item.append(text, side);
+                return item;
+            }));
+            if (!running.length) list.append(liveEl('li', 'directory-empty', 'Gerade ist niemand unterwegs.'));
+            if (running.length > 8) list.append(liveEl('li', 'directory-empty', `und ${running.length - 8} weitere – alle unter „Dolmetscher“`));
+            // Morgen: wer kommt, wer fehlt, wer hat noch nicht geantwortet
+            $('liveTomorrowTitle').textContent = `Morgen · ${AbsenceLogic.parse(tomorrow).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })}`;
+            const open = next.ask.open.length;
+            $('liveTomorrow').textContent = next.people.length
+                ? [`${next.counts.frei} ${next.counts.frei === 1 ? 'kommt' : 'kommen'}`, next.counts.abwesend ? `${next.counts.abwesend} abwesend` : '', next.counts.nichtda ? `${next.counts.nichtda} ${next.counts.nichtda === 1 ? 'kommt' : 'kommen'} nicht` : '',
+                    open ? `${open} ohne Antwort${next.request ? ' (angefragt)' : ''}` : ''].filter(Boolean).join(' · ')
+                : 'Noch keine freigeschalteten Dolmetscher.';
+            $('liveTomorrowLink').textContent = open && !next.request ? `Für morgen anfragen (${open})` : 'Wer kommt morgen?';
+            $('startLiveTime').textContent = `Stand ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+        } catch (error) {
+            section.hidden = true;                    // ohne Verbindung bleibt die Seite wie bisher
+        } finally {
+            liveBusy = false;
+        }
+    }
+    let liveProfile = null;
+    $('startLiveReload')?.addEventListener('click', () => loadLive(liveProfile));
+    window.setInterval(() => { if (!document.hidden && liveProfile) loadLive(liveProfile); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && liveProfile) loadLive(liveProfile); });
+
     // ---------- Online: was zu erledigen ist ----------
     function todoItem(text, count, href) {
         const item = document.createElement('li');
@@ -135,6 +195,8 @@
         let profile = null;
         try { profile = await TerminCloud.getProfile(); } catch (error) { /* wie nicht angemeldet */ }
         renderPush(profile);
+        liveProfile = TerminCloud.isStaff(profile) ? profile : null;
+        loadLive(profile);
         if (!profile) {
             info.textContent = 'Du bist nicht online angemeldet. Mit Anmeldung siehst du hier Meldungen, Schäden und die Abrechnung.';
             list.append(todoItem('Online anmelden', 0, 'team.html'));
@@ -147,14 +209,16 @@
             info.textContent = 'Für dieses Konto gibt es hier nichts zu erledigen.';
             return;
         }
-        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0);
+        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0) + (countsOnline.requests || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
             todoItem('Neue Unterlagen und Berichte der Dolmetscher', countsOnline.documents || 0, 'patienten.html'),
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),
             todoItem('Neue Schäden', countsOnline.damages, 'fahrzeugakte.html'),
+            ...(countsOnline.requests ? [todoItem('Angeforderte Fotos sind da', countsOnline.requests, 'fahrzeugakte.html')] : []),
             todoItem('Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html'),
-            todoItem('Festangestellte: Überstunden und Belege prüfen', countsOnline.fest || 0, 'festangestellte.html')
+            todoItem('Festangestellte: Überstunden und Belege prüfen', (countsOnline.fest || 0) - (countsOnline.absences || 0), 'festangestellte.html'),
+            ...(countsOnline.absences ? [todoItem('Urlaubsanträge und Krankmeldungen', countsOnline.absences, 'festangestellte.html?reiter=abwesenheiten')] : [])
         );
         if (TerminCloud.isAdmin(profile)) list.append(todoItem('Konten: Freischaltung oder Passwort vergessen', countsOnline.accounts, 'team.html'));
         const write = todoItem('Nachricht an die Dolmetscher schreiben', 0, 'nachrichten.html');

@@ -83,7 +83,7 @@
         { group: 'Dolmetscher', items: [
             { page: 'dolmetscher', href: 'dolmetscher.html', label: 'Dolmetscher', icon: ICONS.people },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
-            { page: 'fest', href: 'festangestellte.html', label: 'Überstunden', icon: ICONS.clock },
+            { page: 'fest', href: 'festangestellte.html', label: 'Festangestellte', icon: ICONS.clock },
             { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }
         ] },
         { group: 'Verwaltung', items: [

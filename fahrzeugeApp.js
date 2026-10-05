@@ -37,7 +37,8 @@ function undoLastFleetChange() {
     const history = readFleetUndoHistory();
     const previous = history.pop();
     if (!previous) return;
-    saveFleetList(FLEET_VEHICLES_KEY, previous.vehicles);
+    // „dirty“: Der wiederhergestellte Stand gilt und wird beim nächsten Abgleich in die Datenbank geschrieben.
+    saveFleetList(FLEET_VEHICLES_KEY, previous.vehicles.map(vehicle => ({ ...vehicle, dirty: true })));
     saveFleetList(FLEET_HANDOVERS_KEY, previous.handovers);
     saveFleetList(FLEET_DRIVERS_KEY, previous.drivers);
     sessionStorage.setItem(FLEET_UNDO_KEY, JSON.stringify(history));
@@ -76,13 +77,15 @@ function renderVehicleDirectory() {
         const option = document.createElement('option');
         option.value = vehicle.id;
         option.textContent = [getFleetVehicleLabel(vehicle), vehicle.type].filter(Boolean).join(' — ');
+        const serviceText = vehicle.service === 'werkstatt' ? 'in der Werkstatt' : vehicle.service === 'gesperrt' ? 'gesperrt' : '';
+        if (serviceText) { option.disabled = true; option.textContent += ` — ${serviceText}`; }
         select.append(option);
 
         const item = document.createElement('li');
         item.className = 'vehicle-entry';
         const meta = document.createElement('span');
         const driver = openToday.get(vehicle.id);
-        meta.innerHTML = `<strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(getFleetVehicleDetails(vehicle))}</small>${driver ? `<small class="vehicle-driver">Heute bei ${escapeHtml(driver)}</small>` : ''}`;
+        meta.innerHTML = `<strong>${escapeHtml(vehicle.plate)}</strong><small>${escapeHtml(getFleetVehicleDetails(vehicle))}</small>${driver ? `<small class="vehicle-driver">Heute bei ${escapeHtml(driver)}</small>` : ''}${serviceText ? `<small class="vehicle-driver">Zurzeit ${serviceText}</small>` : ''}`;
         const actions = document.createElement('span');
         actions.className = 'vehicle-entry-actions';
         const edit = document.createElement('button');
@@ -94,8 +97,9 @@ function renderVehicleDirectory() {
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'button-quiet-danger';
-        remove.textContent = 'Ausblenden';
-        remove.setAttribute('aria-label', `${vehicle.plate} aus der aktiven Fahrzeugliste ausblenden`);
+        remove.textContent = 'Aus dem Fuhrpark nehmen';
+        remove.title = 'Das Fahrzeug verschwindet auf allen Geräten aus der Liste; alte Fahrten bleiben erhalten. Endgültig löschen: Seite „Fuhrpark“.';
+        remove.setAttribute('aria-label', `${vehicle.plate} aus dem Fuhrpark nehmen`);
         remove.addEventListener('click', () => archiveVehicle(vehicle.id));
         actions.append(edit, remove);
         item.append(meta, actions);
@@ -115,10 +119,10 @@ function archiveVehicle(vehicleId) {
         return;
     }
     const vehicles = readFleetList(FLEET_VEHICLES_KEY);
-    const updated = vehicles.map(vehicle => vehicle.id === vehicleId ? { ...vehicle, active: false } : vehicle);
-    recordFleetUndo('Fahrzeug ausgeblendet');
+    const updated = vehicles.map(vehicle => vehicle.id === vehicleId ? { ...vehicle, active: false, dirty: true } : vehicle);
+    recordFleetUndo('Fahrzeug aus dem Fuhrpark genommen');
     if (saveFleetList(FLEET_VEHICLES_KEY, updated)) {
-        setFleetStatus('Fahrzeug aus der aktiven Liste ausgeblendet. Alte Übergaben bleiben im Verlauf erhalten.');
+        setFleetStatus('Fahrzeug aus dem Fuhrpark genommen – auf allen Geräten. Alte Übergaben bleiben im Verlauf erhalten. Wiederherstellen oder endgültig löschen: Seite „Fuhrpark“.');
         renderFleetPage();
     }
 }
@@ -164,11 +168,11 @@ function addVehicle(event) {
     let updated;
     if (editId) {
         recordFleetUndo('Fahrzeug geändert');
-        updated = vehicles.map(vehicle => vehicle.id === editId ? { ...vehicle, plate, brand, body, type, label } : vehicle);
+        updated = vehicles.map(vehicle => vehicle.id === editId ? { ...vehicle, plate, brand, body, type, label, dirty: true } : vehicle);
     } else if (duplicate) {
         // Ein früher ausgeblendetes Kennzeichen wird wieder aktiviert statt doppelt angelegt.
         recordFleetUndo('Fahrzeug wieder aktiviert');
-        updated = vehicles.map(vehicle => vehicle.id === duplicate.id ? { ...vehicle, plate, brand, body, type, label, active: true } : vehicle);
+        updated = vehicles.map(vehicle => vehicle.id === duplicate.id ? { ...vehicle, plate, brand, body, type, label, active: true, dirty: true } : vehicle);
     } else {
         recordFleetUndo('Fahrzeug hinzugefügt');
         updated = [...vehicles, { id: createFleetId(), plate, brand, body, type, label, active: true, createdAt: new Date().toISOString() }];
@@ -310,8 +314,16 @@ function renderFleetLog() {
             end.addEventListener('click', () => endVehicleHandover(item.id));
             actionCell.append(end);
         } else {
-            actionCell.textContent = item.endTime ? 'Abgeschlossen' : 'Offen – vergangener Tag';
+            actionCell.append(document.createTextNode(item.endTime ? 'Abgeschlossen ' : 'Offen – vergangener Tag '));
         }
+        // Jeder Eintrag lässt sich korrigieren (Zeiten, Kilometer, Fahrer, Notiz) oder löschen.
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'button-quiet';
+        edit.textContent = 'Korrigieren';
+        edit.setAttribute('aria-label', `Eintrag ${item.vehiclePlate} ${item.startTime} korrigieren`);
+        edit.addEventListener('click', () => openHandoverEdit(item.id));
+        actionCell.append(edit);
         row.append(actionCell);
         body.append(row);
     });
@@ -321,6 +333,104 @@ function renderFleetLog() {
     document.getElementById('fleetActiveCount').textContent = String(allHandovers.filter(item =>
         normalizeFleetDate(item.date) === today && !item.endTime
     ).length);
+}
+
+// ---------- Einen Eintrag korrigieren oder löschen ----------
+// Geändert wird der Eintrag auf diesem Gerät und – bei Online-Anmeldung – derselbe Eintrag in der Datenbank.
+let editedHandoverId = null;
+const isFleetUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+
+function handoverEditStatus(message, kind = 'error') {
+    const status = document.getElementById('handoverEditStatus');
+    status.hidden = !message;
+    status.textContent = message || '';
+    status.dataset.kind = kind;
+}
+
+function openHandoverEdit(id) {
+    const item = readFleetList(FLEET_HANDOVERS_KEY).find(entry => entry.id === id);
+    if (!item) return;
+    editedHandoverId = id;
+    document.getElementById('handoverEditInfo').textContent = `${item.vehiclePlate} · ${formatFleetDate(normalizeFleetDate(item.date))}`;
+    document.getElementById('handoverEditDriver').value = item.driver || '';
+    document.getElementById('handoverEditStart').value = item.startTime || '';
+    document.getElementById('handoverEditEnd').value = item.endTime || '';
+    document.getElementById('handoverEditStartKm').value = item.startMileage === '' || item.startMileage == null ? '' : String(item.startMileage);
+    document.getElementById('handoverEditEndKm').value = item.endMileage === '' || item.endMileage == null ? '' : String(item.endMileage);
+    document.getElementById('handoverEditNote').value = item.note || '';
+    handoverEditStatus('');
+    document.getElementById('handoverEditDialog').showModal();
+}
+
+// Liefert das angemeldete Profil der Einsatzleitung – oder null, wenn offline bzw. nicht angemeldet.
+async function fleetStaffProfile() {
+    if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return null;
+    try { const profile = await TerminCloud.getProfile(); return TerminCloud.isStaff(profile) ? profile : null; } catch (error) { return null; }
+}
+
+async function saveHandoverEdit(event) {
+    event.preventDefault();
+    const entries = readFleetList(FLEET_HANDOVERS_KEY);
+    const item = entries.find(entry => entry.id === editedHandoverId);
+    if (!item) { document.getElementById('handoverEditDialog').close(); return; }
+    const driver = document.getElementById('handoverEditDriver').value.trim().replace(/\s+/g, ' ');
+    const startTime = document.getElementById('handoverEditStart').value;
+    const endTime = document.getElementById('handoverEditEnd').value;
+    const number = id => { const text = document.getElementById(id).value.trim(); return text === '' ? '' : Number(text); };
+    const startMileage = number('handoverEditStartKm');
+    const endMileage = number('handoverEditEndKm');
+    if (!driver) { handoverEditStatus('Bitte trag den Namen ein.'); return; }
+    if (!/^\d{2}:\d{2}$/.test(startTime)) { handoverEditStatus('Bitte trag die Uhrzeit des Beginns ein.'); return; }
+    if (endTime && endTime <= startTime) { handoverEditStatus('Das Ende muss nach dem Beginn liegen.'); return; }
+    if ([startMileage, endMileage].some(value => value !== '' && (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)))) { handoverEditStatus('Kilometer bitte als ganze Zahl eintragen.'); return; }
+    if (startMileage !== '' && endMileage !== '' && endMileage < startMileage) { handoverEditStatus(`Der Kilometerstand am Ende (${endMileage}) ist kleiner als bei Beginn (${startMileage}).`); return; }
+    const note = document.getElementById('handoverEditNote').value.trim();
+    const save = document.getElementById('handoverEditSave');
+    save.disabled = true;
+    // Online zuerst: gelingt die Änderung in der Datenbank nicht, bleibt auch hier alles beim Alten.
+    const profile = isFleetUuid(item.id) ? await fleetStaffProfile() : null;
+    if (profile) {
+        const client = TerminCloud.client;
+        const { data: cloud } = await client.from('tt_handovers').select('id, driver_name, driver_id').eq('id', item.id).maybeSingle();
+        if (cloud) {
+            const changes = { driver_name: driver, start_time: `${startTime}:00`, end_time: endTime ? `${endTime}:00` : null, start_mileage: startMileage === '' ? null : startMileage, end_mileage: endMileage === '' ? null : endMileage, note };
+            if (endTime && !item.endTime) changes.end_date = normalizeFleetDate(item.date);
+            // Anderer Name: das passende Portal-Konto suchen (oder die Verknüpfung lösen).
+            if (driver.toLocaleLowerCase('de') !== String(cloud.driver_name || '').toLocaleLowerCase('de')) {
+                const { data: people } = await client.from('tt_profiles').select('id, full_name');
+                changes.driver_id = (people || []).find(person => String(person.full_name || '').trim().toLocaleLowerCase('de') === driver.toLocaleLowerCase('de'))?.id || null;
+            }
+            const { error } = await client.from('tt_handovers').update(changes).eq('id', item.id);
+            if (error) { save.disabled = false; handoverEditStatus(`Online konnte der Eintrag nicht geändert werden: ${TerminCloud.germanError(error)}`); return; }
+        }
+    }
+    Object.assign(item, { driver, startTime, endTime: endTime || '', startMileage, endMileage, note });
+    save.disabled = false;
+    if (!saveFleetList(FLEET_HANDOVERS_KEY, entries)) { handoverEditStatus('Der Eintrag konnte auf diesem Gerät nicht gespeichert werden.'); return; }
+    document.getElementById('handoverEditDialog').close();
+    setFleetStatus(`${item.vehiclePlate}: Eintrag von ${driver} korrigiert.`);
+    renderFleetPage();
+}
+
+async function deleteHandoverEntry() {
+    const entries = readFleetList(FLEET_HANDOVERS_KEY);
+    const item = entries.find(entry => entry.id === editedHandoverId);
+    if (!item) { document.getElementById('handoverEditDialog').close(); return; }
+    if (!await confirmDialog(`Den Eintrag ${item.vehiclePlate} · ${item.driver} · ${item.startTime} Uhr endgültig löschen?\n\nEr verschwindet aus dem Protokoll – auch online, also auf allen Geräten und in der Fahrzeugakte.`, 'Eintrag löschen')) return;
+    const profile = isFleetUuid(item.id) ? await fleetStaffProfile() : null;
+    if (profile) {
+        const client = TerminCloud.client;
+        const { data: cloud } = await client.from('tt_handovers').select('id').eq('id', item.id).maybeSingle();
+        if (cloud) {
+            if (!TerminCloud.isAdmin(profile)) { handoverEditStatus('Fahrten, die online gespeichert sind, darf nur der Admin löschen.'); return; }
+            const { data, error } = await client.from('tt_handovers').delete().eq('id', item.id).select();
+            if (error || !data?.length) { handoverEditStatus(`Online konnte der Eintrag nicht gelöscht werden${error ? `: ${TerminCloud.germanError(error)}` : '.'}`); return; }
+        }
+    }
+    if (!saveFleetList(FLEET_HANDOVERS_KEY, entries.filter(entry => entry.id !== item.id))) return;
+    document.getElementById('handoverEditDialog').close();
+    setFleetStatus(`${item.vehiclePlate}: Eintrag von ${item.driver} gelöscht.`);
+    renderFleetPage();
 }
 
 function formatFleetDate(value) {
@@ -384,6 +494,9 @@ document.getElementById('addHandoverForm').addEventListener('submit', addVehicle
 document.getElementById('fleetLogDate').addEventListener('change', renderFleetLog);
 document.getElementById('exportFleetLog').addEventListener('click', exportFleetLog);
 document.getElementById('undoFleetChange').addEventListener('click', undoLastFleetChange);
+document.getElementById('handoverEditForm').addEventListener('submit', saveHandoverEdit);
+document.getElementById('handoverEditCancel').addEventListener('click', () => document.getElementById('handoverEditDialog').close());
+document.getElementById('handoverEditDelete').addEventListener('click', deleteHandoverEntry);
 
 const today = getLocalDateInputValue();
 document.getElementById('handoverDate').value = today;

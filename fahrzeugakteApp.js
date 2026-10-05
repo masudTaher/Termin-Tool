@@ -21,6 +21,8 @@
     let fuelLog = [];
     let fuelReady = true;          // false: Tabellen fehlen noch (Update 10)
     let fileHandovers = [];
+    let allVehicles = [];          // auch die aus dem Fuhrpark genommenen (für „Nicht mehr im Fuhrpark“)
+    const lastReturns = new Map(); // Fahrzeug → letzte beendete Fahrt
     const photoUrls = new Map();   // Fahrzeugfoto: Pfad → zeitlich begrenzte Adresse
     const DAMAGE_KINDS = window.TERMIN_CLOUD_CONFIG?.damageKinds || ['Kratzer', 'Schramme', 'Delle', 'Steinschlag', 'Unfall mit Bericht', 'Unfall ohne Bericht', 'Schiebetür defekt', 'Sonstiges'];
     const isAdmin = () => TerminCloud.isAdmin(profile);
@@ -62,6 +64,7 @@
             return;
         }
         await TerminCloud.syncFleet();
+        if (window.PhotoRequest) await PhotoRequest.load().catch(() => []);
         const [vehicleResult, profileResult, damageResult, alertResult, handoverResult] = await Promise.all([
             client.from('tt_vehicles').select('*').order('plate'),
             client.from('tt_profiles').select('*').order('full_name'),
@@ -78,12 +81,17 @@
         fuelLog = cardLogResult.error ? [] : cardLogResult.data;
         const noteResult = await client.from('tt_handovers').select('*').eq('note_seen', false).order('created_at', { ascending: false }).limit(200);
         takeoverNotes = noteResult.error ? [] : noteResult.data.filter(item => item.start_note);
+        // Letzte Rückgabe je Fahrzeug – für „zuletzt Ahmad, 04.10. 17:40“ bei freien Fahrzeugen
+        const returnResult = await client.from('tt_handovers').select('*').not('end_time', 'is', null).order('created_at', { ascending: false }).limit(400);
+        lastReturns.clear();
+        (returnResult.error ? [] : returnResult.data).forEach(item => { if (!lastReturns.has(item.vehicle_id)) lastReturns.set(item.vehicle_id, item); });
         const failed = [vehicleResult, profileResult, damageResult, alertResult, handoverResult].find(result => result.error);
         if (failed) {
             setStatus(`${TerminCloud.germanError(failed.error)} Falls Spalten oder Tabellen fehlen: supabase/update-2.sql im SQL Editor ausführen.`, 'error');
             return;
         }
-        vehicles = vehicleResult.data.filter(vehicle => vehicle.active);
+        allVehicles = vehicleResult.data;
+        vehicles = allVehicles.filter(vehicle => vehicle.active);
         profiles = profileResult.data;
         damages = damageResult.data;
         alerts = alertResult.data;
@@ -93,9 +101,10 @@
         renderInbox();
         renderFuel();
         renderGrid();
+        renderRetired();
         loadPhotoUrls();
         if (selectedId && vehicles.some(vehicle => vehicle.id === selectedId)) await renderFile();
-        else { selectedId = null; $('vehicleFile').hidden = true; }
+        else { selectedId = null; $('vehicleFile').hidden = true; $('fileBackdrop').hidden = true; document.documentElement.classList.remove('has-drawer'); }
         window.refreshCloudInbox?.();
     }
 
@@ -119,6 +128,23 @@
         return wrap;
     }
     const damagePhotos = item => item.photo_paths?.length ? item.photo_paths : (item.photo_path ? [item.photo_path] : []);
+
+    // „Foto neu anfordern“: nur bei Einträgen, die jemand im Portal gemeldet hat (nicht bei eigenen Einträgen der Einsatzleitung).
+    const plateOf = item => vehicles.find(vehicle => vehicle.id === item.vehicle_id)?.plate || allVehicles.find(vehicle => vehicle.id === item.vehicle_id)?.plate || '';
+    function requestButton(kind, item) {
+        const reporter = profiles.find(person => person.id === item.reporter_id);
+        if (!window.PhotoRequest || !reporter || !reporter.active || reporter.role !== 'dolmetscher') return null;
+        return PhotoRequest.button({
+            kind, refId: item.id, profileId: reporter.id, profileName: reporter.full_name || item.reporter_name,
+            title: kind === 'schaden' ? ['Schaden', item.category, item.zone, plateOf(item)].filter(Boolean).join(' · ') : ['Meldung', item.kind, plateOf(item)].filter(Boolean).join(' · '),
+            paths: kind === 'schaden' ? damagePhotos(item) : [item.photo_path]
+        }, refresh);
+    }
+    const withRequest = (row, kind, item) => {
+        const state = window.PhotoRequest?.pill(item.id);
+        if (state) row.querySelector('span:not(.status-pill):not(.vehicle-entry-actions)')?.append(state);
+        return row;
+    };
 
     // ---------- Aktionen ----------
     async function setDamageStatus(item, status) {
@@ -184,6 +210,35 @@
             : 'Alles erledigt – es gibt nichts Offenes.';
         const vehicleOf = item => vehicles.find(vehicle => vehicle.id === item.vehicle_id);
 
+        // Auf Bitte neu geschickte Fotos (Schaden oder Meldung): ansehen und abhaken
+        const answeredPhotos = window.PhotoRequest ? PhotoRequest.unseen().filter(item => item.kind === 'schaden' || item.kind === 'meldung') : [];
+        answeredPhotos.forEach(request => {
+            const target = request.kind === 'schaden' ? damages.find(item => item.id === request.ref_id) : alerts.find(item => item.id === request.ref_id);
+            const row = el('li', 'vehicle-entry inbox-entry');
+            const meta = el('span');
+            meta.append(el('strong', null, `Neues Foto von ${request.profile_name || 'unbekannt'}`), el('small', null, [request.title, request.answer_note ? `„${request.answer_note}“` : '', formatDateTime(request.answered_at)].filter(Boolean).join(' · ')));
+            const actions = el('span', 'vehicle-entry-actions');
+            actions.append(photoButtons(request.answer_paths || []));
+            if (target) {
+                const open = el('button', 'button-quiet', 'Akte');
+                open.type = 'button';
+                open.addEventListener('click', () => selectVehicle(target.vehicle_id));
+                actions.append(open);
+            }
+            const seen = el('button', 'button-primary account-approve', 'Gesehen');
+            seen.type = 'button';
+            seen.addEventListener('click', async () => {
+                seen.disabled = true;
+                const error = await PhotoRequest.markSeen(request);
+                if (error) { seen.disabled = false; showToast(TerminCloud.germanError(error), 'error'); return; }
+                renderInbox();
+                window.refreshCloudInbox?.();
+            });
+            actions.append(seen);
+            row.append(pill('erledigt', 'Neues Foto'), meta, actions);
+            list.append(row);
+        });
+
         overdue.forEach(item => {
             const row = el('li', 'vehicle-entry inbox-entry');
             const meta = el('span');
@@ -237,9 +292,11 @@
             open.type = 'button';
             open.addEventListener('click', () => selectVehicle(item.vehicle_id));
             actions.append(done, open);
+            const again = requestButton('meldung', item);
+            if (again) actions.append(again);
             if (isAdmin()) actions.append(deleteAlert(item));
             row.append(pill('in Arbeit', 'Meldung'), meta, actions);
-            list.append(row);
+            list.append(withRequest(row, 'meldung', item));
         });
         newDamages.forEach(item => {
             const row = el('li', 'vehicle-entry inbox-entry');
@@ -254,10 +311,18 @@
             open.type = 'button';
             open.addEventListener('click', () => selectVehicle(item.vehicle_id));
             actions.append(known, open);
+            const again = requestButton('schaden', item);
+            if (again) actions.append(again);
             if (isAdmin()) actions.append(deleteDamage(item));
             row.append(pill('offen', 'Neuer Schaden'), meta, actions);
-            list.append(row);
+            list.append(withRequest(row, 'schaden', item));
         });
+        // Bei vielen Fahrzeugen bleibt die Übersicht oben: zuerst nur die ersten Punkte, der Rest auf einen Tipp.
+        const rows = [...list.children];
+        const LIMIT = 4;
+        rows.forEach((row, index) => { row.hidden = !inboxOpen && index >= LIMIT; });
+        $('inboxMore').hidden = rows.length <= LIMIT;
+        $('inboxMore').textContent = inboxOpen ? 'Weniger anzeigen' : `Alle ${rows.length} Punkte anzeigen`;
     }
 
     // ---------- Fahrzeugbild: eigenes Foto, sonst die schwarze Zeichnung passend zur Bauart ----------
@@ -283,11 +348,81 @@
         if (selectedId) { const vehicle = vehicles.find(item => item.id === selectedId); if (vehicle) fillArt($('fileArt'), vehicle); }
     }
 
-    // Was ist mit diesem Fahrzeug los? Eine Stelle für Karten, Filter und Akte.
+    // ---------- Übersicht für viele Fahrzeuge ----------
+    // Vier Zustände, die zusammen den ganzen Fuhrpark ergeben – jeweils mit Farbe, Zeichen UND Wort.
+    // Schäden, Meldungen, Tank und Tankkarte sind Merkmale an der Zeile, keine eigenen Zustände.
+    const STATES = [
+        { key: 'ausgegeben', label: 'Ausgegeben', icon: '<path d="M5 12h12M12.500 7.500 17 12l-4.500 4.500"/><path d="M20 5v14"/>' },
+        { key: 'frei', label: 'Frei', icon: '<path d="m5 12.500 4.500 4.500L19 7.500"/>' },
+        { key: 'reserviert', label: 'Reserviert', icon: '<rect x="5.500" y="11" width="13" height="9" rx="2"/><path d="M8.500 11V8a3.500 3.500 0 0 1 7 0v3"/>' },
+        { key: 'werkstatt', label: 'Werkstatt', icon: '<path d="M14.500 6.500a4 4 0 0 0-5.300 5.300L4 17l3 3 5.200-5.200a4 4 0 0 0 5.300-5.300L15 12l-3-3z"/>' }
+    ];
+    const STATE = Object.fromEntries(STATES.map(item => [item.key, item]));
+    const FLAGS = [
+        ['ueberfaellig', 'Rückgabe offen', facts => facts.overdue > 0],
+        ['schaden', 'Neue Schäden', facts => facts.newDamages > 0],
+        ['meldung', 'Offene Meldungen', facts => facts.openAlerts > 0],
+        ['reparatur', 'In Reparatur', facts => facts.inRepair > 0],
+        ['tank', 'Tank niedrig', (facts, vehicle) => vehicle.fuel != null && vehicle.fuel <= 1],
+        ['sauber', 'Nicht sauber', (facts, vehicle) => vehicle.clean_inside === false || vehicle.clean_outside === false],
+        ['karte', 'Tankkarte dabei', facts => Boolean(facts.card)]
+    ];
+    const VIEW_KEY = 'terminTool.fleet.view.v1';
+    const readView = () => { try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (error) { return {}; } };
+    const savedView = readView();
+    let fleetView = savedView.view === 'kacheln' ? 'kacheln' : 'liste';
+    let fleetSort = ['standard', 'kennzeichen', 'dauer', 'kilometer'].includes(savedView.sort) ? savedView.sort : 'standard';
+    const collapsedGroups = new Set(Array.isArray(savedView.collapsed) ? savedView.collapsed : []);
+    let fleetQuery = '';
+    let fleetModel = '';
+    let fleetFlag = '';
+    let shownIds = [];               // Reihenfolge der gerade sichtbaren Fahrzeuge (für „voriges / nächstes“ in der Akte)
+    let inboxOpen = false;
+    const saveView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: fleetView, sort: fleetSort, collapsed: [...collapsedGroups] })); } catch (error) { /* Ansicht gilt dann nur für diesen Besuch */ } };
+    const svgIcon = paths => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    const fold = text => String(text ?? '').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    // Drei Modelle im Fuhrpark – daraus werden die Modell-Filter. Alles andere läuft unter seiner Marke.
+    function modelOf(vehicle) {
+        const text = fold(`${vehicle.brand} ${vehicle.label}`);
+        if (/v[\s-]?klasse|vito|viano/.test(text)) return 'V-Klasse';
+        if (/e[\s-]?klasse/.test(text)) return 'E-Klasse';
+        if (/5er|5 er|bmw/.test(text)) return 'BMW 5er';
+        return String(vehicle.brand || '').trim() || 'Ohne Modell';
+    }
+
+    const startOf = handover => new Date(`${handover.date}T${String(handover.start_time || '00:00').slice(0, 5)}:00`);
+    function durationText(minutes) {
+        if (minutes < 1) return 'gerade eben';
+        if (minutes < 60) return `${minutes} Min`;
+        if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} Std ${String(minutes % 60).padStart(2, '0')} Min`;
+        const days = Math.floor(minutes / (24 * 60));
+        return `${days} ${days === 1 ? 'Tag' : 'Tage'}`;
+    }
+    function sinceText(handover) {
+        const start = startOf(handover);
+        const time = String(handover.start_time || '').slice(0, 5);
+        return handover.date === TerminCloud.todayIso()
+            ? `seit ${time} Uhr`
+            : `seit ${start.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${time} Uhr`;
+    }
+
+    // Was ist mit diesem Fahrzeug los? Eine Stelle für Übersicht, Filter und Akte.
     function vehicleFacts(vehicle) {
         const own = damages.filter(item => item.vehicle_id === vehicle.id);
+        const holder = openHandovers.find(item => item.vehicle_id === vehicle.id) || null;
+        const now = new Date();
+        // Rückgabe offen: ab 16 Uhr (gelb), seit einem früheren Tag (rot). Notdienst ist ausgenommen.
+        const overdue = holder && !holder.emergency && holder.driver_id
+            ? (holder.date < TerminCloud.todayIso() ? 2 : now.getHours() >= 16 ? 1 : 0) : 0;
         return {
-            holder: openHandovers.find(item => item.vehicle_id === vehicle.id) || null,
+            holder,
+            status: holder ? 'ausgegeben' : vehicle.service_status ? 'werkstatt' : vehicle.assigned_to ? 'reserviert' : 'frei',
+            overdue,
+            minutesOut: holder ? Math.max(0, Math.round((now - startOf(holder)) / 60000)) : 0,
+            card: holder ? fuelCards.find(card => card.holder_id && card.holder_id === holder.driver_id) || null : null,
+            last: lastReturns.get(vehicle.id) || null,
+            model: modelOf(vehicle),
             newDamages: own.filter(item => item.status === 'offen').length,
             knownDamages: own.filter(item => item.status === 'bekannt').length,
             inRepair: own.filter(item => item.status === 'in Arbeit').length,
@@ -296,79 +431,297 @@
         };
     }
 
+    function statePill(vehicle, facts) {
+        const state = STATE[facts.status];
+        const label = facts.status === 'werkstatt' && vehicle.service_status === 'gesperrt' ? 'Gesperrt' : state.label;
+        const node = el('span', 'state-pill');
+        node.dataset.state = facts.status;
+        node.innerHTML = svgIcon(state.icon);
+        node.append(el('span', null, label));
+        return node;
+    }
+
     function vehicleBadges(vehicle, facts) {
         const badges = el('span', 'vehicle-card-badges');
         if (facts.holder?.emergency) badges.append(pill('in Arbeit', 'Notdienst'));
+        if (facts.overdue) badges.append(pill(facts.overdue > 1 ? 'offen' : 'in Arbeit', 'Rückgabe offen'));
+        if (vehicle.service_status) badges.append(pill('bekannt', vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Werkstatt'));
         if (facts.newDamages) badges.append(pill('offen', `${facts.newDamages} ${facts.newDamages === 1 ? 'neuer Schaden' : 'neue Schäden'}`));
         if (facts.inRepair) badges.append(pill('in Arbeit', `${facts.inRepair} in Reparatur`));
         if (facts.knownDamages) badges.append(pill('bekannt', `${facts.knownDamages} ${facts.knownDamages === 1 ? 'Altschaden' : 'Altschäden'}`));
         if (facts.openAlerts) badges.append(pill('in Arbeit', `${facts.openAlerts} ${facts.openAlerts === 1 ? 'Meldung' : 'Meldungen'}`));
         if (vehicle.clean_inside === false || vehicle.clean_outside === false) badges.append(pill('offen', 'nicht sauber'));
         if (vehicle.fuel != null && vehicle.fuel <= 1) badges.append(pill('in Arbeit', 'Tank niedrig'));
+        if (facts.card) badges.append(pill('bekannt', `Tankkarte ${facts.card.number}`));
         if (!badges.children.length) badges.append(pill('erledigt', 'alles in Ordnung'));
         return badges;
     }
 
+    // Tank als kleine Anzeige mit vier Feldern – plus Wort, damit es auch ohne Farbe lesbar ist.
+    function fuelGauge(vehicle) {
+        const wrap = el('span', 'tank-gauge');
+        if (vehicle.fuel == null) { wrap.append(el('small', null, 'Tank –')); return wrap; }
+        const bar = el('span', 'tank-bar');
+        bar.dataset.level = String(vehicle.fuel);
+        for (let index = 1; index <= 4; index += 1) bar.append(el('i', index <= vehicle.fuel ? 'is-on' : ''));
+        wrap.append(bar, el('small', null, FUEL[vehicle.fuel]));
+        wrap.title = `Tank: ${FUEL[vehicle.fuel]}`;
+        return wrap;
+    }
+
+    // Wer / wo / seit wann – der wichtigste Text einer Zeile.
+    function whoLines(vehicle, facts) {
+        const reserved = vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : '';
+        if (facts.holder) {
+            return [
+                `${facts.holder.driver_name}${facts.holder.emergency ? ' · Notdienst' : ''}`,
+                `${sinceText(facts.holder)} · ${durationText(facts.minutesOut)}`,
+                reserved
+            ];
+        }
+        if (facts.status === 'werkstatt') {
+            return [
+                vehicle.service_note || (vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'In der Werkstatt'),
+                [vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · '),
+                reserved
+            ];
+        }
+        const last = facts.last ? `zuletzt ${facts.last.driver_name}, ${formatDate(facts.last.end_date || facts.last.date)} ${String(facts.last.end_time || '').slice(0, 5)}` : '';
+        return [reserved || (vehicle.parking ? `Steht: ${vehicle.parking}` : 'Parkort –'), [reserved && vehicle.parking ? `Steht: ${vehicle.parking}` : '', last].filter(Boolean).join(' · '), ''];
+    }
+
+    function flagIcons(vehicle, facts) {
+        const wrap = el('span', 'row-flags');
+        const add = (kind, text, paths, count) => {
+            const node = el('span', 'row-flag');
+            node.dataset.kind = kind;
+            node.title = text;
+            node.setAttribute('aria-label', text);
+            node.innerHTML = svgIcon(paths);
+            if (count > 1) node.append(el('b', null, String(count)));
+            wrap.append(node);
+        };
+        if (facts.newDamages) add('rot', `${facts.newDamages} ${facts.newDamages === 1 ? 'neuer Schaden' : 'neue Schäden'}`, '<path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17.200v.300"/>', facts.newDamages);
+        if (facts.openAlerts) add('gelb', `${facts.openAlerts} ${facts.openAlerts === 1 ? 'offene Meldung' : 'offene Meldungen'}`, '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.500 2h-15z"/><path d="M10 20.500a2 2 0 0 0 4 0"/>', facts.openAlerts);
+        if (facts.inRepair) add('blau', `${facts.inRepair} in Reparatur`, STATE.werkstatt.icon, facts.inRepair);
+        if (facts.knownDamages) add('grau', `${facts.knownDamages} ${facts.knownDamages === 1 ? 'Altschaden' : 'Altschäden'}`, '<circle cx="12" cy="12" r="8"/><path d="M12 8v4.500l3 1.500"/>', facts.knownDamages);
+        if (vehicle.clean_inside === false || vehicle.clean_outside === false) add('gelb', 'Nicht sauber', '<path d="M12 4c3 4 5 6.500 5 9.500a5 5 0 0 1-10 0C7 10.500 9 8 12 4z"/>', 1);
+        if (facts.card) add('grau', `Tankkarte ${facts.card.number} bei ${facts.holder.driver_name}`, '<rect x="3" y="6" width="18" height="12.500" rx="2"/><path d="M3 10h18M7 14.500h4"/>', 1);
+        return wrap;
+    }
+
     const FLEET_FILTERS = {
         alle: () => true,
-        frei: (vehicle, facts) => !facts.holder,
-        unterwegs: (vehicle, facts) => Boolean(facts.holder),
-        schaeden: (vehicle, facts) => facts.newDamages + facts.knownDamages + facts.inRepair > 0,
-        reparatur: (vehicle, facts) => facts.inRepair > 0
+        ausgegeben: (vehicle, facts) => facts.status === 'ausgegeben',
+        frei: (vehicle, facts) => facts.status === 'frei',
+        reserviert: (vehicle, facts) => facts.status === 'reserviert',
+        werkstatt: (vehicle, facts) => facts.status === 'werkstatt'
     };
 
-    // ---------- Fahrzeugkarten ----------
+    function matchesQuery(vehicle, facts) {
+        if (!fleetQuery) return true;
+        const haystack = fold([vehicle.plate, String(vehicle.plate || '').replace(/[\s-]/g, ''), vehicle.brand, vehicle.body, vehicle.type, vehicle.label, vehicle.parking,
+            facts.holder?.driver_name, profileName(vehicle.assigned_to), vehicle.service_note, facts.card?.number].filter(Boolean).join(' '));
+        return fold(fleetQuery).split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
+    }
+
+    function sortEntries(entries, groupKey) {
+        const byPlate = (left, right) => String(left.vehicle.plate).localeCompare(String(right.vehicle.plate), 'de', { numeric: true });
+        if (fleetSort === 'kennzeichen') return entries.sort(byPlate);
+        if (fleetSort === 'kilometer') return entries.sort((left, right) => (right.vehicle.mileage ?? -1) - (left.vehicle.mileage ?? -1) || byPlate(left, right));
+        if (fleetSort === 'dauer') return entries.sort((left, right) => right.facts.minutesOut - left.facts.minutesOut || byPlate(left, right));
+        // Wichtiges zuerst: überfällige Rückgaben, dann die längste Ausgabe; freie nach Modell und Kennzeichen.
+        if (groupKey === 'ausgegeben') return entries.sort((left, right) => right.facts.overdue - left.facts.overdue || right.facts.minutesOut - left.facts.minutesOut || byPlate(left, right));
+        return entries.sort((left, right) => left.facts.model.localeCompare(right.facts.model, 'de') || byPlate(left, right));
+    }
+
+    function chip(text, count, pressed, onClick, kind) {
+        const button = el('button', 'board-chip');
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(pressed));
+        if (kind) button.dataset.kind = kind;
+        button.append(el('span', null, text));
+        if (count != null) button.append(el('b', null, String(count)));
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function vehicleRow(vehicle, facts) {
+        const card = el('button', `vehicle-card vehicle-row${vehicle.id === selectedId ? ' is-active' : ''}`);
+        card.type = 'button';
+        card.dataset.state = facts.status;
+        if (facts.overdue) card.dataset.overdue = String(facts.overdue);
+        const main = el('span', 'row-main');
+        main.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')));
+        const [first, second, third] = whoLines(vehicle, facts);
+        const who = el('span', 'row-who');
+        who.append(el('strong', null, first));
+        if (second) who.append(el('small', facts.overdue ? 'is-overdue' : '', second));
+        if (third) who.append(el('small', 'vehicle-reserved', third));
+        const numbers = el('span', 'row-numbers');
+        numbers.append(el('small', 'row-km', formatKm(vehicle.mileage)), fuelGauge(vehicle));
+        card.append(statePill(vehicle, facts), main, who, numbers, flagIcons(vehicle, facts));
+        card.setAttribute('aria-label', `${vehicle.plate}, ${STATE[facts.status].label}${facts.holder ? `, ${facts.holder.driver_name}` : ''} – Akte öffnen`);
+        card.addEventListener('click', () => selectVehicle(vehicle.id));
+        return card;
+    }
+
+    function vehicleTile(vehicle, facts) {
+        const card = el('button', `vehicle-card vehicle-tile${vehicle.id === selectedId ? ' is-active' : ''}`);
+        card.type = 'button';
+        card.dataset.state = facts.status;
+        if (facts.overdue) card.dataset.overdue = String(facts.overdue);
+        const art = el('span', 'vehicle-art');
+        fillArt(art, vehicle);
+        const head = el('span', 'vehicle-card-head');
+        head.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')));
+        const [first, second, third] = whoLines(vehicle, facts);
+        const people = el('span', 'vehicle-card-people');
+        people.append(el('small', 'tile-who', first));
+        if (second) people.append(el('small', facts.overdue ? 'is-overdue' : '', second));
+        if (third) people.append(el('small', 'vehicle-reserved', third));
+        const factsRow = el('span', 'vehicle-card-facts');
+        factsRow.append(el('small', null, formatKm(vehicle.mileage)), fuelGauge(vehicle));
+        const chipWrap = el('span', 'tile-state');
+        chipWrap.append(statePill(vehicle, facts));
+        card.append(art, chipWrap, head, people, factsRow, vehicleBadges(vehicle, facts));
+        card.addEventListener('click', () => selectVehicle(vehicle.id));
+        return card;
+    }
+
+    // ---------- Fahrzeugübersicht ----------
     function renderGrid() {
         const grid = $('vehicleGrid');
         grid.replaceChildren();
-        if (!vehicles.length) {
-            grid.append(el('p', 'directory-empty', 'Noch keine Fahrzeuge. Lege sie auf der Seite „Fahrzeuge“ an – sie erscheinen hier automatisch.'));
-            return;
-        }
+        grid.dataset.view = fleetView;
         const all = vehicles.map(vehicle => ({ vehicle, facts: vehicleFacts(vehicle) }));
         const count = name => all.filter(({ vehicle, facts }) => FLEET_FILTERS[name](vehicle, facts)).length;
         $('fleetCountAll').textContent = String(all.length);
+        $('fleetCountOut').textContent = String(count('ausgegeben'));
         $('fleetCountFree').textContent = String(count('frei'));
-        $('fleetCountOut').textContent = String(count('unterwegs'));
-        $('fleetCountDamage').textContent = String(count('schaeden'));
-        $('fleetCountRepair').textContent = String(count('reparatur'));
+        $('fleetCountReserved').textContent = String(count('reserviert'));
+        $('fleetCountService').textContent = String(count('werkstatt'));
         document.querySelectorAll('[data-fleet-filter]').forEach(button => {
             const active = button.dataset.fleetFilter === fleetFilter;
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-pressed', String(active));
         });
-        const shown = all.filter(({ vehicle, facts }) => FLEET_FILTERS[fleetFilter](vehicle, facts));
-        if (!shown.length) grid.append(el('p', 'directory-empty', 'Für diese Auswahl gibt es gerade kein Fahrzeug.'));
-        shown.forEach(({ vehicle, facts }) => {
-            const card = el('button', `vehicle-card${vehicle.id === selectedId ? ' is-active' : ''}`);
-            card.type = 'button';
-            const art = el('span', 'vehicle-art');
-            fillArt(art, vehicle);
-            const state = el('span', 'vehicle-state-chip', facts.holder ? `Unterwegs · ${facts.holder.driver_name}` : 'Frei');
-            state.dataset.state = facts.holder ? 'unterwegs' : 'frei';
-            const head = el('span', 'vehicle-card-head');
-            head.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')));
-            const people = el('span', 'vehicle-card-people');
-            if (vehicle.assigned_to) people.append(el('small', 'vehicle-reserved', `Reserviert für ${profileName(vehicle.assigned_to) || '–'}`));
-            const factsRow = el('span', 'vehicle-card-facts');
-            factsRow.append(
-                el('small', null, formatKm(vehicle.mileage)),
-                el('small', null, `Tank ${vehicle.fuel == null ? '–' : FUEL[vehicle.fuel]}`),
-                el('small', null, vehicle.parking ? `Steht: ${vehicle.parking}` : 'Parkort –')
-            );
-            card.append(art, state, head, people, factsRow, vehicleBadges(vehicle, facts));
-            card.addEventListener('click', () => selectVehicle(vehicle.id));
-            grid.append(card);
+        document.querySelectorAll('[data-fleet-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.fleetView === fleetView)));
+        $('fleetSort').value = fleetSort;
+
+        // Modell-Filter (nur wenn es mehr als ein Modell gibt) und Auffälligkeiten (nur was es gerade gibt)
+        const models = [...new Set(all.map(item => item.facts.model))].sort((left, right) => left.localeCompare(right, 'de'));
+        if (fleetModel && !models.includes(fleetModel)) fleetModel = '';
+        $('fleetModels').hidden = models.length < 2;
+        $('fleetModels').replaceChildren(...(models.length < 2 ? [] : [
+            chip('Alle Modelle', null, !fleetModel, () => { fleetModel = ''; renderGrid(); }),
+            ...models.map(model => chip(model, all.filter(item => item.facts.model === model).length, fleetModel === model, () => { fleetModel = fleetModel === model ? '' : model; renderGrid(); }))
+        ]));
+        const flags = FLAGS.map(([key, label, test]) => ({ key, label, test, count: all.filter(({ vehicle, facts }) => test(facts, vehicle)).length })).filter(flag => flag.count > 0);
+        if (fleetFlag && !flags.some(flag => flag.key === fleetFlag)) fleetFlag = '';
+        $('fleetFlags').hidden = !flags.length;
+        $('fleetFlags').replaceChildren(...flags.map(flag => chip(flag.label, flag.count, fleetFlag === flag.key, () => { fleetFlag = fleetFlag === flag.key ? '' : flag.key; renderGrid(); }, flag.key)));
+
+        if (!vehicles.length) {
+            $('fleetResult').textContent = '';
+            grid.append(el('p', 'directory-empty', 'Noch keine Fahrzeuge. Lege das erste Fahrzeug mit „+ Fahrzeug“ an.'));
+            shownIds = [];
+            return;
+        }
+        const flagTest = FLAGS.find(flag => flag[0] === fleetFlag)?.[2];
+        const shown = all.filter(({ vehicle, facts }) => FLEET_FILTERS[fleetFilter](vehicle, facts)
+            && (!fleetModel || facts.model === fleetModel) && (!flagTest || flagTest(facts, vehicle)) && matchesQuery(vehicle, facts));
+
+        // Ergebniszeile: wie viele sind zu sehen und welche Filter sind aktiv (mit einem Tipp wieder löschen)
+        const result = $('fleetResult');
+        const active = [fleetFilter !== 'alle' ? STATE[fleetFilter].label : '', fleetModel, FLAGS.find(flag => flag[0] === fleetFlag)?.[1] || '', fleetQuery ? `„${fleetQuery}“` : ''].filter(Boolean);
+        result.replaceChildren(el('span', null, active.length ? `${shown.length} von ${all.length} Fahrzeugen · Filter: ${active.join(', ')}` : `${all.length} ${all.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'}`));
+        if (active.length) {
+            const clear = el('button', 'button-quiet board-clear', 'Filter löschen');
+            clear.type = 'button';
+            clear.addEventListener('click', () => { fleetFilter = 'alle'; fleetModel = ''; fleetFlag = ''; fleetQuery = ''; $('fleetSearch').value = ''; renderGrid(); });
+            result.append(clear);
+        }
+
+        shownIds = [];
+        if (!shown.length) {
+            // Leere Auswahl erklärt sich selbst – bei „Frei“ mit dem Hinweis, was als Nächstes zurückkommt.
+            const out = all.filter(item => item.facts.status === 'ausgegeben').sort((left, right) => right.facts.minutesOut - left.facts.minutesOut)[0];
+            const text = fleetFilter === 'frei' && !fleetQuery && !fleetModel && !fleetFlag
+                ? `Gerade ist kein Fahrzeug frei.${out ? ` Am längsten unterwegs: ${out.vehicle.plate} bei ${out.facts.holder.driver_name} (${sinceText(out.facts.holder)}).` : ''}`
+                : 'Für diese Auswahl gibt es gerade kein Fahrzeug.';
+            grid.append(el('p', 'directory-empty', text));
+            return;
+        }
+
+        STATES.forEach(state => {
+            const entries = sortEntries(shown.filter(item => item.facts.status === state.key), state.key);
+            if (!entries.length) return;
+            const group = el('section', 'board-group');
+            group.dataset.group = state.key;
+            const isCollapsed = collapsedGroups.has(state.key) && fleetFilter === 'alle' && !fleetQuery;
+            const head = el('button', 'board-group-head');
+            head.type = 'button';
+            head.setAttribute('aria-expanded', String(!isCollapsed));
+            const title = el('span', 'board-group-title');
+            title.innerHTML = svgIcon(state.icon);
+            title.append(el('span', null, state.label), el('b', null, String(entries.length)));
+            const late = entries.filter(item => item.facts.overdue).length;
+            const extra = state.key === 'ausgegeben' && late ? `${late} ${late === 1 ? 'Rückgabe' : 'Rückgaben'} offen`
+                : state.key === 'frei' ? [...new Set(entries.map(item => item.facts.model))].map(model => `${entries.filter(item => item.facts.model === model).length} × ${model}`).join(' · ') : '';
+            head.append(title, el('small', late && state.key === 'ausgegeben' ? 'is-overdue' : '', extra), el('span', 'board-group-fold', isCollapsed ? 'anzeigen' : 'einklappen'));
+            head.addEventListener('click', () => { if (collapsedGroups.has(state.key)) collapsedGroups.delete(state.key); else collapsedGroups.add(state.key); saveView(); renderGrid(); });
+            group.append(head);
+            if (!isCollapsed) {
+                const rows = el('div', fleetView === 'kacheln' ? 'vehicle-grid' : 'board-rows');
+                entries.forEach(({ vehicle, facts }) => { shownIds.push(vehicle.id); rows.append(fleetView === 'kacheln' ? vehicleTile(vehicle, facts) : vehicleRow(vehicle, facts)); });
+                group.append(rows);
+            }
+            grid.append(group);
         });
+        updateDrawerNav();
+    }
+
+    // ---------- Akte als Seitenfenster: Die Übersicht bleibt mit Filter und Stelle erhalten ----------
+    function updateDrawerNav() {
+        const position = shownIds.indexOf(selectedId);
+        $('filePosition').textContent = position >= 0 && shownIds.length > 1 ? `${position + 1} von ${shownIds.length}` : '';
+        $('filePrev').disabled = position <= 0;
+        $('fileNext').disabled = position < 0 || position >= shownIds.length - 1;
+    }
+
+    function closeFile() {
+        if ($('vehicleFile').hidden) return;
+        const id = selectedId;
+        selectedId = null;
+        $('vehicleFile').hidden = true;
+        $('fileBackdrop').hidden = true;
+        document.documentElement.classList.remove('has-drawer');
+        renderGrid();
+        // Zurück zu der Zeile, von der man kam
+        [...document.querySelectorAll('#vehicleGrid .vehicle-card')].find(card => card.getAttribute('aria-label')?.startsWith(`${vehicles.find(vehicle => vehicle.id === id)?.plate},`))?.focus({ preventScroll: true });
     }
 
     async function selectVehicle(id) {
+        const wasOpen = !$('vehicleFile').hidden;
         selectedId = id;
         fileTab = 'current';
         renderGrid();
         await renderFile();
-        $('vehicleFile').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $('fileBackdrop').hidden = false;
+        document.documentElement.classList.add('has-drawer');
+        $('vehicleFile').scrollTop = 0;
+        if (!wasOpen) $('fileCloseButton').focus({ preventScroll: true });
+        updateDrawerNav();
     }
+    $('fileCloseButton').addEventListener('click', closeFile);
+    $('fileRefresh').addEventListener('click', () => refresh());
+    $('fileBackdrop').addEventListener('click', closeFile);
+    $('filePrev').addEventListener('click', () => { const position = shownIds.indexOf(selectedId); if (position > 0) selectVehicle(shownIds[position - 1]); });
+    $('fileNext').addEventListener('click', () => { const position = shownIds.indexOf(selectedId); if (position >= 0 && position < shownIds.length - 1) selectVehicle(shownIds[position + 1]); });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !$('vehicleFile').hidden && !document.querySelector('dialog[open]')) closeFile();
+    });
 
     // ---------- Akte eines Fahrzeugs ----------
     function damageEntry(item, number) {
@@ -394,9 +747,11 @@
         if (item.status === 'in Arbeit') actions.append(step('Doch nicht in Reparatur', 'bekannt', 'button-quiet'));
         if (item.status !== 'erledigt') actions.append(step('Repariert ✓', 'erledigt', 'button-primary account-approve'));
         else actions.append(step('Wieder öffnen', 'bekannt', 'button-quiet'));
+        const again = requestButton('schaden', item);
+        if (again) actions.append(again);
         if (isAdmin()) actions.append(deleteDamage(item));
         row.append(pill(item.status, CarSketch.STATUS_LABELS[item.status] || item.status), meta, actions);
-        return row;
+        return withRequest(row, 'schaden', item);
     }
 
     function alertEntry(item) {
@@ -413,9 +768,11 @@
         button.type = 'button';
         button.addEventListener('click', () => resolveAlert(item, item.status === 'offen'));
         actions.append(button);
+        const again = requestButton('meldung', item);
+        if (again) actions.append(again);
         if (isAdmin()) actions.append(deleteAlert(item));
         row.append(meta, actions);
-        return row;
+        return withRequest(row, 'meldung', item);
     }
 
     const fillList = (id, nodes, emptyText) => $(id).replaceChildren(...(nodes.length ? nodes : [el('li', 'directory-empty', emptyText)]));
@@ -431,6 +788,14 @@
         $('fileBadges').replaceChildren(...vehicleBadges(vehicle, vehicleFacts(vehicle)).children);
         $('filePhotoRemove').hidden = !vehicle.photo_path;
         $('filePhoto').value = '';
+        const service = $('fileService');
+        service.hidden = !vehicle.service_status;
+        service.textContent = vehicle.service_status
+            ? [`${vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'In der Werkstatt'}${vehicle.service_note ? ` – ${vehicle.service_note}` : ''}`, vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · ')
+            : '';
+        $('serviceOpen').textContent = vehicle.service_status ? 'Werkstatt / Sperre ändern' : 'Werkstatt / sperren';
+        $('vehicleDelete').hidden = !isAdmin();
+        updateDrawerNav();
 
         const vehicleDamages = damages.filter(item => item.vehicle_id === vehicle.id);
         const current = vehicleDamages.filter(item => item.status !== 'erledigt');
@@ -502,6 +867,13 @@
                 edit.addEventListener('click', () => openMileage(item, position === 0));
                 const cell = el('td');
                 cell.append(edit);
+                if (isAdmin()) {
+                    const remove = el('button', 'button-quiet-danger', 'Löschen');
+                    remove.type = 'button';
+                    remove.title = 'Fahrt löschen';
+                    remove.addEventListener('click', () => deleteTrip(item));
+                    cell.append(remove);
+                }
                 row.append(cell);
                 body.append(row);
             });
@@ -536,11 +908,176 @@
         await refresh();
     });
 
-    // Filter über den Karten: Alle / Frei / Unterwegs / Mit Schäden / In Reparatur
+    // ---------- Übersicht bedienen: Zustand, Modell, Suche, Sortierung, Ansicht ----------
     document.querySelectorAll('[data-fleet-filter]').forEach(button => button.addEventListener('click', () => {
-        fleetFilter = button.dataset.fleetFilter;
+        // Ein zweiter Tipp auf denselben Zustand zeigt wieder alle.
+        fleetFilter = fleetFilter === button.dataset.fleetFilter ? 'alle' : button.dataset.fleetFilter;
         renderGrid();
     }));
+    document.querySelectorAll('[data-fleet-view]').forEach(button => button.addEventListener('click', () => { fleetView = button.dataset.fleetView; saveView(); renderGrid(); }));
+    $('fleetSort').addEventListener('change', () => { fleetSort = $('fleetSort').value; saveView(); renderGrid(); });
+    $('fleetSearch').addEventListener('input', () => { fleetQuery = $('fleetSearch').value.trim(); renderGrid(); });
+    $('inboxMore').addEventListener('click', () => { inboxOpen = !inboxOpen; renderInbox(); });
+
+    // ---------- Fahrzeug anlegen und bearbeiten ----------
+    let editVehicleId = null;
+    function openVehicleDialog(vehicle) {
+        editVehicleId = vehicle?.id || null;
+        const known = [...$('vehicleFormModel').options].map(option => option.value).filter(Boolean);
+        const brand = vehicle?.brand || '';
+        $('vehicleDialogTitle').textContent = vehicle ? `${vehicle.plate} bearbeiten` : 'Fahrzeug anlegen';
+        $('vehicleFormSubmit').textContent = vehicle ? 'Änderung speichern' : 'Fahrzeug anlegen';
+        $('vehicleFormPlate').value = vehicle?.plate || '';
+        $('vehicleFormModel').value = !vehicle ? known[0] : known.includes(brand) ? brand : '';
+        $('vehicleFormBrand').value = known.includes(brand) ? '' : brand;
+        $('vehicleFormBrand').hidden = $('vehicleFormModel').value !== '';
+        $('vehicleFormBody').value = ['Limousine', 'Kombi', 'Bus'].includes(vehicle?.body) ? vehicle.body : 'Limousine';
+        $('vehicleFormType').value = vehicle?.type === 'Mietwagen' ? 'Mietwagen' : 'Diplomatisch';
+        $('vehicleFormLabel').value = vehicle?.label || '';
+        $('vehicleFormMileage').value = '';
+        // Kilometer eines vorhandenen Fahrzeugs ändert man in der Akte („Kilometerstand korrigieren“).
+        $('vehicleFormMileage').hidden = Boolean(vehicle);
+        $('vehicleFormMileageLabel').hidden = Boolean(vehicle);
+        $('vehicleDialog').showModal();
+        $('vehicleFormPlate').focus();
+    }
+    $('vehicleFormModel').addEventListener('change', () => {
+        const other = $('vehicleFormModel').value === '';
+        $('vehicleFormBrand').hidden = !other;
+        if ($('vehicleFormModel').value === 'Mercedes V-Klasse') $('vehicleFormBody').value = 'Bus';
+        if (other) $('vehicleFormBrand').focus();
+    });
+    $('vehicleAddOpen').addEventListener('click', () => openVehicleDialog(null));
+    $('vehicleEditOpen').addEventListener('click', () => openVehicleDialog(vehicles.find(vehicle => vehicle.id === selectedId) || null));
+    $('vehicleFormCancel').addEventListener('click', () => $('vehicleDialog').close());
+    $('vehicleForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const plate = $('vehicleFormPlate').value.trim().toLocaleUpperCase('de-DE').replace(/\s+/g, ' ');
+        const key = TerminCloud.plateKey(plate);
+        if (!key) { showToast('Bitte trage das Kennzeichen ein.', 'error', { target: '#vehicleFormPlate' }); return; }
+        const brand = ($('vehicleFormModel').value || $('vehicleFormBrand').value).trim().replace(/\s+/g, ' ');
+        if (!brand) { showToast('Bitte wähle das Modell oder trage Marke und Modell ein.', 'error', { target: '#vehicleFormBrand' }); return; }
+        const mileageText = $('vehicleFormMileage').value.trim();
+        if (mileageText && !(Number(mileageText) >= 0)) { showToast('Der Kilometerstand muss eine Zahl sein.', 'error', { target: '#vehicleFormMileage' }); return; }
+        const twin = allVehicles.find(item => item.plate_key === key && item.id !== editVehicleId);
+        if (twin && (twin.active || editVehicleId)) { showToast(`Das Kennzeichen ${twin.plate} gibt es schon${twin.active ? ' im Fuhrpark' : ' (unter „Nicht mehr im Fuhrpark“)'}.`, 'error', { target: '#vehicleFormPlate' }); return; }
+        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim() };
+        const state = mileageText ? { mileage: Number(mileageText), state_updated_at: new Date().toISOString(), state_updated_by: profile.full_name || '' } : {};
+        const submit = $('vehicleFormSubmit');
+        submit.disabled = true;
+        // Ein früher aus dem Fuhrpark genommenes Kennzeichen wird wieder aufgenommen statt doppelt angelegt.
+        const result = editVehicleId ? await client.from('tt_vehicles').update(row).eq('id', editVehicleId).select()
+            : twin ? await client.from('tt_vehicles').update({ ...row, ...state, active: true }).eq('id', twin.id).select()
+                : await client.from('tt_vehicles').insert({ ...row, ...state }).select();
+        submit.disabled = false;
+        if (result.error || !result.data?.length) {
+            showToast(result.error ? (/duplicate|unique/i.test(result.error.message || '') ? 'Dieses Kennzeichen gibt es schon.' : TerminCloud.germanError(result.error)) : 'Das Fahrzeug konnte nicht gespeichert werden.', 'error', { target: '#vehicleFormPlate' });
+            return;
+        }
+        $('vehicleDialog').close();
+        showToast(editVehicleId ? `${plate} gespeichert` : twin ? `${plate} ist wieder im Fuhrpark` : `${plate} angelegt`, 'success');
+        await refresh();
+    });
+
+    // ---------- Werkstatt / gesperrt ----------
+    $('serviceOpen').addEventListener('click', () => {
+        const vehicle = vehicles.find(item => item.id === selectedId);
+        if (!vehicle) return;
+        const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
+        $('serviceDialogTitle').textContent = `${vehicle.plate}: Werkstatt / sperren`;
+        $('serviceDialogInfo').textContent = holder ? `Das Fahrzeug ist gerade bei ${holder.driver_name}. Die Sperre gilt, sobald es zurück ist.` : '';
+        $('serviceDialogInfo').hidden = !holder;
+        document.querySelectorAll('input[name=serviceStatus]').forEach(input => { input.checked = input.value === (vehicle.service_status || ''); });
+        $('serviceNote').value = vehicle.service_note || '';
+        $('serviceUntil').value = vehicle.service_until || '';
+        $('serviceDialog').showModal();
+    });
+    $('serviceCancel').addEventListener('click', () => $('serviceDialog').close());
+    $('serviceForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const vehicle = vehicles.find(item => item.id === selectedId);
+        if (!vehicle) return;
+        const status = document.querySelector('input[name=serviceStatus]:checked')?.value || '';
+        const { error } = await client.from('tt_vehicles').update({
+            service_status: status,
+            service_note: status ? $('serviceNote').value.trim() : '',
+            service_since: status ? (vehicle.service_status === status && vehicle.service_since ? vehicle.service_since : new Date().toISOString()) : null,
+            service_until: status && $('serviceUntil').value ? $('serviceUntil').value : null
+        }).eq('id', vehicle.id);
+        if (error) { showToast(/service_/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 13 (supabase/update-13.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        $('serviceDialog').close();
+        showToast(status === 'werkstatt' ? `${vehicle.plate} ist als „in der Werkstatt“ eingetragen` : status === 'gesperrt' ? `${vehicle.plate} ist gesperrt` : `${vehicle.plate} ist wieder einsatzbereit`, 'success');
+        await refresh();
+    });
+
+    // ---------- Aus dem Fuhrpark nehmen, wieder aufnehmen, endgültig löschen ----------
+    async function retireVehicle(vehicle) {
+        const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
+        if (holder) { showToast(`${vehicle.plate} ist gerade bei ${holder.driver_name}. Bitte zuerst die Rückgabe eintragen.`, 'error'); return; }
+        if (!await confirmDialog(`${vehicle.plate} aus dem Fuhrpark nehmen?\n\nDas Fahrzeug verschwindet auf allen Geräten und im Portal aus der Liste. Fahrten, Schäden und Meldungen bleiben gespeichert, und du kannst es jederzeit wieder aufnehmen.`, 'Aus dem Fuhrpark nehmen')) return;
+        const { error } = await client.from('tt_vehicles').update({ active: false, assigned_to: null }).eq('id', vehicle.id);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        closeFile();
+        showToast(`${vehicle.plate} ist nicht mehr im Fuhrpark`, 'success');
+        await refresh();
+    }
+
+    async function restoreVehicle(vehicle) {
+        const { error } = await client.from('tt_vehicles').update({ active: true }).eq('id', vehicle.id);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        showToast(`${vehicle.plate} ist wieder im Fuhrpark`, 'success');
+        await refresh();
+    }
+
+    // Endgültig löschen darf nur der Admin – mit allen Fahrten, Schäden, Meldungen und Fotos.
+    async function deleteVehicle(vehicle) {
+        const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
+        if (holder) { showToast(`${vehicle.plate} ist gerade bei ${holder.driver_name}. Bitte zuerst die Rückgabe eintragen.`, 'error'); return; }
+        if (!await confirmDialog(`${vehicle.plate} endgültig löschen?\n\nGelöscht werden auch alle Fahrten, Schäden, Meldungen und Fotos dieses Fahrzeugs. Das lässt sich nicht rückgängig machen.\n\nWird das Fahrzeug nur nicht mehr genutzt, wähle besser „Aus dem Fuhrpark nehmen“ – dann bleibt der Verlauf erhalten.`, 'Endgültig löschen')) return;
+        const { data, error } = await client.rpc('tt_vehicle_delete', { p_id: vehicle.id });
+        if (error) { showToast(/tt_vehicle_delete/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 13 (supabase/update-13.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        const photos = Array.isArray(data?.photos) ? data.photos.filter(Boolean) : [];
+        if (photos.length) await client.storage.from('schaeden').remove(photos);
+        closeFile();
+        showToast(`${vehicle.plate} gelöscht${data ? ` – mit ${data.trips} ${data.trips === 1 ? 'Fahrt' : 'Fahrten'} und ${data.damages} ${data.damages === 1 ? 'Schaden' : 'Schäden'}` : ''}`, 'success');
+        await refresh();
+    }
+    $('vehicleRetire').addEventListener('click', () => { const vehicle = vehicles.find(item => item.id === selectedId); if (vehicle) retireVehicle(vehicle); });
+    $('vehicleDelete').addEventListener('click', () => { const vehicle = vehicles.find(item => item.id === selectedId); if (vehicle) deleteVehicle(vehicle); });
+
+    function renderRetired() {
+        const retired = allVehicles.filter(vehicle => !vehicle.active).sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
+        $('retiredSection').hidden = !retired.length;
+        $('retiredCount').textContent = String(retired.length);
+        $('retiredList').replaceChildren(...retired.map(vehicle => {
+            const row = el('li', 'vehicle-entry');
+            const meta = el('span');
+            meta.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type, vehicle.mileage != null ? formatKm(vehicle.mileage) : ''].filter(Boolean).join(' · ')));
+            const actions = el('span', 'vehicle-entry-actions');
+            const back = el('button', 'button-secondary fleet-end-button', 'Wieder aufnehmen');
+            back.type = 'button';
+            back.addEventListener('click', () => restoreVehicle(vehicle));
+            actions.append(back);
+            if (isAdmin()) {
+                const remove = el('button', 'button-quiet-danger', 'Endgültig löschen');
+                remove.type = 'button';
+                remove.addEventListener('click', () => deleteVehicle(vehicle));
+                actions.append(remove);
+            }
+            row.append(meta, actions);
+            return row;
+        }));
+    }
+
+    // Eine fehlerhafte Fahrt ganz entfernen (z. B. versehentlich übernommen) – nur der Admin.
+    async function deleteTrip(item) {
+        const open = !item.end_time;
+        if (!await confirmDialog(`Diese Fahrt wirklich löschen?\n\n${formatDate(item.date)} · ${item.driver_name} · ${String(item.start_time).slice(0, 5)} – ${open ? 'offen' : String(item.end_time).slice(0, 5)}${open ? '\n\nDas Fahrzeug ist danach wieder frei.' : ''}\n\nDas lässt sich nicht rückgängig machen.`, 'Fahrt löschen')) return;
+        const { data, error } = await client.from('tt_handovers').delete().eq('id', item.id).select();
+        if (error || !data?.length) { showToast(error ? TerminCloud.germanError(error) : 'Die Fahrt konnte nicht gelöscht werden.', 'error'); return; }
+        showToast('Fahrt gelöscht', 'success');
+        await refresh();
+    }
 
     // Eigenes Foto zum Fahrzeug (ersetzt die Zeichnung). Braucht supabase/update-9.sql.
     async function saveVehiclePhoto(path) {

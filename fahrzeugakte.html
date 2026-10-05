@@ -19,6 +19,28 @@
             <section class="directory-card" aria-labelledby="inboxTitle">
                <div class="directory-card-heading"><span class="directory-step">!</span><div><h2 id="inboxTitle">Darum musst du dich kümmern</h2><p id="inboxSummary">Wird geladen …</p></div></div>
                <ul id="inboxList" class="directory-list inbox-list"></ul>
+               <button type="button" id="inboxMore" class="button-quiet inbox-more" hidden>Alle anzeigen</button>
+            </section>
+
+            <section class="fleet-board" aria-labelledby="boardTitle">
+               <div class="board-toolbar" id="boardToolbar">
+                  <h2 id="boardTitle" class="board-title">Fahrzeuge</h2>
+                  <label class="board-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="fleetSearch" type="search" autocomplete="off" placeholder="Kennzeichen, Modell oder Fahrer suchen" aria-label="Fahrzeuge durchsuchen"></label>
+                  <label class="board-sort"><span>Sortierung</span><select id="fleetSort"><option value="standard">Wichtiges zuerst</option><option value="kennzeichen">Kennzeichen</option><option value="dauer">Am längsten unterwegs</option><option value="kilometer">Kilometerstand</option></select></label>
+                  <div class="view-switch" role="group" aria-label="Ansicht"><button type="button" data-fleet-view="liste" aria-pressed="true">Liste</button><button type="button" data-fleet-view="kacheln" aria-pressed="false">Kacheln</button></div>
+                  <button type="button" id="vehicleAddOpen" class="button-primary board-add">+ Fahrzeug</button>
+               </div>
+               <div class="fleet-filter" id="fleetFilter" role="group" aria-label="Nach Zustand filtern">
+                  <button type="button" class="overview-card is-active" data-fleet-filter="alle" aria-pressed="true"><span class="overview-label">Alle</span><strong id="fleetCountAll">0</strong></button>
+                  <button type="button" class="overview-card overview-card-departed" data-fleet-filter="ausgegeben" aria-pressed="false"><span class="overview-label">Ausgegeben</span><strong id="fleetCountOut">0</strong></button>
+                  <button type="button" class="overview-card overview-card-done" data-fleet-filter="frei" aria-pressed="false"><span class="overview-label">Frei</span><strong id="fleetCountFree">0</strong></button>
+                  <button type="button" class="overview-card overview-card-reserved" data-fleet-filter="reserviert" aria-pressed="false"><span class="overview-label">Reserviert</span><strong id="fleetCountReserved">0</strong></button>
+                  <button type="button" class="overview-card overview-card-service" data-fleet-filter="werkstatt" aria-pressed="false"><span class="overview-label">Werkstatt</span><strong id="fleetCountService">0</strong></button>
+               </div>
+               <div class="board-chips" id="fleetModels" role="group" aria-label="Nach Modell filtern" hidden></div>
+               <div class="board-chips board-flags" id="fleetFlags" role="group" aria-label="Auffälligkeiten" hidden></div>
+               <p id="fleetResult" class="board-result" role="status" aria-live="polite"></p>
+               <div id="vehicleGrid" class="vehicle-board"></div>
             </section>
 
             <section class="directory-card" aria-labelledby="fuelTitle" id="fuelSection">
@@ -31,16 +53,20 @@
                <details class="fuel-log" id="fuelLogBox" hidden><summary>Verlauf: wer hatte wann welche Karte</summary><ul id="fuelLog" class="directory-list"></ul></details>
             </section>
 
-            <div class="fleet-filter" id="fleetFilter" role="group" aria-label="Fahrzeuge filtern">
-               <button type="button" class="overview-card is-active" data-fleet-filter="alle" aria-pressed="true"><span class="overview-label">Alle Fahrzeuge</span><strong id="fleetCountAll">0</strong></button>
-               <button type="button" class="overview-card overview-card-done" data-fleet-filter="frei" aria-pressed="false"><span class="overview-label">Frei</span><strong id="fleetCountFree">0</strong></button>
-               <button type="button" class="overview-card overview-card-departed" data-fleet-filter="unterwegs" aria-pressed="false"><span class="overview-label">Unterwegs</span><strong id="fleetCountOut">0</strong></button>
-               <button type="button" class="overview-card overview-card-cancelled" data-fleet-filter="schaeden" aria-pressed="false"><span class="overview-label">Mit Schäden</span><strong id="fleetCountDamage">0</strong></button>
-               <button type="button" class="overview-card overview-card-alert" data-fleet-filter="reparatur" aria-pressed="false"><span class="overview-label">In Reparatur</span><strong id="fleetCountRepair">0</strong></button>
-            </div>
-            <div id="vehicleGrid" class="vehicle-grid"></div>
+            <details class="directory-card fold-card" id="retiredSection" hidden>
+               <summary><span>Nicht mehr im Fuhrpark</span><b id="retiredCount">0</b></summary>
+               <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen. Ihre Fahrten und Schäden bleiben gespeichert.</p>
+               <ul id="retiredList" class="directory-list"></ul>
+            </details>
 
-            <section id="vehicleFile" class="directory-card vehicle-file" aria-live="polite" hidden>
+            <div id="fileBackdrop" class="drawer-backdrop" hidden></div>
+            <section id="vehicleFile" class="directory-card vehicle-file file-drawer" role="dialog" aria-labelledby="fileTitle" tabindex="-1" hidden>
+               <div class="drawer-bar">
+                  <button type="button" id="fileCloseButton" class="button-secondary">← Zur Übersicht</button>
+                  <button type="button" id="fileRefresh" class="button-quiet">Aktualisieren</button>
+                  <span id="filePosition" class="drawer-position" aria-live="polite"></span>
+                  <span class="drawer-nav"><button type="button" id="filePrev" class="button-quiet">‹ Voriges</button><button type="button" id="fileNext" class="button-quiet">Nächstes ›</button></span>
+               </div>
                <div class="fleet-log-heading">
                   <div class="file-hero"><span id="fileArt" class="vehicle-art"></span><div><h2 id="fileTitle"></h2><p id="fileSubtitle"></p><div id="fileBadges" class="vehicle-card-badges"></div></div></div>
                   <div class="portal-tabs file-tabs"><button type="button" data-file-tab="current" class="is-active">Aktuell</button><button type="button" data-file-tab="archive">Archiv</button></div>
@@ -69,6 +95,16 @@
                         <label for="filePhoto">Eigenes Foto vom Fahrzeug</label>
                         <input id="filePhoto" type="file" accept="image/*">
                         <button type="button" id="filePhotoRemove" class="button-quiet-danger" hidden>Foto entfernen</button>
+                     </div>
+                     <div class="fleet-form file-manage">
+                        <span class="field-label">Fahrzeug verwalten</span>
+                        <p id="fileService" class="file-service" hidden></p>
+                        <div class="file-manage-buttons">
+                           <button type="button" id="vehicleEditOpen" class="button-secondary">Daten bearbeiten</button>
+                           <button type="button" id="serviceOpen" class="button-secondary">Werkstatt / sperren</button>
+                           <button type="button" id="vehicleRetire" class="button-quiet-danger">Aus dem Fuhrpark nehmen</button>
+                           <button type="button" id="vehicleDelete" class="button-quiet-danger" hidden>Endgültig löschen</button>
+                        </div>
                      </div>
                   </div>
                   <div class="file-main">
@@ -119,6 +155,47 @@
          </form>
       </dialog>
 
+      <!-- Fahrzeug anlegen oder bearbeiten -->
+      <dialog id="vehicleDialog" class="confirm-dialog" aria-labelledby="vehicleDialogTitle">
+         <form id="vehicleForm" class="fleet-form" novalidate>
+            <h2 id="vehicleDialogTitle">Fahrzeug anlegen</h2>
+            <label for="vehicleFormPlate">Kennzeichen</label>
+            <input id="vehicleFormPlate" type="text" maxlength="24" autocomplete="off" placeholder="Zum Beispiel: 0 123-456">
+            <label for="vehicleFormModel">Modell</label>
+            <select id="vehicleFormModel"><option value="Mercedes E-Klasse">Mercedes E-Klasse</option><option value="BMW 5er">BMW 5er</option><option value="Mercedes V-Klasse">Mercedes V-Klasse</option><option value="">Anderes Modell …</option></select>
+            <input id="vehicleFormBrand" type="text" maxlength="40" autocomplete="off" placeholder="Marke und Modell" aria-label="Marke und Modell" hidden>
+            <label for="vehicleFormBody">Bauart</label>
+            <select id="vehicleFormBody"><option value="Limousine">Limousine</option><option value="Kombi">Kombi</option><option value="Bus">Bus / Van</option></select>
+            <label for="vehicleFormType">Art</label>
+            <select id="vehicleFormType"><option value="Diplomatisch">Diplomatisch</option><option value="Mietwagen">Mietwagen</option></select>
+            <label for="vehicleFormLabel">Hinweis <span class="optional-label">optional</span></label>
+            <input id="vehicleFormLabel" type="text" maxlength="60" autocomplete="off" placeholder="Zum Beispiel: schwarz, 7 Sitze">
+            <label for="vehicleFormMileage" id="vehicleFormMileageLabel">Kilometerstand <span class="optional-label">optional</span></label>
+            <input id="vehicleFormMileage" type="number" min="0" step="1" inputmode="numeric" placeholder="km">
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="vehicleFormCancel">Abbrechen</button><button type="submit" class="button-primary" id="vehicleFormSubmit">Fahrzeug anlegen</button></div>
+         </form>
+      </dialog>
+
+      <!-- Werkstatt / gesperrt -->
+      <dialog id="serviceDialog" class="confirm-dialog" aria-labelledby="serviceDialogTitle">
+         <form id="serviceForm" class="fleet-form" novalidate>
+            <h2 id="serviceDialogTitle">Werkstatt / sperren</h2>
+            <p class="field-hint" id="serviceDialogInfo"></p>
+            <span class="field-label" id="serviceStatusLabel">Zustand</span>
+            <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="serviceStatusLabel">
+               <label><input type="radio" name="serviceStatus" value="" checked><span>Einsatzbereit</span></label>
+               <label><input type="radio" name="serviceStatus" value="werkstatt"><span>In der Werkstatt</span></label>
+               <label><input type="radio" name="serviceStatus" value="gesperrt"><span>Gesperrt</span></label>
+            </div>
+            <label for="serviceNote">Grund / Werkstatt <span class="optional-label">optional</span></label>
+            <input id="serviceNote" type="text" maxlength="120" autocomplete="off" placeholder="Zum Beispiel: Inspektion, Mercedes Bonn">
+            <label for="serviceUntil">Voraussichtlich wieder da <span class="optional-label">optional</span></label>
+            <input id="serviceUntil" type="date">
+            <p class="field-hint">Ein Fahrzeug in der Werkstatt oder ein gesperrtes Fahrzeug kann im Portal niemand übernehmen.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="serviceCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+         </form>
+      </dialog>
+
       <!-- Kilometer einer Fahrt korrigieren -->
       <dialog id="mileageDialog" class="confirm-dialog" aria-labelledby="mileageDialogTitle">
          <form id="mileageForm" class="fleet-form" novalidate>
@@ -137,6 +214,7 @@
       <script src="workflowStorage.js"></script>
       <script src="fleetStore.js"></script>
       <script src="cloudClient.js"></script>
+      <script src="photoRequest.js"></script>
       <script src="cloudFleetSync.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>

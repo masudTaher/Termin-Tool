@@ -8,6 +8,8 @@
     const $ = id => document.getElementById(id);
     const client = TerminCloud.client;
     const config = window.TERMIN_CLOUD_CONFIG || {};
+    // Wie eine App: Nach dem Öffnen oder Neuladen steht die Seite oben (wichtige Hinweise stehen dort).
+    try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (error) { /* ältere Browser */ }
     const FUEL = config.fuelLabels || ['Leer', '1/4', '1/2', '3/4', 'Voll'];
     const WORK_START = config.workStart || '09:00';
     const WORK_END = config.workEnd || '16:00';
@@ -175,6 +177,8 @@
         await loadFleet();
         await Promise.all([loadJobs(), loadReceipts(), loadStatements(), loadMessages(), loadFuelCards(), isFest() ? loadOvertime() : loadWorkdays()]);
         window.PortalDocs?.load();
+        await window.PortalRequests?.load();
+        await window.PortalPlan?.start();
         if (!isFest()) renderWorked();
         renderAccount();
         renderHome();
@@ -182,6 +186,16 @@
         const wanted = new URLSearchParams(location.search).get('seite');
         if (wanted === 'nachrichten') { history.replaceState(null, '', location.pathname); goTo('messages'); }
         else if (wanted === 'auftraege') { history.replaceState(null, '', location.pathname); goTo('jobs'); }
+        else if (wanted === 'rueckfragen') { history.replaceState(null, '', location.pathname); goTo('requests'); }
+        else if (wanted === 'arbeitstage') { history.replaceState(null, '', location.pathname); goTo(isFest() ? 'overtime' : 'workdays'); }
+        else if (wanted === 'zeiten') {
+            // Antwort der Einsatzleitung auf einen Urlaubsantrag: direkt zu „Meine Anträge und Meldungen“
+            history.replaceState(null, '', location.pathname);
+            // portalPlan.js kann noch unterwegs sein – dann liest es den Wunsch beim Start (window.portalZeitenWanted).
+            window.portalZeitenWanted = 'absence';
+            goTo('overtime');
+            window.PortalPlan?.showZeiten('absence');
+        }
         else goTo(TAB_OF[currentView] ? currentView : 'vehicle');
     }
 
@@ -196,9 +210,9 @@
         docs: '<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>'
     };
     const TABS_TEMP = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['workdays', 'Arbeitstage'], ['statement', 'Abrechnung']];
-    const TABS_FEST = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Überstunden'], ['receiptsHome', 'Belege']];
+    const TABS_FEST = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Zeiten'], ['receiptsHome', 'Belege']];
     // Unterseiten gehören zu einem Bereich der unteren Leiste.
-    const TAB_OF = { vehicle: 'vehicle', take: 'vehicle', damage: 'vehicle', alert: 'vehicle', return: 'vehicle', jobs: 'jobs',
+    const TAB_OF = { vehicle: 'vehicle', take: 'vehicle', damage: 'vehicle', alert: 'vehicle', return: 'vehicle', requests: 'vehicle', jobs: 'jobs',
         docs: 'docs', docNew: 'docs', docReport: 'docs',
         workdays: 'workdays', overtime: 'overtime', statement: 'statement', receiptsHome: 'receiptsHome', receipts: 'receipts', messages: 'messages', account: 'account' };
     const NEEDS_VEHICLE = ['damage', 'alert', 'return'];
@@ -259,6 +273,8 @@
         if (view === 'docs') window.PortalDocs?.open();
         if (view === 'docNew') window.PortalDocs?.startWizard();
         if (view === 'docReport') window.PortalDocs?.openReport();
+        if (view === 'requests') window.PortalRequests?.show();
+        if (view === 'overtime') window.PortalPlan?.openAbsences();
     }
     document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => goTo(button.dataset.go)));
     $('openMessages').addEventListener('click', () => goTo('messages'));
@@ -391,7 +407,7 @@
             const state = document.createElement('p');
             state.className = 'statement-state';
             state.dataset.response = statement.response;
-            state.textContent = { offen: 'Bitte prüfe die Abrechnung und bestätige sie.', 'bestätigt': `Von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE')}.`, einwand: `Einwand gemeldet: „${statement.response_note}“ – die Einsatzleitung meldet sich.` }[statement.response];
+            state.textContent = { offen: 'Bitte prüfe die Abrechnung und bestätige sie.', 'bestätigt': `Von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Einwand gemeldet: „${statement.response_note}“ – die Einsatzleitung meldet sich.` }[statement.response];
             body.append(state);
             if (statement.response !== 'bestätigt') {
                 const note = document.createElement('textarea');
@@ -748,7 +764,7 @@
             entry.className = 'directory-entry damage-entry';
             const text = document.createElement('span');
             text.className = 'directory-entry-name';
-            text.textContent = `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE')} · ${item.title}`;
+            text.textContent = `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${item.title}`;
             const state = document.createElement('span');
             state.className = 'status-pill';
             state.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
@@ -818,7 +834,8 @@
         const rank = vehicle => vehicle.assigned_to === profile.id ? 0 : vehicle.type === 'Diplomatisch' ? 1 : vehicle.type === 'Mietwagen' ? 2 : 3;
         // Fest reservierte Fahrzeuge sieht nur die Person, für die sie reserviert sind.
         const mine = vehicle => !vehicle.assigned_to || vehicle.assigned_to === profile.id;
-        return vehicles.filter(vehicle => !taken.has(vehicle.id) && mine(vehicle)).sort((left, right) => rank(left) - rank(right) || String(left.plate).localeCompare(String(right.plate), 'de'));
+        // Fahrzeuge in der Werkstatt oder gesperrte werden gar nicht erst angeboten.
+        return vehicles.filter(vehicle => !taken.has(vehicle.id) && mine(vehicle) && !vehicle.service_status).sort((left, right) => rank(left) - rank(right) || String(left.plate).localeCompare(String(right.plate), 'de'));
     }
 
     function damageEntry(item, index) {
@@ -856,7 +873,7 @@
         if (error) return;
         data.filter(item => item.start_note).slice(0, 3).forEach(item => {
             const entry = el('li', 'directory-entry damage-entry');
-            entry.append(el('span', 'directory-entry-name', `Hinweis zu deiner Rückgabe (${vehicleById(item.vehicle_id)?.plate || 'Fahrzeug'}, ${new Date(item.created_at).toLocaleDateString('de-DE')}): „${item.start_note}“ – ${item.driver_name}`));
+            entry.append(el('span', 'directory-entry-name', `Hinweis zu deiner Rückgabe (${vehicleById(item.vehicle_id)?.plate || 'Fahrzeug'}, ${new Date(item.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}): „${item.start_note}“ – ${item.driver_name}`));
             list.append(entry);
         });
     }
@@ -903,17 +920,28 @@
             if (vehicle.fuel != null) chips.append(el('em', 'chip', `Tank ${FUEL[vehicle.fuel]}`));
             if (vehicle.parking) chips.append(el('em', 'chip', `Steht: ${vehicle.parking}`));
             card.append(main, chips, el('span', 'car-card-arrow', '›'));
+            card.dataset.search = `${vehicle.plate} ${vehicle.brand} ${vehicle.body}`.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
             card.addEventListener('click', () => chooseTakeVehicle(vehicle));
             list.append(card);
         });
+        // Bei vielen Fahrzeugen hilft ein Suchfeld: Kennzeichen eintippen, die Liste wird sofort kürzer.
+        $('takeSearch').value = '';
+        $('takeSearchRow').hidden = free.length < 7;
+        $('takeNoMatch').hidden = true;
         takeWizard.show(1);
     }
+    $('takeSearch').addEventListener('input', () => {
+        const query = $('takeSearch').value.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
+        let shown = 0;
+        $('takeCars').querySelectorAll('.car-card').forEach(card => { card.hidden = Boolean(query) && !card.dataset.search.includes(query); if (!card.hidden) shown += 1; });
+        $('takeNoMatch').hidden = shown > 0;
+    });
 
     async function chooseTakeVehicle(vehicle) {
         take.vehicle = vehicle;
         $('takeCarLabel').textContent = vehicleLabel(vehicle);
         fillStateList($('takeStateList'), [
-            ['Letzter Fahrer', vehicle.state_updated_at ? `${vehicle.state_updated_by || 'unbekannt'}, ${new Date(vehicle.state_updated_at).toLocaleDateString('de-DE')}` : 'noch keine Angaben'],
+            ['Letzter Fahrer', vehicle.state_updated_at ? `${vehicle.state_updated_by || 'unbekannt'}, ${new Date(vehicle.state_updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : 'noch keine Angaben'],
             ['Kilometer', formatKm(vehicle.mileage)],
             ['Tank', vehicle.fuel == null ? 'unbekannt' : FUEL[vehicle.fuel]],
             ['Parkort', vehicle.parking || 'unbekannt'],
@@ -1165,7 +1193,7 @@
             const entry = el('li', 'directory-entry');
             const state = el('span', 'status-pill', 'bereits gemeldet');
             state.dataset.status = 'bekannt';
-            entry.append(el('span', 'directory-entry-name', `${item.kind}${item.note ? ` – ${item.note}` : ''} · ${new Date(item.created_at).toLocaleDateString('de-DE')}`), state);
+            entry.append(el('span', 'directory-entry-name', `${item.kind}${item.note ? ` – ${item.note}` : ''} · ${new Date(item.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`), state);
             list.append(entry);
         });
     }
@@ -1228,7 +1256,7 @@
                 });
                 side.append(remove);
             }
-            entry.append(el('span', 'directory-entry-name', `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE')} · ${item.place} · ${money(item.amount)}`), side);
+            entry.append(el('span', 'directory-entry-name', `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${item.place} · ${money(item.amount)}`), side);
             list.append(entry);
         });
     }
@@ -1306,10 +1334,25 @@
         const statusByDate = new Map((data || []).map(item => [item.date, item.status]));
         const list = $('workdayList');
         list.replaceChildren();
+        // Samstag und Sonntag stehen nur bei den Dolmetschern (männlich) zur Wahl.
+        const weekend = profile.gender === 'männlich';
+        let nextWeekShown = false;
         days.forEach((date, offset) => {
+            if (!weekend && [0, 6].includes(date.getDay())) return;
+            // Trennzeile vor dem ersten Tag der nächsten Woche (Montag oder – nach einem Wochenende – der erste gezeigte Tag danach)
+            const sinceMonday = (new Date().getDay() + 6) % 7;
+            if (!nextWeekShown && offset > 0 && offset >= 7 - sinceMonday) {
+                nextWeekShown = true;
+                const divider = document.createElement('li');
+                divider.className = 'workday-divider';
+                divider.id = 'nextWeekStart';
+                divider.textContent = 'Nächste Woche';
+                list.append(divider);
+            }
             const iso = isoDate(date);
             const item = document.createElement('li');
             item.className = 'workday-item';
+            item.dataset.date = iso;
             const label = document.createElement('span');
             label.className = 'workday-date';
             label.textContent = offset === 0 ? `Heute, ${date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
@@ -1335,10 +1378,12 @@
     async function toggleWorkday(date, status, wasActive) {
         const query = wasActive
             ? client.from('tt_workdays').delete().eq('user_id', profile.id).eq('date', date)
-            : client.from('tt_workdays').upsert({ user_id: profile.id, date, status }, { onConflict: 'user_id,date' });
+            : client.from('tt_workdays').upsert({ user_id: profile.id, date, status, note: '' }, { onConflict: 'user_id,date' });      // note: ein früherer Vermerk „eingetragen von …“ gilt nicht mehr
         const { error } = await query;
         if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
         await loadWorkdays();
+        // Die Fragen auf der Startseite („Kannst du morgen …“, Wochenplan) sind damit vielleicht schon beantwortet.
+        window.PortalPlan?.load();
     }
 
     // Gearbeitete Tage: aus der freigegebenen Abrechnung, sonst aus den beendeten Aufträgen.
@@ -1683,7 +1728,7 @@
     $('signUpForm').addEventListener('submit', async event => {
         event.preventDefault();
         try {
-            const result = await TerminCloud.signUp($('signUpEmail').value.trim(), $('signUpPassword').value, $('signUpName').value.trim().replace(/\s+/g, ' '), $('signUpPhone').value.trim(), radioValue('signUpEmployment'));
+            const result = await TerminCloud.signUp($('signUpEmail').value.trim(), $('signUpPassword').value, $('signUpName').value.trim().replace(/\s+/g, ' '), $('signUpPhone').value.trim(), radioValue('signUpEmployment'), radioValue('signUpGender'));
             $('signUpPassword').value = '';
             if (result.needsEmailConfirmation) {
                 switchTab(false);
@@ -1700,7 +1745,7 @@
     $('portalSignOut').addEventListener('click', signOut);
     $('pendingSignOut').addEventListener('click', signOut);
     $('portalRecheck').addEventListener('click', refresh);
-    const poll = () => { if (!document.hidden && profile?.active && !profile.must_change_password) Promise.all([loadJobs(), loadMessages()]).then(renderHome); };
+    const poll = () => { if (!document.hidden && profile?.active && !profile.must_change_password) Promise.all([loadJobs(), loadMessages(), window.PortalRequests?.load(), window.PortalPlan?.load()]).then(renderHome); };
     document.addEventListener('visibilitychange', () => { if (!document.hidden && profile?.active && !profile.must_change_password) { loadFleet(); poll(); } });
     window.setInterval(poll, 45000);
 
@@ -1738,7 +1783,9 @@
     // Schnittstelle für portalDocs.js (Unterlagen und Bericht über den Tag).
     window.PortalCore = {
         client, config, toast, showSuccess, goTo, el, emptyItem, makeWizard, choiceButtons, parseJobMessage, isoDate, svgSpan,
-        profile: () => profile, jobs: () => jobsData, view: () => currentView
+        profile: () => profile, jobs: () => jobsData, view: () => currentView,
+        isFest: () => isFest(), refreshWorkdays: () => loadWorkdays(), refreshAccount: () => renderAccount(),
+        setProfile: fields => { if (profile) Object.assign(profile, fields); }
     };
 
     refresh();

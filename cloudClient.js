@@ -46,9 +46,10 @@ const TerminCloud = (() => {
         return getProfile(true);
     }
 
-    async function signUp(email, password, fullName, phone, employment) {
+    async function signUp(email, password, fullName, phone, employment, gender) {
         const { data, error } = await client.auth.signUp({
-            email, password, options: { data: { full_name: fullName, phone: phone || '', employment: employment === 'fest' ? 'fest' : 'temporär' } }
+            email, password, options: { data: { full_name: fullName, phone: phone || '', employment: employment === 'fest' ? 'fest' : 'temporär',
+                gender: ['weiblich', 'männlich'].includes(gender) ? gender : '' } }
         });
         if (error) throw new Error(germanError(error));
         // Ohne Sitzung verlangt das Projekt noch eine Bestätigungs-E-Mail.
@@ -100,7 +101,7 @@ const TerminCloud = (() => {
             client.from('tt_handovers').select('id, start_note').eq('note_seen', false),
             client.from('tt_damages').select('id').eq('status', 'offen'),
             client.from('tt_alerts').select('id').eq('status', 'offen'),
-            client.from('tt_profiles').select('id').eq('active', false)
+            client.from('tt_profiles').select('*').eq('active', false)
         ]);
         if (damages.error || alerts.error || accounts.error) return null;
         const openNotes = notes.error ? 0 : notes.data.filter(item => item.start_note).length;
@@ -119,10 +120,18 @@ const TerminCloud = (() => {
         const festReceipts = openReceipts.filter(item => festIds.has(item.profile_id)).length;
         // Neue Unterlagen und Berichte der Dolmetscher (Seite „Patienten“). Fehlt die Tabelle noch, zählt es als 0.
         const newDocuments = await client.from('tt_documents').select('id').eq('status', 'neu');
+        // Auf Bitte neu geschickte Fotos (Schaden oder Meldung), die noch niemand angesehen hat. Fehlt die Tabelle noch, zählt es als 0.
+        const newPhotos = await client.from('tt_requests').select('id, kind').eq('status', 'erledigt').is('seen_at', null);
+        // Urlaubsanträge und neue Krankmeldungen/Notfälle der Festangestellten. Fehlt die Tabelle noch, zählt es als 0.
+        const waitingAbsences = await client.from('tt_absences').select('id').eq('status', 'beantragt');
+        const absences = waitingAbsences.error ? 0 : waitingAbsences.data.length;
+        // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
+        const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
         return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length,
-            accounts: isAdmin(profile) ? accounts.data.length + (resets.error ? 0 : resets.data.length) : 0,
+            requests: newPhotos.error ? 0 : newPhotos.data.filter(item => item.kind === 'schaden' || item.kind === 'meldung').length,
+            accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
-            fest: festReceipts + (overtime.error ? 0 : overtime.data.length) };
+            fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences };
     }
 
     // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------
@@ -229,35 +238,68 @@ const TerminCloud = (() => {
         try { profile = await getProfile(); } catch (error) { return { ok: false, reason: error.message }; }
         if (!isStaff(profile)) return { ok: false, reason: 'not-admin' };
 
-        // --- Fahrzeuge: lokal ist die Vorlage, online fehlende kommen dazu ---
-        const localVehicles = readFleetList(FLEET_VEHICLES_KEY);
-        if (localVehicles.length) {
-            const rows = localVehicles.filter(vehicle => plateKey(vehicle.plate)).map(vehicle => ({
-                plate: vehicle.plate, plate_key: plateKey(vehicle.plate), brand: vehicle.brand || '', body: vehicle.body || '',
-                type: vehicle.type || '', label: vehicle.label || '', active: vehicle.active !== false
-            }));
-            const { error } = await client.from('tt_vehicles').upsert(rows, { onConflict: 'plate_key' });
-            if (error) return { ok: false, reason: germanError(error) };
-        }
-        const { data: cloudVehicles, error: vehicleError } = await client.from('tt_vehicles').select('*');
+        // --- Fahrzeuge: Die Datenbank ist die Vorlage für alle Geräte. ---
+        // Hochgeladen wird nur, was auf DIESEM Gerät neu angelegt oder geändert wurde (Merker „dirty“). Was in der
+        // Datenbank entfernt wurde, verschwindet auch hier – sonst käme es von einem anderen Gerät immer wieder zurück.
+        // „cloudKey“ merkt sich, unter welchem Kennzeichen ein Fahrzeug in der Datenbank steht.
+        const before = readFleetList(FLEET_VEHICLES_KEY);
+        const loadCloud = () => client.from('tt_vehicles').select('*');
+        let { data: cloudVehicles, error: vehicleError } = await loadCloud();
         if (vehicleError) return { ok: false, reason: germanError(vehicleError) };
-        const localByKey = new Map(localVehicles.map(vehicle => [plateKey(vehicle.plate), vehicle]));
-        let vehiclesChanged = false;
-        cloudVehicles.forEach(cloud => {
-            if (localByKey.has(cloud.plate_key)) return;
-            const vehicle = { id: cloud.id, plate: cloud.plate, brand: cloud.brand, body: cloud.body, type: cloud.type, label: cloud.label, active: cloud.active, createdAt: cloud.created_at };
-            localVehicles.push(vehicle);
-            localByKey.set(cloud.plate_key, vehicle);
-            vehiclesChanged = true;
+        const removedResult = await client.from('tt_vehicle_removed').select('plate_key, removed_at');
+        const removedAt = new Map((removedResult.error ? [] : removedResult.data).map(item => [item.plate_key, item.removed_at]));
+        let cloudByKey = new Map(cloudVehicles.map(cloud => [cloud.plate_key, cloud]));
+        const vehicleFields = vehicle => ({
+            plate: vehicle.plate, plate_key: plateKey(vehicle.plate), brand: vehicle.brand || '', body: vehicle.body || '',
+            type: vehicle.type || '', label: vehicle.label || '', active: vehicle.active !== false
         });
+        const vehicleProblems = [];
+        const kept = [];
+        let uploaded = false;
+        for (const item of before) {
+            const vehicle = { ...item };
+            const key = plateKey(vehicle.plate);
+            if (!key) continue;
+            if (vehicle.cloudKey && !cloudByKey.has(vehicle.cloudKey)) continue;          // in der Datenbank gelöscht
+            if (!vehicle.cloudKey && !cloudByKey.has(key)) {
+                // Auf diesem Gerät neu – außer das Kennzeichen wurde inzwischen zentral gelöscht.
+                const removed = removedAt.get(key);
+                if (removed && !(vehicle.createdAt && vehicle.createdAt > removed)) continue;
+                const { error } = await client.from('tt_vehicles').insert(vehicleFields(vehicle));
+                if (error) vehicleProblems.push(`${vehicle.plate}: ${germanError(error)}`);
+                else { vehicle.cloudKey = key; delete vehicle.dirty; uploaded = true; }
+                kept.push(vehicle);
+                continue;
+            }
+            if (!vehicle.cloudKey) vehicle.cloudKey = key;                                 // gab es online schon unter diesem Kennzeichen
+            if (vehicle.dirty) {
+                const { error } = await client.from('tt_vehicles').update(vehicleFields(vehicle)).eq('id', cloudByKey.get(vehicle.cloudKey).id);
+                if (error) vehicleProblems.push(`${vehicle.plate}: ${/duplicate|unique/i.test(error.message || '') ? 'Dieses Kennzeichen gibt es schon.' : germanError(error)}`);
+                else { vehicle.cloudKey = key; delete vehicle.dirty; uploaded = true; }
+            }
+            kept.push(vehicle);
+        }
+        if (uploaded) {
+            ({ data: cloudVehicles, error: vehicleError } = await loadCloud());
+            if (vehicleError) return { ok: false, reason: germanError(vehicleError) };
+            cloudByKey = new Map(cloudVehicles.map(cloud => [cloud.plate_key, cloud]));
+        }
         // Fester Fahrer aus der Datenbank – dient im Live-Tracking als Vorschlag.
         const { data: profiles } = await client.from('tt_profiles').select('id, full_name');
-        cloudVehicles.forEach(cloud => {
-            const vehicle = localByKey.get(cloud.plate_key);
+        const keptByCloudKey = new Map(kept.filter(vehicle => vehicle.cloudKey).map(vehicle => [vehicle.cloudKey, vehicle]));
+        const localVehicles = cloudVehicles.map(cloud => {
+            const local = keptByCloudKey.get(cloud.plate_key);
             const assignedName = (profiles || []).find(item => item.id === cloud.assigned_to)?.full_name || '';
-            if (vehicle && (vehicle.assignedName || '') !== assignedName) { vehicle.assignedName = assignedName; vehiclesChanged = true; }
-        });
+            // Eine Änderung von hier, die noch nicht hochgeladen werden konnte, bleibt stehen (nächster Versuch beim nächsten Abgleich).
+            if (local?.dirty) return { ...local, assignedName, service: cloud.service_status || '' };
+            return {
+                ...(local || {}), id: local?.id || cloud.id, plate: cloud.plate, brand: cloud.brand, body: cloud.body, type: cloud.type, label: cloud.label,
+                active: cloud.active, createdAt: local?.createdAt || cloud.created_at, cloudKey: cloud.plate_key, assignedName, service: cloud.service_status || ''
+            };
+        }).concat(kept.filter(vehicle => !vehicle.cloudKey));
+        const vehiclesChanged = JSON.stringify(localVehicles) !== JSON.stringify(before);
         if (vehiclesChanged) saveFleetList(FLEET_VEHICLES_KEY, localVehicles);
+        const localByKey = new Map(localVehicles.map(vehicle => [vehicle.cloudKey || plateKey(vehicle.plate), vehicle]));
         const cloudIdByKey = new Map(cloudVehicles.map(cloud => [cloud.plate_key, cloud.id]));
         const cloudVehicleById = new Map(cloudVehicles.map(cloud => [cloud.id, cloud]));
         const localVehicleById = new Map(localVehicles.map(vehicle => [vehicle.id, vehicle]));
@@ -281,7 +323,7 @@ const TerminCloud = (() => {
         localToday.forEach(item => {
             const cloud = cloudById.get(item.id);
             const vehicle = localVehicleById.get(item.vehicleId);
-            const cloudVehicleId = cloudIdByKey.get(plateKey(vehicle?.plate || item.vehiclePlate));
+            const cloudVehicleId = cloudIdByKey.get(vehicle?.cloudKey || plateKey(vehicle?.plate || item.vehiclePlate));
             if (!cloudVehicleId) return;
             const row = {
                 id: item.id, vehicle_id: cloudVehicleId, driver_id: cloud?.driver_id || profileIdByName(item.driver), driver_name: item.driver,
@@ -317,7 +359,7 @@ const TerminCloud = (() => {
             if (error) return { ok: false, reason: germanError(error) };
         }
         if (handoversChanged) saveFleetList(FLEET_HANDOVERS_KEY, allLocal);
-        return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length };
+        return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length, problems: vehicleProblems };
     }
 
     return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey,
