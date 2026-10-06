@@ -365,6 +365,14 @@ const TerminCloud = (() => {
         return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length, problems: vehicleProblems };
     }
 
-    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey,
+    // „Auto über Nacht behalten – früher Termin“: gilt bis zum Tag keep_until, an dem Tag selbst noch bis 16 Uhr.
+    // (Notdienst steht getrennt in handover.emergency und gilt bis zur Rückgabe.)
+    const keepsOvernight = handover => {
+        if (!handover?.keep_until) return false;
+        const today = todayIso();
+        return today < handover.keep_until || (today === handover.keep_until && new Date().getHours() < 16);
+    };
+
+    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey, keepsOvernight,
         callFunction, pushSupported, pushState, enablePush, disablePush, usage };
 })();

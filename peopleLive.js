@@ -39,7 +39,7 @@ window.PeopleLive = (function () {
             client.from('tt_workdays').select('user_id, date, status, note').eq('date', date),
             client.from('tt_absences').select('*').lte('date_from', date).gte('date_to', date),
             client.from('tt_assignments').select('*').eq('date', date),
-            isToday ? client.from('tt_handovers').select('id, vehicle_id, driver_id, driver_name, date, start_time, emergency, created_at').is('end_time', null) : Promise.resolve({ data: [] }),
+            isToday ? client.from('tt_handovers').select('*').is('end_time', null) : Promise.resolve({ data: [] }),
             client.from('tt_vehicles').select('id, plate, brand, body, active, service_status, assigned_to'),
             client.from('tt_days').select('date, records').eq('date', date).maybeSingle(),
             client.from('tt_day_requests').select('*').eq('date', date).maybeSingle(),
@@ -98,7 +98,7 @@ window.PeopleLive = (function () {
             const open = counted.filter(record => recordGroup(record) === 'offen').sort(byTime);
             const next = open.length ? { time: clock(open[0].Termin_Uhrzeit), title: recordTitle(open[0]) } : null;
             const handover = isToday ? (profile && handovers.find(item => item.driver_id === profile.id)) || handovers.find(item => !item.driver_id && nameKey(item.driver_name) === key) || null : null;
-            const vehicle = handover ? { plate: plateOf(handover.vehicle_id), since: clock(handover.start_time), date: handover.date, emergency: Boolean(handover.emergency), overnight: handover.date < today } : null;
+            const vehicle = handover ? { plate: plateOf(handover.vehicle_id), since: clock(handover.start_time), date: handover.date, emergency: Boolean(handover.emergency), kept: TerminCloud.keepsOvernight(handover), overnight: handover.date < today } : null;
             const own = profile ? absences.filter(item => item.profile_id === profile.id && item.status !== 'abgelehnt') : [];
             const absence = own.find(item => logic.blocksDay(item, date)) || null;
             const late = own.find(item => item.kind === 'verspätung' || ((item.kind === 'notfall' || item.kind === 'fehlstunden') && item.minutes)) || null;

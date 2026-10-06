@@ -298,7 +298,7 @@
         const openAlerts = alerts.filter(item => item.status === 'offen');
         const newDamages = damages.filter(item => item.status === 'offen');
         const now = new Date();
-        const overdue = openHandovers.filter(item => !item.emergency && item.driver_id && (item.date < TerminCloud.todayIso() || now.getHours() >= 16));
+        const overdue = openHandovers.filter(item => !item.emergency && !TerminCloud.keepsOvernight(item) && item.driver_id && (item.date < TerminCloud.todayIso() || now.getHours() >= 16));
         $('inboxSummary').textContent = openAlerts.length || newDamages.length || takeoverNotes.length || overdue.length
             ? [
                 `${openAlerts.length} ${openAlerts.length === 1 ? 'offene Meldung' : 'offene Meldungen'}`,
@@ -516,7 +516,7 @@
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id) || null;
         const now = new Date();
         // Rückgabe offen: ab 16 Uhr (gelb), seit einem früheren Tag (rot). Notdienst ist ausgenommen.
-        const overdue = holder && !holder.emergency && holder.driver_id
+        const overdue = holder && !holder.emergency && !TerminCloud.keepsOvernight(holder) && holder.driver_id
             ? (holder.date < TerminCloud.todayIso() ? 2 : now.getHours() >= 16 ? 1 : 0) : 0;
         return {
             holder,
@@ -547,6 +547,7 @@
     function vehicleBadges(vehicle, facts) {
         const badges = el('span', 'vehicle-card-badges');
         if (facts.holder?.emergency) badges.append(pill('in Arbeit', 'Notdienst'));
+        else if (TerminCloud.keepsOvernight(facts.holder)) badges.append(pill('in Arbeit', 'Über Nacht · früher Termin'));
         if (facts.overdue) badges.append(pill(facts.overdue > 1 ? 'offen' : 'in Arbeit', 'Rückgabe offen'));
         if (vehicle.service_status) badges.append(pill('bekannt', vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Werkstatt'));
         if (facts.newDamages) badges.append(pill('offen', `${facts.newDamages} ${facts.newDamages === 1 ? 'neuer Schaden' : 'neue Schäden'}`));
@@ -577,7 +578,7 @@
         const reserved = vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : '';
         if (facts.holder) {
             return [
-                `${facts.holder.driver_name}${facts.holder.emergency ? ' · Notdienst' : ''}`,
+                `${facts.holder.driver_name}${facts.holder.emergency ? ' · Notdienst' : TerminCloud.keepsOvernight(facts.holder) ? ' · über Nacht (früher Termin)' : ''}`,
                 `${sinceText(facts.holder)} · ${durationText(facts.minutesOut)}`,
                 reserved
             ];
@@ -890,7 +891,7 @@
         $('vehicleFile').hidden = false;
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
         $('fileTitle').textContent = vehicleLabel(vehicle);
-        $('fileSubtitle').textContent = [vehicle.type, vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : ''}` : 'frei'].filter(Boolean).join(' · ');
+        $('fileSubtitle').textContent = [vehicle.type, vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : TerminCloud.keepsOvernight(holder) ? ' (über Nacht, früher Termin)' : ''}` : 'frei'].filter(Boolean).join(' · ');
         fillArt($('fileArt'), vehicle);
         $('fileBadges').replaceChildren(...vehicleBadges(vehicle, vehicleFacts(vehicle)).children);
         $('filePhotoRemove').hidden = !vehicle.photo_path;
@@ -967,7 +968,7 @@
                     item.end_parking || '–',
                     cleanText(item.end_clean_inside),
                     cleanText(item.end_clean_outside),
-                    [item.emergency ? 'Notdienst' : '', item.start_note ? `Übernahme: „${item.start_note}“` : ''].filter(Boolean).join(' · ') || '–'
+                    [item.emergency ? 'Notdienst' : '', item.keep_reason === 'frueh' && item.keep_until ? `Über Nacht behalten (früher Termin am ${formatDate(item.keep_until)})` : '', item.start_note ? `Übernahme: „${item.start_note}“` : ''].filter(Boolean).join(' · ') || '–'
                 ].forEach(text => row.append(el('td', null, text)));
                 const edit = el('button', 'button-quiet', 'Kilometer ändern');
                 edit.type = 'button';

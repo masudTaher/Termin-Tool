@@ -1295,7 +1295,7 @@ if (!window.TerminContact) {
             $('heroPlate').textContent = myVehicle?.plate || 'Fahrzeug';
             $('heroModel').textContent = myVehicle ? [myVehicle.brand, myVehicle.body, myVehicle.type].filter(Boolean).join(' · ') : '';
             const sinceDay = myHandover.date === TerminCloud.todayIso() ? 'heute' : new Date(`${myHandover.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-            $('heroSince').textContent = `übernommen ${sinceDay} um ${String(myHandover.start_time).slice(0, 5)} Uhr${myHandover.emergency ? ' · Notdienst' : ''}`;
+            $('heroSince').textContent = `übernommen ${sinceDay} um ${String(myHandover.start_time).slice(0, 5)} Uhr${myHandover.emergency ? ' · Notdienst' : keepsOvernight(myHandover) ? ' · bleibt über Nacht' : ''}`;
             fillStateList($('vehicleState'), [
                 ['Letzter Fahrer', myHandover.previous_driver_name || 'unbekannt'],
                 ['Kilometer bei Übernahme', formatKm(myHandover.start_mileage)],
@@ -1316,14 +1316,74 @@ if (!window.TerminContact) {
             $('startTake').disabled = !free.length;
         }
 
-        // Ab 16 Uhr erinnern, wenn das Auto noch nicht zurückgegeben ist (außer im Notdienst).
-        const overdue = myHandover && !myHandover.emergency && (new Date().getHours() >= 16 || myHandover.date < TerminCloud.todayIso());
+        // Ab 16 Uhr erinnern, wenn das Auto noch nicht zurückgegeben ist (außer im Notdienst oder „über Nacht behalten“).
+        const overdue = myHandover && !myHandover.emergency && !keepsOvernight(myHandover) && (new Date().getHours() >= 16 || myHandover.date < TerminCloud.todayIso());
         $('returnReminder').hidden = !overdue;
         $('returnReminder').textContent = overdue ? 'Bitte gib dein Fahrzeug zurück, wenn du fertig bist.' : '';
+        renderKeep();
         loadReturnNotes();
         // Unterseiten für Schaden, Meldung und Rückgabe gibt es nur mit Fahrzeug.
         if (NEEDS_VEHICLE.includes(currentView) && !myHandover) goTo('vehicle');
     }
+
+    // ---------- Auto über Nacht behalten ----------
+    // Früher Termin (alle): nur diese Nacht – am nächsten Tag gilt es noch bis 16 Uhr, danach erinnert das Portal wieder.
+    // Notdienst / Bereitschaft (nur Festangestellte): bis zur Rückgabe.
+    function keepsOvernight(handover) { return TerminCloud.keepsOvernight(handover); }
+    function renderKeep() {
+        if (!myHandover) return;
+        const kept = keepsOvernight(myHandover);
+        const active = Boolean(myHandover.emergency) || kept;
+        $('keepState').hidden = !active;
+        $('keepButton').hidden = active;
+        if (!active) return;
+        const tomorrow = myHandover.keep_until > TerminCloud.todayIso();
+        $('keepStateText').textContent = myHandover.emergency
+            ? 'Notdienst / Bereitschaft: Das Auto bleibt bei dir, bis du es zurückgibst. Es kommt keine Erinnerung.'
+            : `Das Auto bleibt über Nacht bei dir – früher Termin${tomorrow ? ' morgen' : ' heute'}. Bis ${tomorrow ? 'morgen' : 'heute'} 16 Uhr kommt keine Erinnerung an die Rückgabe.`;
+        $('keepUndo').textContent = myHandover.emergency ? 'Notdienst beenden' : 'Doch nicht über Nacht behalten';
+    }
+    async function setKeep(reason, node) {
+        if (node) node.disabled = true;
+        const { data, error } = await client.rpc('tt_keep_vehicle', { p_reason: reason });
+        if (node) node.disabled = false;
+        if (error) {
+            toast(/tt_keep_vehicle|schema cache|could not find/i.test(error.message || '')
+                ? 'Das ist in der Datenbank noch nicht eingerichtet (Update 19). Bitte sag der Einsatzleitung Bescheid.'
+                : TerminCloud.germanError(error), 'error');
+            return;
+        }
+        if ($('keepDialog').open) $('keepDialog').close();
+        if (data && myHandover) Object.assign(myHandover, data);
+        // Mitteilung an die Einsatzleitung, klar getrennt von den Terminen.
+        TerminCloud.callFunction?.({ action: 'vehicle', kind: 'keep' })?.catch?.(() => null);
+        toast(reason === 'notdienst' ? 'Notdienst eingetragen – das Auto bleibt bei dir.'
+            : reason === 'frueh' ? 'Eingetragen – das Auto bleibt über Nacht bei dir.'
+            : 'Zurückgenommen – bitte gib das Auto heute zurück.', 'success');
+        await loadFleet();
+    }
+    $('keepButton').addEventListener('click', () => {
+        const fest = isFest();
+        $('keepDialogHint').textContent = fest
+            ? 'Warum bleibt das Auto über Nacht bei dir? Die Einsatzleitung bekommt eine Mitteilung.'
+            : 'Das geht nur, wenn du morgen einen frühen Termin hast. Die Einsatzleitung bekommt eine Mitteilung.';
+        const options = fest
+            ? [['notdienst', 'Notdienst / Bereitschaft', 'bis ich das Auto zurückgebe'], ['frueh', 'Früher Termin morgen', 'nur diese Nacht']]
+            : [['frueh', 'Ja – früher Termin morgen', 'nur diese Nacht']];
+        $('keepChoices').replaceChildren(...options.map(([reason, label, small]) => {
+            const button = el('button', 'choice-button keep-choice');
+            button.type = 'button';
+            button.dataset.reason = reason;
+            const text = el('span', '');
+            text.append(el('strong', '', label), el('small', '', small));
+            button.append(text);
+            button.addEventListener('click', () => setKeep(reason, button));
+            return button;
+        }));
+        $('keepDialog').showModal();
+    });
+    $('keepCancel').addEventListener('click', () => $('keepDialog').close());
+    $('keepUndo').addEventListener('click', () => setKeep('', $('keepUndo')));
 
     function freeVehicles() {
         const taken = new Set(openHandovers.map(item => item.vehicle_id));

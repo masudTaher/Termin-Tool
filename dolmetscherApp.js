@@ -140,7 +140,8 @@
         if (person.late) flags.push(['gelb', 'spaet', `${logic.KINDS[person.late.kind].label} ${logic.formatMinutes(person.late.minutes)}`, person.late.note || '']);
         if (person.vacationWaiting) flags.push(['blau', 'urlaub', 'Urlaub beantragt', 'Der Urlaubsantrag für diesen Tag wartet auf die Entscheidung']);
         if (person.vehicle?.emergency) flags.push(['blau', 'notdienst', 'Notdienst', 'Hat das Fahrzeug als Notdienst übernommen']);
-        if (person.vehicle?.overnight) flags.push(['rot', 'uebernacht', 'Auto seit gestern', 'Das Fahrzeug wurde nicht am selben Tag zurückgegeben']);
+        if (person.vehicle?.kept) flags.push(['blau', 'nacht', 'Auto über Nacht', 'Behält das Fahrzeug über Nacht – früher Termin']);
+        else if (person.vehicle?.overnight) flags.push(['rot', 'uebernacht', 'Auto seit gestern', 'Das Fahrzeug wurde nicht am selben Tag zurückgegeben']);
         if (person.noAccount) flags.push(['', 'ohnekonto', 'ohne Konto', 'Steht im Tagesplan, hat aber kein Portal-Konto']);
         else if (person.pushKnown && !person.pushOn) flags.push(['', 'ohnepush', 'ohne Mitteilungen', 'Hat Mitteilungen aufs Handy nicht eingeschaltet – sieht Anfragen erst beim Öffnen des Portals']);
         return flags;
@@ -461,7 +462,7 @@
         state.replaceChildren();
         const fact = (label, value) => { if (value) state.append(el('dt', null, label), el('dd', null, value)); };
         fact('Zustand', `${stateLabel(item.state)} – ${info.main}${info.sub ? ` (${info.sub})` : ''}`);
-        fact('Fahrzeug', item.vehicle ? `${item.vehicle.plate} · seit ${item.vehicle.overnight ? `${logic.dayMonth(item.vehicle.date)} ` : ''}${item.vehicle.since} Uhr${item.vehicle.emergency ? ' · Notdienst' : ''}` : (date === today() && !item.noAccount ? 'kein Fahrzeug übernommen' : ''));
+        fact('Fahrzeug', item.vehicle ? `${item.vehicle.plate} · seit ${item.vehicle.overnight ? `${logic.dayMonth(item.vehicle.date)} ` : ''}${item.vehicle.since} Uhr${item.vehicle.emergency ? ' · Notdienst' : item.vehicle.kept ? ' · über Nacht (früher Termin)' : ''}` : (date === today() && !item.noAccount ? 'kein Fahrzeug übernommen' : ''));
         fact('Aufträge', item.jobs.total ? `${item.jobs.total} – ${[item.jobs.done ? `${item.jobs.done} erledigt` : '', item.jobs.running ? `${item.jobs.running} unterwegs` : '', item.jobs.open ? `${item.jobs.open} offen` : ''].filter(Boolean).join(', ')}${item.jobs.cancelled ? ` · ${item.jobs.cancelled} storniert` : ''}` : 'keine');
         if (!item.noAccount && item.employment === 'temporär') fact('Antwort', item.answer === 'verfügbar' ? `kann arbeiten${item.answerNote ? ` (${item.answerNote})` : ''}` : item.answer === 'nicht verfügbar' ? `kann nicht${item.answerNote ? ` (${item.answerNote})` : ''}` : 'keine');
         if (!item.noAccount && item.pushKnown) fact('Mitteilungen aufs Handy', item.pushOn ? 'eingeschaltet' : 'nicht eingeschaltet – Anfragen sieht die Person erst beim Öffnen des Portals');

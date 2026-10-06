@@ -2117,3 +2117,16 @@ html.scan-cam-open, html.scan-cam-open body { overflow: hidden; }
 /* 51  Fuhrpark: Rückmeldung an die Person, die einen Schaden gemeldet hat */
 .feedback-button, :root[data-theme="dark"] .feedback-button { color: var(--brand); font-weight: 700; white-space: nowrap; }
 .feedback-pill { margin-top: 3px; }
+
+/* 52  Portal: Auto über Nacht behalten (früher Termin · Notdienst) */
+.keep-button, :root[data-theme="dark"] .keep-button { display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: center; gap: 9px; margin: 0 0 14px; border-radius: 13px; font-size: .98rem; font-weight: 700; }
+.keep-button[hidden] { display: none; }
+.keep-button svg { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.keep-state { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 12px; padding: 12px 14px 8px; border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--line)); border-left: 5px solid var(--brand); border-radius: var(--radius); background: var(--brand-soft); color: var(--ink); font-size: .93rem; font-weight: 600; line-height: 1.4; }
+.keep-state[hidden] { display: none; }
+.keep-state .button-quiet, :root[data-theme="dark"] .keep-state .button-quiet { min-height: 36px; margin-left: -8px; color: var(--brand); font-size: .86rem; font-weight: 700; }
+.keep-dialog h2 { margin-bottom: 6px; font-size: 1.15rem; }
+.keep-dialog .field-hint { margin-bottom: 12px; }
+.keep-dialog .choice-list { margin-bottom: 14px; }
+.keep-choice span { display: flex; flex-direction: column; gap: 1px; }
+.keep-choice small { color: var(--muted); font-size: .8rem; font-weight: 500; }

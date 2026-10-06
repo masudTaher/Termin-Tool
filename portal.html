@@ -145,6 +145,10 @@
                      <span id="heroSince" class="vehicle-hero-since"></span>
                   </section>
                   <p id="returnReminder" class="reminder-banner" hidden></p>
+                  <div id="keepState" class="keep-state" role="status" hidden>
+                     <span id="keepStateText"></span>
+                     <button type="button" id="keepUndo" class="button-quiet">Doch nicht über Nacht behalten</button>
+                  </div>
                   <div class="action-grid">
                      <button type="button" class="action-tile" data-go="damage">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17h.01"/></svg>
@@ -159,6 +163,10 @@
                         <strong>Fahrzeug zurückgeben</strong><small>Kilometer, Tank, Parkort, Sauberkeit</small>
                      </button>
                   </div>
+                  <button type="button" id="keepButton" class="button-secondary keep-button">
+                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4 8 8 0 1 0 20 14.500z"/></svg>
+                     <span>Auto über Nacht behalten</span>
+                  </button>
                   <section class="directory-card" aria-labelledby="lastDriverTitle">
                      <h2 id="lastDriverTitle" class="card-title">So hast du das Auto bekommen</h2>
                      <dl id="vehicleState" class="vehicle-state"></dl>
@@ -747,6 +755,13 @@
       <nav id="portalTabbar" class="portal-tabbar" aria-label="Bereiche" hidden></nav>
 
       <!-- Einmalige Angabe für Konten, die es schon gab, bevor danach gefragt wurde -->
+      <dialog id="keepDialog" class="confirm-dialog keep-dialog" aria-labelledby="keepDialogTitle">
+         <h2 id="keepDialogTitle">Auto über Nacht behalten</h2>
+         <p id="keepDialogHint" class="field-hint"></p>
+         <div id="keepChoices" class="choice-list"></div>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="keepCancel">Abbrechen</button></div>
+      </dialog>
+
       <dialog id="genderDialog" class="confirm-dialog gender-dialog" aria-labelledby="genderDialogTitle">
          <h2 id="genderDialogTitle">Eine kurze Angabe</h2>
          <p>Für die Planung der Termine braucht die Einsatzleitung diese Angabe. Du wirst nur einmal gefragt.</p>

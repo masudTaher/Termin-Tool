@@ -117,13 +117,15 @@ Deno.serve(async (req) => {
       const now = berlinNow();
       let reminded = 0;
       let open = 0;
-      // 1) Fahrzeug zurückgeben: ab 16 Uhr, je Person einmal am Tag (Notdienst ausgenommen)
+      // 1) Fahrzeug zurückgeben: ab 16 Uhr, je Person einmal am Tag (Notdienst ausgenommen).
+      //    „Über Nacht behalten – früher Termin“: bis zum Tag keep_until ist Ruhe; an dem Tag selbst wird ab 16 Uhr wieder erinnert.
       if (now.hour >= 16) {
         const { data: handovers } = await admin.from('tt_handovers')
-          .select('id, driver_id, vehicle_id, reminded_at, emergency')
+          .select('*')
           .is('end_time', null).eq('emergency', false).not('driver_id', 'is', null);
-        open = (handovers ?? []).length;
-        const due = (handovers ?? []).filter((item) => !item.reminded_at
+        const waiting = (handovers ?? []).filter((item) => !(item.keep_until && now.date < String(item.keep_until)));
+        open = waiting.length;
+        const due = waiting.filter((item) => !item.reminded_at
           || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date(item.reminded_at)) < now.date);
         for (const item of due) {
           const { data: vehicle } = await admin.from('tt_vehicles').select('plate').eq('id', item.vehicle_id).maybeSingle();
@@ -265,8 +267,29 @@ Deno.serve(async (req) => {
       // Ein Fahrzeug wurde im Portal übernommen oder zurückgegeben: eigene Mitteilung, klar getrennt von den Terminen.
       const back = String(input.kind ?? '') === 'return';
       const { data: trips } = await admin.from('tt_handovers')
-        .select('id, vehicle_id, driver_name, date, start_time, end_time, end_mileage, created_at').eq('driver_id', profile.id).order('created_at', { ascending: false }).limit(1);
+        .select('*').eq('driver_id', profile.id).order('created_at', { ascending: false }).limit(1);
       const trip = (trips ?? [])[0];
+      if (String(input.kind ?? '') === 'keep') {
+        // „Auto über Nacht behalten“ (oder zurückgenommen): Die Einsatzleitung erfährt es sofort – mit dem Grund und,
+        // bei „früher Termin“, mit dem ersten Auftrag des nächsten Tages aus dem Portal (falls es einen gibt).
+        if (!trip || trip.end_time) return json({ sent: 0, devices: 0 });
+        const { data: vehicle } = await admin.from('tt_vehicles').select('plate').eq('id', trip.vehicle_id).maybeSingle();
+        const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+        const reason = String(trip.keep_reason ?? '');
+        let detail = 'doch nicht über Nacht';
+        if (reason === 'notdienst') detail = 'Notdienst / Bereitschaft';
+        if (reason === 'frueh') {
+          const { data: early } = await admin.from('tt_assignments').select('time').eq('interpreter_id', profile.id).eq('date', String(trip.keep_until ?? '')).eq('cancelled', false).order('time').limit(1);
+          const first = String((early ?? [])[0]?.time ?? '').slice(0, 5);
+          detail = `früher Termin${first ? ` (morgen ${first} Uhr)` : ' (für morgen steht kein Auftrag im Portal)'}`;
+        }
+        const result = await sendTo((staff ?? []).map((item) => item.id), {
+          title: reason ? 'FAHRZEUG · bleibt über Nacht' : 'FAHRZEUG · doch nicht über Nacht',
+          body: `${trip.driver_name} · ${vehicle?.plate ?? 'Fahrzeug'}${reason ? ` · ${detail}` : ''}`,
+          url: 'fahrzeuge.html', tag: `fahrzeug-${trip.id}-nacht`,
+        });
+        return json(result);
+      }
       if (!trip || Boolean(trip.end_time) !== back) return json({ sent: 0, devices: 0 });
       const { data: vehicle } = await admin.from('tt_vehicles').select('plate, brand').eq('id', trip.vehicle_id).maybeSingle();
       const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
