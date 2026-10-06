@@ -4,7 +4,7 @@
 (function () {
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     const SEEN_KEY = 'terminTool.cloudInbox.seen.v1';
-    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten'];
+    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten', 'termine'];
 
     function setBadge(page, count) {
         // Seitenleiste und – auf dem Handy – die untere Leiste bekommen dasselbe Zählerschild.
@@ -92,6 +92,7 @@
         setBadge('team', counts.accounts);
         setBadge('fest', counts.fest);
         setBadge('patienten', counts.documents || 0);
+        setBadge('termine', counts.appointments || 0);
         refreshUsage(false);
 
         let seen = null;
@@ -106,6 +107,7 @@
             if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
             if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage oder neuer Bericht eines Dolmetschers');
             if ((counts.requests || 0) > (seen.requests || 0)) messages.push('Ein angefordertes Foto ist da (Fuhrpark)');
+            if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push('Ein Dolmetscher hat einen neuen Termin gemeldet (Seite „Neue Termine“)');
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
         messages.forEach(message => {

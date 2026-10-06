@@ -141,10 +141,109 @@
         }, refresh);
     }
     const withRequest = (row, kind, item) => {
+        const meta = row.querySelector('span:not(.status-pill):not(.vehicle-entry-actions)');
         const state = window.PhotoRequest?.pill(item.id);
-        if (state) row.querySelector('span:not(.status-pill):not(.vehicle-entry-actions)')?.append(state);
+        if (state) meta?.append(state);
+        if (item.feedback_at) {
+            const sent = el('span', 'status-pill request-pill feedback-pill', `Rückmeldung gesendet ${formatDate(item.feedback_at)}`);
+            sent.dataset.status = 'erledigt';
+            sent.title = `${item.feedback_by ? `${item.feedback_by}: ` : ''}${item.feedback_text || ''}`;
+            meta?.append(sent);
+        }
         return row;
     };
+
+    // „Rückmeldung“: kurze Nachricht an die Person, die den Schaden oder die Meldung im Portal gemeldet hat.
+    // Sie steht im Portal unter der Glocke und kommt als Mitteilung aufs Handy. Korrigieren oder löschen geht
+    // danach auf der Seite „Nachrichten“.
+    const FEEDBACK_TEXTS = {
+        schaden: ['Danke für die Meldung.', 'Der Schaden ist aufgenommen.', 'Das Auto geht in die Werkstatt.', 'Der Schaden ist repariert.', 'Bitte ruf mich kurz an.', 'Bitte Schäden immer sofort melden.'],
+        meldung: ['Danke für die Meldung.', 'Wir kümmern uns darum.', 'Bitte fahr das Auto vorerst nicht.', 'Du kannst normal weiterfahren.', 'Bitte ruf mich kurz an.', 'Ist erledigt.']
+    };
+    let feedbackDialog = null;
+    function buildFeedbackDialog() {
+        feedbackDialog = el('dialog', 'confirm-dialog request-dialog feedback-dialog');
+        feedbackDialog.setAttribute('aria-labelledby', 'feedbackDialogTitle');
+        feedbackDialog.innerHTML = `
+            <form class="fleet-form" novalidate>
+               <h2 id="feedbackDialogTitle">Rückmeldung</h2>
+               <p class="field-hint" data-part="what"></p>
+               <span class="field-label" id="feedbackTextsLabel">Schnell antworten</span>
+               <div class="board-chips request-reasons" role="group" aria-labelledby="feedbackTextsLabel" data-part="texts"></div>
+               <label for="feedbackDialogMessage">Deine Nachricht</label>
+               <textarea id="feedbackDialogMessage" rows="3" maxlength="600"></textarea>
+               <p class="workflow-status" data-part="problem" data-kind="error" role="alert" hidden></p>
+               <p class="field-hint">Die Person sieht die Nachricht im Portal unter der Glocke und bekommt eine Mitteilung aufs Handy. Korrigieren oder löschen kannst du sie danach auf der Seite „Nachrichten“.</p>
+               <div class="modal-buttons"><button type="button" class="button-secondary" data-part="cancel">Abbrechen</button><button type="submit" class="button-primary" data-part="submit">Senden</button></div>
+            </form>`;
+        document.body.append(feedbackDialog);
+        feedbackDialog.querySelector('[data-part=cancel]').addEventListener('click', () => feedbackDialog.close('cancel'));
+    }
+    function askFeedback(kind, item, reporter) {
+        if (!feedbackDialog) buildFeedbackDialog();
+        const part = name => feedbackDialog.querySelector(`[data-part=${name}]`);
+        const message = feedbackDialog.querySelector('#feedbackDialogMessage');
+        const name = reporter.full_name || item.reporter_name || 'die Person';
+        const what = kind === 'schaden' ? ['Schaden', item.category, item.zone, plateOf(item)].filter(Boolean).join(' · ') : ['Meldung', item.kind, plateOf(item)].filter(Boolean).join(' · ');
+        feedbackDialog.querySelector('#feedbackDialogTitle').textContent = `Rückmeldung an ${name}`;
+        part('what').textContent = `${what} · gemeldet am ${formatDate(item.created_at)}${item.feedback_at ? ` · letzte Rückmeldung am ${formatDate(item.feedback_at)}: „${item.feedback_text}“` : ''}`;
+        part('problem').hidden = true;
+        const chosen = new Set();
+        let touched = false;      // selbst getippter Text bleibt stehen
+        message.value = '';
+        part('texts').replaceChildren(...FEEDBACK_TEXTS[kind].map(text => {
+            const chip = el('button', 'board-chip', text.replace(/\.$/, ''));
+            chip.type = 'button';
+            chip.setAttribute('aria-pressed', 'false');
+            chip.addEventListener('click', () => {
+                if (touched) {
+                    // Zum eigenen Text dazusetzen statt ihn zu ersetzen.
+                    if (!message.value.includes(text)) message.value = `${message.value.trim()} ${text}`.trim();
+                    chip.setAttribute('aria-pressed', 'true');
+                    return;
+                }
+                if (chosen.has(text)) chosen.delete(text); else chosen.add(text);
+                chip.setAttribute('aria-pressed', String(chosen.has(text)));
+                message.value = [...chosen].join(' ');
+            });
+            return chip;
+        }));
+        message.oninput = () => { touched = true; part('problem').hidden = true; };
+        const form = feedbackDialog.querySelector('form');
+        const submit = part('submit');
+        submit.disabled = false;
+        form.onsubmit = async event => {
+            event.preventDefault();
+            const text = message.value.trim();
+            if (!text) { part('problem').textContent = 'Bitte schreib eine kurze Rückmeldung oder tippe einen Vorschlag an.'; part('problem').hidden = false; message.focus(); return; }
+            submit.disabled = true;
+            const body = `Rückmeldung zu deiner ${kind === 'schaden' ? 'Schadenmeldung' : 'Meldung'} (${what.replace(/^(Schaden|Meldung) · /, '')}, ${formatDate(item.created_at)}): ${text}`;
+            const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [reporter.id], body });
+            if (error) { submit.disabled = false; part('problem').textContent = TerminCloud.germanError(error); part('problem').hidden = false; return; }
+            feedbackDialog.close('sent');
+            // Vermerk am Eintrag (Spalten aus Update 18; ohne das Update fehlt nur das Schildchen).
+            const noted = { feedback_at: new Date().toISOString(), feedback_text: text.slice(0, 600), feedback_by: profile.full_name || '' };
+            const mark = await client.from(kind === 'schaden' ? 'tt_damages' : 'tt_alerts').update(noted).eq('id', item.id);
+            if (!mark.error) Object.assign(item, noted);
+            const push = await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [reporter.id], title: `Rückmeldung von ${profile.full_name || 'der Einsatzleitung'}`, body: body.slice(0, 300) });
+            showToast(push.ok && push.data?.sent
+                ? `Rückmeldung an ${name} gesendet – mit Mitteilung aufs Handy.`
+                : `Rückmeldung an ${name} gesendet. Sie steht im Portal unter der Glocke (Mitteilungen aufs Handy sind dort nicht eingeschaltet).`, 'success', { duration: 8000 });
+            await refresh();
+        };
+        feedbackDialog.showModal();
+        message.focus();
+    }
+    // Knopf nur bei Einträgen, die jemand anderes gemeldet hat und dessen Konto noch aktiv ist.
+    function feedbackButton(kind, item) {
+        const reporter = profiles.find(person => person.id === item.reporter_id);
+        if (!reporter || !reporter.active || reporter.id === profile?.id) return null;
+        const node = el('button', 'button-quiet feedback-button', item.feedback_at ? 'Noch eine Rückmeldung' : 'Rückmeldung');
+        node.type = 'button';
+        node.title = `${reporter.full_name || item.reporter_name} eine kurze Rückmeldung schicken`;
+        node.addEventListener('click', () => askFeedback(kind, item, reporter));
+        return node;
+    }
 
     // ---------- Aktionen ----------
     async function setDamageStatus(item, status) {
@@ -294,6 +393,8 @@
             actions.append(done, open);
             const again = requestButton('meldung', item);
             if (again) actions.append(again);
+            const reply = feedbackButton('meldung', item);
+            if (reply) actions.append(reply);
             if (isAdmin()) actions.append(deleteAlert(item));
             row.append(pill('in Arbeit', 'Meldung'), meta, actions);
             list.append(withRequest(row, 'meldung', item));
@@ -313,6 +414,8 @@
             actions.append(known, open);
             const again = requestButton('schaden', item);
             if (again) actions.append(again);
+            const reply = feedbackButton('schaden', item);
+            if (reply) actions.append(reply);
             if (isAdmin()) actions.append(deleteDamage(item));
             row.append(pill('offen', 'Neuer Schaden'), meta, actions);
             list.append(withRequest(row, 'schaden', item));
@@ -749,6 +852,8 @@
         else actions.append(step('Wieder öffnen', 'bekannt', 'button-quiet'));
         const again = requestButton('schaden', item);
         if (again) actions.append(again);
+        const reply = feedbackButton('schaden', item);
+        if (reply) actions.append(reply);
         if (isAdmin()) actions.append(deleteDamage(item));
         row.append(pill(item.status, CarSketch.STATUS_LABELS[item.status] || item.status), meta, actions);
         return withRequest(row, 'schaden', item);
@@ -770,6 +875,8 @@
         actions.append(button);
         const again = requestButton('meldung', item);
         if (again) actions.append(again);
+        const reply = feedbackButton('meldung', item);
+        if (reply) actions.append(reply);
         if (isAdmin()) actions.append(deleteAlert(item));
         row.append(meta, actions);
         return withRequest(row, 'meldung', item);

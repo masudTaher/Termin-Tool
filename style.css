@@ -2047,3 +2047,73 @@ html.scan-cam-open, html.scan-cam-open body { overflow: hidden; }
 .receipt-preview[hidden] { display: none; }
 .receipt-preview img { width: 64px; max-height: 110px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; object-fit: contain; }
 .receipt-preview span { color: var(--ink-soft); font-size: .88rem; font-weight: 600; }
+
+/* 50  Neue Termine: Portal (eins nach dem anderen gefragt, Vorschläge beim Tippen) und Tabelle im Büro */
+.wizard [data-appt-step] { display: flex; flex-direction: column; }
+.wizard [data-appt-step][hidden] { display: none; }
+.suggest-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 4px; }
+.suggest-box[hidden] { display: none; }
+.suggest-title { flex: 0 0 100%; color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .02em; }
+.suggest-chip, :root[data-theme="dark"] .suggest-chip { display: inline-flex; max-width: 100%; min-height: 40px; flex-direction: column; align-items: flex-start; justify-content: center; padding: 5px 13px; border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--line-strong)); border-radius: 12px; background: var(--brand-soft); color: var(--ink); box-shadow: none; font-size: .9rem; font-weight: 650; line-height: 1.2; text-align: left; }
+.suggest-chip:hover, .suggest-chip:focus-visible { border-color: var(--brand); background: var(--surface-hover); color: var(--ink); }
+.suggest-chip span { overflow-wrap: anywhere; }
+.suggest-chip small { color: var(--ink-soft); font-size: .74rem; font-weight: 600; }
+.appt-editing { margin: 0 0 12px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: .88rem; }
+.appt-when { margin: 10px 0 0; color: var(--ink-soft); font-size: .92rem; font-weight: 650; }
+.appt-when[data-kind="warn"] { color: var(--danger); }
+.check-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--ink-soft); font-size: .92rem; font-weight: 600; cursor: pointer; }
+.check-row input { width: 22px; min-height: 22px; height: 22px; flex: 0 0 auto; margin: 1px 0 0; }
+#apptSlipBox[data-off="ja"] { opacity: .45; }
+.appt-summary-title { margin: 20px 0 6px; }
+.appt-summary { display: flex; flex-direction: column; margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.appt-summary-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 4px 6px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+.appt-summary-row:first-child { border-top: 0; }
+.appt-summary dt { color: var(--muted); font-size: .78rem; font-weight: 700; }
+.appt-summary dd { margin: 0; color: var(--ink); font-size: .92rem; font-weight: 650; overflow-wrap: anywhere; white-space: pre-line; }
+.appt-summary dd[data-missing="ja"] { color: var(--danger); }
+.appt-summary .link-button { min-height: 36px; margin: 0; padding: 4px 10px; font-size: .84rem; }
+.home-new-appt { width: 100%; margin-top: 10px; }
+
+.appt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 10px; }
+.appt-toolbar .view-switch button b { display: inline-block; min-width: 20px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, currentColor 16%, transparent); font-size: .76rem; font-weight: 800; text-align: center; }
+.appt-table { min-width: 1040px; }
+/* Die Spalte „Aktion“ bleibt rechts stehen – auch wenn die Tabelle breiter ist als das Fenster. */
+.appt-table th:last-child, .appt-table td.appt-actions { position: sticky; right: 0; z-index: 1; background: var(--surface); box-shadow: -10px 0 10px -10px rgba(15, 23, 42, .28); }
+.appt-table th:last-child { background: var(--surface-soft); }
+.appt-table th, .appt-table td { padding-right: 8px; padding-left: 8px; }
+.appt-table td { vertical-align: top; font-size: .88rem; line-height: 1.35; }
+.appt-table td strong { display: block; color: var(--ink); font-weight: 700; }
+.appt-table td > span { display: block; }
+.appt-table .appt-sub { color: var(--muted); font-size: .78rem; }
+.appt-table .appt-nr strong { font-size: 1rem; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.appt-table .appt-when-cell { white-space: nowrap; }
+.appt-table .appt-urgency { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; background: var(--surface-hover); color: var(--ink-soft); font-size: .72rem; font-weight: 750; }
+.appt-table .appt-urgency[data-kind="now"] { background: var(--danger); color: #fff; }
+.appt-table .appt-urgency[data-kind="soon"] { background: var(--danger-soft); color: var(--danger); }
+.appt-table .appt-urgency[data-kind="week"] { background: var(--warn-soft); color: var(--warn); }
+.appt-table .appt-urgency[data-kind="past"] { background: var(--surface-hover); color: var(--muted); text-decoration: line-through; }
+.appt-table .appt-what { min-width: 150px; max-width: 300px; overflow-wrap: anywhere; white-space: pre-line; }
+.appt-table .appt-slip, :root[data-theme="dark"] .appt-table .appt-slip { min-height: 28px; margin-top: 4px; padding: 3px 9px; font-size: .78rem; white-space: nowrap; }
+.appt-table .appt-noslip { margin-top: 4px; font-style: italic; }
+.appt-table .appt-note { margin-top: 3px; color: var(--ink-soft); font-size: .8rem; font-style: italic; }
+.appt-table .appt-payer { display: inline-block; min-width: 34px; padding: 2px 9px; text-align: center; border-radius: 999px; background: var(--surface-hover); color: var(--ink-soft); font-size: .76rem; font-weight: 750; white-space: nowrap; }
+.appt-table .appt-payer[data-payer="kostenuebernahme"] { background: var(--accent-soft); color: var(--ok); }
+.appt-table .appt-payer[data-payer="selbstzahler"] { background: var(--warn-soft); color: var(--warn); }
+.appt-table .appt-actions { width: 204px; min-width: 204px; }
+.appt-table .appt-done, :root[data-theme="dark"] .appt-table .appt-done { width: 100%; min-height: 36px; padding: 6px 12px; font-size: .88rem; white-space: nowrap; }
+.appt-table .appt-handled { margin-bottom: 2px; }
+.appt-table .appt-more { display: flex !important; flex-wrap: nowrap; justify-content: space-between; gap: 0 2px; margin-top: 3px; }
+.appt-table .appt-more button { min-height: 28px; padding: 3px 5px; }
+.appt-table tr.is-done td, .appt-table tr.is-done td.appt-actions { background: color-mix(in srgb, var(--surface-hover) 55%, var(--surface)); }
+.appt-table tr.is-new-day td { border-top: 2px solid var(--line-strong); }
+.appt-table .appt-empty { padding: 28px 12px; color: var(--muted); font-size: .95rem; text-align: center; }
+.appt-edit-dialog { width: min(94vw, 660px); }
+.appt-edit-dialog h2 { margin-bottom: 12px; font-size: 1.15rem; }
+.appt-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 10px; }
+.appt-edit-grid label { display: flex; flex-direction: column; gap: 4px; }
+.appt-edit-dialog .workflow-status { margin-bottom: 12px; }
+@media (max-width: 560px) { .appt-edit-grid { grid-template-columns: 1fr; } }
+
+/* 51  Fuhrpark: Rückmeldung an die Person, die einen Schaden gemeldet hat */
+.feedback-button, :root[data-theme="dark"] .feedback-button { color: var(--brand); font-weight: 700; white-space: nowrap; }
+.feedback-pill { margin-top: 3px; }

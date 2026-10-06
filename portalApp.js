@@ -270,7 +270,7 @@ if (!window.TerminContact) {
     const TABS_FEST = [['vehicle', 'Start'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Zeiten'], ['receiptsHome', 'Belege']];
     // Unterseiten gehören zu einem Bereich der unteren Leiste.
     const TAB_OF = { vehicle: 'vehicle', take: 'vehicle', damage: 'vehicle', alert: 'vehicle', return: 'vehicle', requests: 'vehicle', jobs: 'jobs',
-        docs: 'docs', docNew: 'docs', docReport: 'docs',
+        docs: 'docs', docNew: 'docs', docReport: 'docs', appts: 'docs', apptNew: 'docs',
         workdays: 'workdays', overtime: 'overtime', statement: 'statement', receiptsHome: 'receiptsHome', receipts: 'receipts', messages: 'messages', account: 'account' };
     const NEEDS_VEHICLE = ['damage', 'alert', 'return'];
 
@@ -331,6 +331,7 @@ if (!window.TerminContact) {
         if (view === 'docs') window.PortalDocs?.open();
         if (view === 'docNew') window.PortalDocs?.startWizard();
         if (view === 'docReport') window.PortalDocs?.openReport();
+        if (view === 'appts') window.PortalAppointments?.open();
         if (view === 'requests') window.PortalRequests?.show();
         if (view === 'overtime') window.PortalPlan?.openAbsences();
     }

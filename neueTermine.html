@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Neue Termine · Medical Office Bonn</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="termine">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · TAGESABLAUF</p><h1>Neue Termine</h1><p>Termine, die Dolmetscher aus der Praxis oder Klinik mitbringen – mit Terminzettel als Nachweis. Hier prüfen, in FileMaker eintragen und abhaken.</p></div>
+            <div class="fleet-heading-actions">
+               <button type="button" id="apptExport" class="button-secondary" title="Die angezeigten Termine als Excel-Datei mit den Spaltennamen der Terminliste – zum Importieren in FileMaker">Für FileMaker exportieren (Excel)</button>
+               <button type="button" id="apptReload" class="button-secondary">Aktualisieren</button>
+            </div>
+         </div>
+         <p id="apptStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="apptApp" hidden>
+            <section class="directory-card" aria-labelledby="apptTableTitle">
+               <div class="appt-toolbar">
+                  <div class="view-switch" role="group" aria-label="Welche Termine zeigen">
+                     <button type="button" data-appt-filter="neu" aria-pressed="true">Neu <b id="apptCountNew">0</b></button>
+                     <button type="button" data-appt-filter="eingetragen" aria-pressed="false">Eingetragen <b id="apptCountDone">0</b></button>
+                     <button type="button" data-appt-filter="alle" aria-pressed="false">Alle</button>
+                  </div>
+                  <label class="tracking-search"><span class="visually-hidden">Termine durchsuchen</span><input type="search" id="apptSearch" placeholder="Suchen: Patientennummer, Name, Krankenhaus, Dolmetscher …" autocomplete="off"></label>
+               </div>
+               <h2 id="apptTableTitle" class="visually-hidden">Gemeldete Termine</h2>
+               <p id="apptSummary" class="field-hint"></p>
+               <div class="fleet-table-wrap">
+                  <table class="fleet-table appt-table">
+                     <thead><tr><th>Patient</th><th>Termin</th><th>Krankenhaus / Praxis</th><th>Arzt / Abteilung</th><th>Wofür</th><th>Kosten</th><th>Gemeldet von</th><th>Aktion</th></tr></thead>
+                     <tbody id="apptBody"></tbody>
+                  </table>
+               </div>
+               <p class="field-hint">„Eingetragen ✓“ = der Termin steht in FileMaker. Der Eintrag wandert dann ins Archiv („Eingetragen“) und bleibt dort mit Terminzettel auffindbar.</p>
+            </section>
+         </div>
+      </main>
+
+      <dialog id="apptEditDialog" class="confirm-dialog appt-edit-dialog" aria-labelledby="apptEditTitle">
+         <h2 id="apptEditTitle">Termin korrigieren</h2>
+         <form id="apptEditForm" class="fleet-form" novalidate>
+            <div class="appt-edit-grid">
+               <label for="apptEditNr">Patientennummer<input id="apptEditNr" type="text" maxlength="30" autocomplete="off"></label>
+               <label for="apptEditName">Name des Patienten<input id="apptEditName" type="text" maxlength="120" autocomplete="off"></label>
+               <label for="apptEditDate">Datum<input id="apptEditDate" type="date"></label>
+               <label for="apptEditTime">Uhrzeit<input id="apptEditTime" type="time"></label>
+               <label for="apptEditPlace">Krankenhaus / Praxis<input id="apptEditPlace" type="text" maxlength="160" autocomplete="off"></label>
+               <label for="apptEditCity">Ort<input id="apptEditCity" type="text" maxlength="80" autocomplete="off"></label>
+               <label for="apptEditDoctor">Arzt / Abteilung<input id="apptEditDoctor" type="text" maxlength="120" autocomplete="off"></label>
+               <label for="apptEditPayer">Kosten<select id="apptEditPayer"><option value="selbstzahler">Selbstzahler</option><option value="kostenuebernahme">Kostenübernahme</option><option value="unbekannt">unklar</option></select></label>
+            </div>
+            <label for="apptEditDescription">Wofür ist der Termin?</label>
+            <textarea id="apptEditDescription" rows="3" maxlength="1000"></textarea>
+            <label for="apptEditNote">Vermerk des Büros <span class="optional-label">optional</span></label>
+            <input id="apptEditNote" type="text" maxlength="300" autocomplete="off" placeholder="z. B. mit der Praxis telefonisch bestätigt">
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="apptEditCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
+      <script src="neueTermineApp.js"></script>
+   </body>
+</html>

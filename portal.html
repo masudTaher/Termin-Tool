@@ -124,6 +124,7 @@
                   <div class="home-today-head"><h2 id="homeTodayTitle">Heute</h2><button type="button" class="link-button" id="homeAllJobs">Alle Aufträge</button></div>
                   <div id="homeNext"></div>
                   <ul id="homeJobs" class="home-jobs"></ul>
+                  <button type="button" class="button-secondary home-new-appt" id="homeNewAppt">＋ Neuen Termin melden</button>
                </section>
                <h2 class="home-section-title">Fahrzeug</h2>
 
@@ -362,6 +363,10 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.500V16L15.500 5.500l3.500 3.500L8.500 19.500z"/><path d="M13.500 7.500l3.500 3.500"/></svg>
                         <strong>Bericht über Termin</strong><small>Patient und Daten werden übernommen</small>
                      </button>
+                     <button type="button" class="action-tile" data-go="appts">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.500" width="16" height="14" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4"/><path d="M12 12.500v4M10 14.500h4"/></svg>
+                        <strong>Neuen Termin melden</strong><small>mit Terminzettel als Nachweis</small>
+                     </button>
                      <button type="button" class="action-tile" data-go="receipts">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.500h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.500h6M9 12.500h6"/></svg>
                         <strong>Parkticket / Beleg</strong><small>Betrag wird automatisch gelesen</small>
@@ -434,6 +439,97 @@
                   <button type="button" class="button-primary big-button" id="docSend">Als PDF senden</button>
                   <button type="button" class="button-quiet doc-skip" id="docSendNow" hidden>Nicht auf die Texterkennung warten – sofort senden</button>
                </div>
+            </section>
+
+            <!-- ===== Neue Termine melden (eigener Bereich) ===== -->
+            <div data-panel="appts" class="portal-page" hidden>
+               <section class="directory-card" aria-labelledby="apptsTitle">
+                  <button type="button" class="back-button" data-go="docs">← Zurück</button>
+                  <h2 id="apptsTitle" class="wizard-title">Neue Termine</h2>
+                  <p class="wizard-hint">Hat der Patient in der Praxis oder Klinik einen neuen Termin bekommen? Melde ihn hier – das Büro trägt ihn ein.</p>
+                  <button type="button" class="button-primary big-button" id="apptStart">Neuen Termin melden</button>
+                  <p id="apptMissing" class="field-hint" hidden>Neue Termine sind in der Datenbank noch nicht eingerichtet (Update 18). Bitte sag der Einsatzleitung Bescheid.</p>
+               </section>
+               <section class="directory-card" aria-labelledby="apptListTitle">
+                  <h2 id="apptListTitle" class="card-title">Von mir gemeldet</h2>
+                  <ul id="apptList" class="directory-list portal-list doc-list"></ul>
+               </section>
+            </div>
+            <section class="directory-card wizard" data-panel="apptNew" aria-labelledby="apptTitle" hidden>
+               <div class="wizard-head">
+                  <button type="button" class="back-button" id="apptBack">← Zurück</button>
+                  <span class="wizard-count" id="apptCount">Schritt 1 von 6</span>
+               </div>
+               <div class="wizard-progress" aria-hidden="true"><i id="apptProgress"></i></div>
+               <p id="apptEditing" class="appt-editing" hidden>Du änderst einen gemeldeten Termin. Tippe unten auf „ändern“, korrigiere und sende noch einmal.</p>
+               <form id="apptForm" class="fleet-form" novalidate>
+                  <div data-appt-step="1">
+                     <h2 id="apptTitle" class="wizard-title">Für welchen Patienten?</h2>
+                     <p class="wizard-hint">Zuerst die Patientennummer. Patienten aus deinen Aufträgen werden vorgeschlagen – ein Tipp übernimmt Nummer und Name.</p>
+                     <label for="apptPatientNr">Patientennummer</label>
+                     <input id="apptPatientNr" type="text" inputmode="numeric" maxlength="30" autocomplete="off" enterkeyhint="next" placeholder="Zum Beispiel 4103">
+                     <div id="apptPatientSuggest" class="suggest-box" hidden></div>
+                     <label for="apptPatientName">Name des Patienten</label>
+                     <input id="apptPatientName" type="text" maxlength="120" autocomplete="off" enterkeyhint="next" autocapitalize="words">
+                     <div id="apptNameSuggest" class="suggest-box" hidden></div>
+                     <button type="button" class="button-primary big-button" data-appt-next>Weiter</button>
+                  </div>
+                  <div data-appt-step="2" hidden>
+                     <h2 class="wizard-title">Wann ist der Termin?</h2>
+                     <p class="wizard-hint">Datum und Uhrzeit genau so, wie sie auf dem Terminzettel stehen.</p>
+                     <div class="report-next-row">
+                        <label for="apptDate">Datum<input id="apptDate" type="date"></label>
+                        <label for="apptTime">Uhrzeit<input id="apptTime" type="time"></label>
+                     </div>
+                     <p id="apptWhenText" class="appt-when" hidden></p>
+                     <button type="button" class="button-primary big-button" data-appt-next>Weiter</button>
+                  </div>
+                  <div data-appt-step="3" hidden>
+                     <h2 class="wizard-title">Wo ist der Termin?</h2>
+                     <p class="wizard-hint">Tippe die ersten Buchstaben – bekannte Krankenhäuser, Praxen und Ärzte werden vorgeschlagen.</p>
+                     <label for="apptPlace">Krankenhaus oder Praxis</label>
+                     <input id="apptPlace" type="text" maxlength="160" autocomplete="off" enterkeyhint="next" placeholder="Zum Beispiel Uniklinik Bonn">
+                     <div id="apptPlaceSuggest" class="suggest-box" hidden></div>
+                     <label for="apptCity">Ort <span class="optional-label">optional</span></label>
+                     <input id="apptCity" type="text" maxlength="80" autocomplete="off" enterkeyhint="next" placeholder="Zum Beispiel Bonn">
+                     <div id="apptCitySuggest" class="suggest-box" hidden></div>
+                     <label for="apptDoctor">Arzt oder Abteilung</label>
+                     <input id="apptDoctor" type="text" maxlength="120" autocomplete="off" enterkeyhint="next" placeholder="Zum Beispiel Dr. Müller, Kardiologie">
+                     <div id="apptDoctorSuggest" class="suggest-box" hidden></div>
+                     <button type="button" class="button-primary big-button" data-appt-next>Weiter</button>
+                  </div>
+                  <div data-appt-step="4" hidden>
+                     <h2 class="wizard-title">Wofür ist der Termin?</h2>
+                     <p class="wizard-hint">Kurz und genau – zum Beispiel „Kontrolle nach der Operation“ oder „MRT vom Knie“.</p>
+                     <label for="apptDescription" class="visually-hidden">Wofür ist der Termin?</label>
+                     <textarea id="apptDescription" rows="3" maxlength="1000" placeholder="Wofür ist der Termin?"></textarea>
+                     <div id="apptDescriptionSuggest" class="suggest-box" hidden></div>
+                     <button type="button" class="button-primary big-button" data-appt-next>Weiter</button>
+                  </div>
+                  <div data-appt-step="5" hidden>
+                     <h2 class="wizard-title" id="apptPayerLabel">Wer zahlt den Termin?</h2>
+                     <p class="wizard-hint">Kostenübernahme (KÜ) oder Selbstzahler (SZ)?</p>
+                     <div id="apptPayerChoices" class="choice-list" role="group" aria-labelledby="apptPayerLabel"></div>
+                  </div>
+                  <div data-appt-step="6" hidden>
+                     <h2 class="wizard-title">Terminzettel als Nachweis</h2>
+                     <p class="wizard-hint">Zum Schluss ein Scan vom Terminzettel – dann kann das Büro alles nachprüfen.</p>
+                     <div id="apptSlipBox" class="doc-capture receipt-capture">
+                        <button type="button" id="apptSlipScan" class="button-primary big-button doc-capture-button">
+                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
+                           <span id="apptSlipLabel">Terminzettel scannen</span>
+                        </button>
+                        <input id="apptSlipFile" class="visually-hidden" type="file" accept="image/*">
+                     </div>
+                     <p id="apptSlipState" class="scan-status" role="status" hidden></p>
+                     <p id="apptSlipKept" class="field-hint" hidden>Der schon gesendete Terminzettel bleibt erhalten. Scanne nur neu, wenn er falsch war.</p>
+                     <div id="apptSlipPreview" class="receipt-preview" hidden><img id="apptSlipImage" alt="Gescannter Terminzettel"><span id="apptSlipInfo"></span></div>
+                     <label class="check-row"><input id="apptNoSlip" type="checkbox"> <span>Es gibt keinen Terminzettel (z. B. telefonisch vereinbart)</span></label>
+                     <h3 class="card-title appt-summary-title">Stimmt alles?</h3>
+                     <dl id="apptSummary" class="appt-summary"></dl>
+                     <button type="submit" class="button-primary big-button" id="apptSubmit">Termin melden</button>
+                  </div>
+               </form>
             </section>
 
             <!-- ===== Bericht über Termin ===== -->
@@ -680,6 +776,7 @@
       <script src="contactParse.js"></script>
       <script src="portalApp.js"></script>
       <script src="portalDocs.js"></script>
+      <script src="portalAppointments.js"></script>
       <script src="portalRequests.js"></script>
       <script src="absenceLogic.js"></script>
       <script src="portalPlan.js"></script>

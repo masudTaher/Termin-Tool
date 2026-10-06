@@ -60,6 +60,7 @@
         menu: icon('<path d="M4 7h16M4 12h16M4 17h16"/>'),
         clock: icon('<circle cx="12" cy="12.500" r="8"/><path d="M12 8v4.500l3 2M9.500 2.500h5"/>'),
         message: icon('<path d="M4.500 6.500a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.500 3.500v-3.500a2 2 0 0 1-2-2z"/><path d="M8.500 9h7M8.500 12h4.500"/>'),
+        calendar: icon('<rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/><path d="M12 12.5v4M10 14.5h4"/>'),
         patients: icon('<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>')
     };
 
@@ -71,7 +72,8 @@
         { group: 'Tagesablauf', items: [
             { page: 'filtern', href: 'termineFiltern.html', label: 'Filtern', step: '1', icon: ICONS.filter },
             { page: 'tracking', href: 'termineTracking.html', label: 'Live-Tracking', step: '2', icon: ICONS.tracking },
-            { page: 'archiv', href: 'archiv.html', label: 'Tagesarchiv', icon: ICONS.archive }
+            { page: 'archiv', href: 'archiv.html', label: 'Tagesarchiv', icon: ICONS.archive },
+            { page: 'termine', href: 'neueTermine.html', label: 'Neue Termine', icon: ICONS.calendar }
         ] },
         { group: 'Patienten', items: [
             { page: 'patienten', href: 'patienten.html', label: 'Patienten', icon: ICONS.patients }

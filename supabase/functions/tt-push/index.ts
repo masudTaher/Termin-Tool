@@ -279,6 +279,22 @@ Deno.serve(async (req) => {
       return json(result);
     }
 
+    if (action === 'appointment') {
+      // Ein Dolmetscher hat einen neuen Termin aus der Praxis oder Klinik gemeldet: Mitteilung an Einsatzleitung und Sekretariat.
+      // Bewusst ohne Patientennamen – der steht nur in der Tabelle „Neue Termine“.
+      const { data: item } = await admin.from('tt_new_appointments')
+        .select('id, reporter_id, reporter_name, date, time, place').eq('id', String(input.appointmentId ?? '')).maybeSingle();
+      if (!item || item.reporter_id !== profile.id) return json({ error: 'Eintrag nicht gefunden.' }, 404);
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const clock = String(item.time ?? '').slice(0, 5);
+      const result = await sendTo((staff ?? []).map((entry) => entry.id), {
+        title: input.changed ? 'NEUER TERMIN · geändert' : 'NEUER TERMIN · gemeldet',
+        body: `${item.reporter_name || profile.full_name || 'Dolmetscher'} · ${deDate(item.date)}${clock ? ` · ${clock} Uhr` : ''}${item.place ? ` · ${String(item.place).slice(0, 80)}` : ''}`,
+        url: 'neueTermine.html', tag: `neuer-termin-${item.id}`,
+      });
+      return json(result);
+    }
+
     if (action === 'absence') {
       // Eine fest angestellte Person hat Urlaub beantragt oder Krankheit / einen Notfall gemeldet:
       // Mitteilung an Einsatzleitung und Sekretariat.

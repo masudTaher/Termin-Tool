@@ -125,13 +125,16 @@ const TerminCloud = (() => {
         // Urlaubsanträge und neue Krankmeldungen/Notfälle der Festangestellten. Fehlt die Tabelle noch, zählt es als 0.
         const waitingAbsences = await client.from('tt_absences').select('id').eq('status', 'beantragt');
         const absences = waitingAbsences.error ? 0 : waitingAbsences.data.length;
+        // Neue Termine, die Dolmetscher gemeldet haben (Seite „Neue Termine“). Fehlt die Tabelle noch, zählt es als 0.
+        const newAppointments = await client.from('tt_new_appointments').select('id').eq('status', 'neu');
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
         const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
         return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length,
             requests: newPhotos.error ? 0 : newPhotos.data.filter(item => item.kind === 'schaden' || item.kind === 'meldung').length,
             accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
-            fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences };
+            fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences,
+            appointments: newAppointments.error ? 0 : newAppointments.data.length };
     }
 
     // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------
