@@ -131,9 +131,9 @@ window.PortalPlan = (function () {
                 card.append(buttons);
                 cards.push(card);
             }
-            // 2) Wochenplan: von Freitag 15 Uhr bis Sonntagabend, solange für nächste Woche noch nichts eingetragen ist
+            // 2) Wochenplan: von Freitag 13 Uhr bis Sonntagabend, solange für nächste Woche noch nichts eingetragen ist
             const now = new Date();
-            const planTime = (now.getDay() === 5 && now.getHours() >= 15) || now.getDay() === 6 || now.getDay() === 0;
+            const planTime = (now.getDay() === 5 && now.getHours() >= 13) || now.getDay() === 6 || now.getDay() === 0;
             const week = nextWeek();
             const entered = [...myDays.keys()].some(date => date >= week.from && date <= week.to);
             if (planTime && !entered) {

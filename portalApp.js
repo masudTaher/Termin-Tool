@@ -1767,7 +1767,12 @@ if (!window.TerminContact) {
 
     // ---------- Arbeitstage ----------
     async function loadWorkdays() {
-        const days = Array.from({ length: 14 }, (_, offset) => { const date = new Date(); date.setDate(date.getDate() + offset); return date; });
+        // Zur Wahl steht immer nur die laufende Kalenderwoche. Die nächste Woche wird am Freitag um 13 Uhr freigegeben
+        // (dann geht auch die Nachricht an die temporären Dolmetscher hinaus) und bleibt übers Wochenende offen.
+        const now = new Date();
+        const restOfWeek = 7 - ((now.getDay() + 6) % 7);
+        const nextWeekOpen = (now.getDay() === 5 && now.getHours() >= 13) || now.getDay() === 6 || now.getDay() === 0;
+        const days = Array.from({ length: restOfWeek + (nextWeekOpen ? 7 : 0) }, (_, offset) => { const date = new Date(); date.setDate(date.getDate() + offset); return date; });
         const { data, error } = await client.from('tt_workdays').select('*').eq('user_id', profile.id)
             .gte('date', isoDate(days[0])).lte('date', isoDate(days[days.length - 1]));
         if (error) { setStatus(TerminCloud.germanError(error), 'error'); return; }
@@ -1813,6 +1818,13 @@ if (!window.TerminContact) {
             item.append(label, buttons);
             list.append(item);
         });
+        if (!nextWeekOpen) {
+            const later = document.createElement('li');
+            later.className = 'workday-later';
+            later.id = 'nextWeekLater';
+            later.textContent = 'Die nächste Woche wird am Freitag um 13 Uhr freigegeben. Du bekommst dann eine Nachricht.';
+            list.append(later);
+        }
     }
 
     async function toggleWorkday(date, status, wasActive) {

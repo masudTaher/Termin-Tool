@@ -1951,3 +1951,6 @@ input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border
 .day-banner-info { grid-column: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: .84rem; font-weight: 600; }
 .day-banner button { grid-column: 2; grid-row: 1 / span 3; align-self: center; justify-self: end; min-height: 38px; padding: 6px 16px; white-space: nowrap; }
 @media (max-width: 640px) { .day-banner { grid-template-columns: 1fr; width: 100%; } .day-banner button { grid-column: 1; grid-row: auto; margin-top: 6px; } .day-banner strong { font-size: 1.15rem; } }
+
+/* 43  Portal: Hinweis, wann die nächste Woche freigegeben wird */
+.workday-later { list-style: none; margin-top: 6px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: .88rem; font-weight: 600; }

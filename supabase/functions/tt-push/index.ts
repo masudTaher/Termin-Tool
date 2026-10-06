@@ -146,11 +146,12 @@ Deno.serve(async (req) => {
           jobs += 1;
         }
       }
-      // 3) Wochenplan der temporären Dolmetscher: Freitag ab 15 Uhr die Frage nach den Arbeitstagen der nächsten Woche,
+      // 3) Wochenplan der temporären Dolmetscher: Freitag ab 13 Uhr wird die nächste Woche im Portal freigegeben – dann geht
+      //    die Nachricht hinaus (Mitteilung aufs Handy und Nachricht im Portal),
       //    Samstag und Sonntag ab 11 Uhr eine Erinnerung – nur an Personen, die für die nächste Woche noch keinen Tag
       //    eingetragen haben. Jede der drei Stufen geht je Woche genau einmal hinaus (Merkzettel tt_push_log).
       let plan = 0;
-      const stage = now.weekday === 5 && now.hour >= 15 ? 'fr' : now.weekday === 6 && now.hour >= 11 ? 'sa' : now.weekday === 0 && now.hour >= 11 ? 'so' : '';
+      const stage = now.weekday === 5 && now.hour >= 13 ? 'fr' : now.weekday === 6 && now.hour >= 11 ? 'sa' : now.weekday === 0 && now.hour >= 11 ? 'so' : '';
       if (stage && now.hour < 21) {
         const monday = addDays(now.date, stage === 'fr' ? 3 : stage === 'sa' ? 2 : 1);
         // Der Eintrag gelingt nur beim ersten Mal; fehlt die Tabelle noch (Update 15), wird nichts gesendet.
@@ -163,10 +164,14 @@ Deno.serve(async (req) => {
           const answered = new Set((days ?? []).map((item) => item.user_id));
           const waiting = (people ?? []).map((item) => item.id).filter((id) => !answered.has(id));
           const week = `${deDate(monday)} bis ${deDate(addDays(monday, 4))}`;
+          // Freitag: zusätzlich eine Nachricht im Portal an alle temporären Dolmetscher (auch ohne Mitteilungen aufs Handy sichtbar).
+          if (stage === 'fr') {
+            await admin.from('tt_messages').insert({ sender_name: 'Einsatzleitung', audience: 'temporär', recipient_ids: [], body: `Der Wochenplan für nächste Woche (${week}) ist offen. Bitte trag unter „Arbeitstage“ ein, an welchen Tagen du arbeiten kannst.` });
+          }
           const result = await sendTo(waiting, {
-            title: stage === 'fr' ? 'Wochenplan: Wann kannst du arbeiten?' : stage === 'sa' ? 'Erinnerung: Arbeitstage eintragen' : 'Letzte Erinnerung: Arbeitstage eintragen',
+            title: stage === 'fr' ? 'Wochenplan ist offen: Wann kannst du arbeiten?' : stage === 'sa' ? 'Erinnerung: Arbeitstage eintragen' : 'Letzte Erinnerung: Arbeitstage eintragen',
             body: stage === 'fr'
-              ? `Bitte trag im Portal ein, an welchen Tagen du nächste Woche (${week}) arbeiten kannst.`
+              ? `Ab jetzt kannst du dich für nächste Woche (${week}) eintragen. Bitte trag im Portal ein, an welchen Tagen du arbeiten kannst.`
               : `Für nächste Woche (${week}) fehlen noch deine Arbeitstage. Bitte trag sie im Portal ein.`,
             url: 'portal.html?seite=arbeitstage', tag: 'wochenplan',
           });

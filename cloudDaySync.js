@@ -142,7 +142,7 @@
     }
 
     async function checkNewerDay(date) {
-        if (Date.now() - newerChecked < 20000) return;
+        if (Date.now() - newerChecked < 6000) return;
         newerChecked = Date.now();
         const { data: rows, error } = await client.from('tt_days').select('date, updated_at, updated_by, archived').order('updated_at', { ascending: false }).limit(8);
         const data = (rows || []).filter(row => !row.archived || row.date === date);
@@ -167,7 +167,10 @@
             }
             return;
         }
-        if ((date < today && !mine?.archived) || closedNow) {
+        // Das Sekretariat folgt der Einsatzleitung: Lädt sie eine neue Datei oder einen neuen Tag, erscheint er hier von selbst.
+        const follows = profile?.role === 'sekretariat' && !sameName(newest.updated_by, profile.full_name);
+        if ((date < today && !mine?.archived) || closedNow || follows) {
+            if (document.activeElement?.matches?.('#tableBody input') && Date.now() - lastTyped < 15000) { newerChecked = 0; return; }   // erst zu Ende tippen lassen
             // Alter oder schon abgeschlossener Tag auf diesem Gerät: Der ist schon online gesichert – den aktuellen Tag direkt zeigen.
             if (await switchDay(newest.date)) newerBanner(null);
             return;
