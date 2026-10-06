@@ -391,8 +391,6 @@
                      <input id="docPatientNr" type="text" inputmode="numeric" maxlength="30" autocomplete="off" placeholder="Zum Beispiel 4103">
                      <label for="docPatientName">Name des Patienten</label>
                      <input id="docPatientName" type="text" maxlength="120" autocomplete="off">
-                     <label for="docBirth">Geburtsdatum <span class="optional-label">optional</span></label>
-                     <input id="docBirth" type="date">
                      <label for="docDoctor">Arzt oder Praxis <span class="optional-label">optional</span></label>
                      <input id="docDoctor" type="text" maxlength="120" autocomplete="off">
                      <label for="docDate">Datum des Termins</label>
@@ -569,9 +567,17 @@
             <section class="directory-card" data-panel="receipts" aria-labelledby="receiptFormTitle" hidden>
                <button type="button" class="back-button" id="receiptBack">← Zurück</button>
                <h2 id="receiptFormTitle" class="wizard-title">Beleg einreichen</h2>
-               <form id="receiptForm" class="fleet-form">
-                  <label for="receiptPhoto"><b class="step-dot">1</b> Foto vom Beleg</label>
-                  <input id="receiptPhoto" type="file" accept="image/*" required>
+               <form id="receiptForm" class="fleet-form" novalidate>
+                  <span class="field-label"><b class="step-dot">1</b> Beleg scannen</span>
+                  <div class="doc-capture receipt-capture">
+                     <button type="button" id="receiptScanButton" class="button-primary big-button doc-capture-button">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
+                        <span id="receiptScanLabel">Beleg scannen</span>
+                     </button>
+                     <label class="button-secondary doc-gallery-button" for="receiptPhoto">Foto aus der Galerie wählen</label>
+                     <input id="receiptPhoto" class="visually-hidden" type="file" accept="image/*">
+                  </div>
+                  <div id="receiptPreview" class="receipt-preview" hidden><img id="receiptPreviewImage" alt="Gescannter Beleg"><span id="receiptPreviewInfo"></span></div>
                   <p id="receiptScan" class="scan-status" role="status" hidden></p>
                   <span class="field-label" id="receiptKindLabel"><b class="step-dot">2</b> Angaben prüfen</span>
                   <div class="segmented" role="radiogroup" aria-labelledby="receiptKindLabel">

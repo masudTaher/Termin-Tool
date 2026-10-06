@@ -1803,12 +1803,53 @@ if (!window.TerminContact) {
 
     // Sobald ein Foto gewählt ist, liest das Handy Betrag, Datum und Ort selbst aus.
     let scanToken = 0;
-    $('receiptPhoto').addEventListener('change', async () => {
-        const file = $('receiptPhoto').files?.[0];
+    // Der Beleg wird wie eine Unterlage gescannt (Kamera in der App, Rand erkannt, aufgehellt) und als PDF gespeichert.
+    let receiptPage = null;       // { blob, width, height, file } – der zugeschnittene Beleg
+    function clearReceiptPage() {
+        receiptPage = null;
+        const image = $('receiptPreviewImage');
+        if (image.src) URL.revokeObjectURL(image.src);
+        image.removeAttribute('src');
+        $('receiptPreview').hidden = true;
+        $('receiptScanLabel').textContent = 'Beleg scannen';
+    }
+    $('receiptScanButton').addEventListener('click', async () => {
+        if (!window.ScanCam?.supported()) { $('receiptPhoto').click(); return; }
+        const result = await ScanCam.open({ title: 'Beleg scannen', single: true, shape: 'beleg', onCapture: file => useReceiptFile(file) });
+        if (result.reason === 'galerie') $('receiptPhoto').click();
+        else if (result.reason === 'fehler') { toast(`${result.error || 'Die Kamera konnte nicht gestartet werden.'} Wähle das Foto aus der Galerie oder nimm die Foto-App.`, 'info'); $('receiptPhoto').click(); }
+    });
+    $('receiptPhoto').addEventListener('change', () => { const file = $('receiptPhoto').files?.[0]; $('receiptPhoto').value = ''; if (file) useReceiptFile(file); });
+
+    async function useReceiptFile(original) {
+        let file = original;
         const status = $('receiptScan');
         const token = ++scanToken;
-        if (!file) { status.hidden = true; return; }
-        if (typeof ReceiptReader === 'undefined') return;
+        clearReceiptPage();
+        status.hidden = false;
+        status.dataset.kind = 'busy';
+        status.textContent = 'Beleg wird zugeschnitten …';
+        try {
+            // Rand erkennen, gerade rücken, aufhellen – wie bei den Unterlagen. Klappt das nicht, bleibt das Foto, wie es ist.
+            const scanned = window.DocScan ? await DocScan.process(original) : null;
+            if (token !== scanToken) return;
+            if (scanned?.blob) {
+                receiptPage = { blob: scanned.blob, width: scanned.width, height: scanned.height, cropped: Boolean(scanned.cropped) };
+                file = new File([scanned.blob], 'beleg.jpg', { type: 'image/jpeg' });
+            }
+        } catch (error) { /* weiter mit dem Foto */ }
+        if (!receiptPage) {
+            const size = await new Promise(resolve => { const image = new Image(); image.onload = () => resolve([image.naturalWidth, image.naturalHeight]); image.onerror = () => resolve(null); image.src = URL.createObjectURL(original); });
+            if (token !== scanToken) return;
+            if (!size) { status.dataset.kind = 'warn'; status.textContent = 'Das Foto konnte nicht geöffnet werden. Bitte noch einmal scannen.'; return; }
+            receiptPage = { blob: original, width: size[0], height: size[1], cropped: false };
+        }
+        receiptPage.file = file;
+        $('receiptPreviewImage').src = URL.createObjectURL(receiptPage.blob);
+        $('receiptPreviewInfo').textContent = receiptPage.cropped ? 'Beleg erkannt und zugeschnitten – wird als PDF gespeichert.' : 'Ganzes Foto – wird als PDF gespeichert.';
+        $('receiptPreview').hidden = false;
+        $('receiptScanLabel').textContent = 'Beleg neu scannen';
+        if (typeof ReceiptReader === 'undefined') { status.hidden = true; return; }
         status.hidden = false;
         status.dataset.kind = 'busy';
         status.textContent = 'Beleg wird gelesen …';
@@ -1832,19 +1873,33 @@ if (!window.TerminContact) {
             status.dataset.kind = 'warn';
             status.textContent = 'Der Beleg konnte nicht automatisch gelesen werden. Bitte trag die Angaben von Hand ein.';
         }
-    });
+    }
 
     $('receiptForm').addEventListener('submit', async event => {
         event.preventDefault();
         const button = event.target.querySelector('button[type="submit"]');
-        const file = $('receiptPhoto').files?.[0];
         const amount = Number($('receiptAmount').value);
-        if (!file || !(amount > 0)) return;
+        if (!receiptPage) { toast('Bitte zuerst den Beleg scannen.', 'error', '#receiptScanButton'); return; }
+        if (!(amount > 0)) { toast('Bitte trag den Betrag ein.', 'error', '#receiptAmount'); return; }
+        if (!$('receiptDate').value) { toast('Bitte trag das Datum des Belegs ein.', 'error', '#receiptDate'); return; }
         if ($('receiptDate').value > TerminCloud.todayIso()) { toast('Das Datum liegt in der Zukunft.', 'error', '#receiptDate'); return; }
         button.disabled = true;
         try {
             const kind = radioValue('receiptKind');
-            const photoPath = await TerminCloud.uploadPhoto(file, profile.id);
+            // Als PDF speichern (eine Seite). Gelingt das auf dem Gerät nicht, geht der Beleg wie früher als Foto hinaus.
+            let photoPath = '';
+            try {
+                const pdf = await DocPdf.build({
+                    pages: [{ blob: receiptPage.blob, width: receiptPage.width, height: receiptPage.height, words: [] }],
+                    title: ['Beleg', kind, $('receiptPlace').value.trim(), `${amount.toFixed(2)} EUR`].filter(Boolean).join(' · '),
+                    subject: `Beleg vom ${$('receiptDate').value.split('-').reverse().join('.')}`, author: profile.full_name || '', keywords: ['Beleg', kind]
+                });
+                photoPath = `${profile.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-beleg.pdf`;
+                const upload = await client.storage.from('schaeden').upload(photoPath, pdf, { contentType: 'application/pdf' });
+                if (upload.error) throw upload.error;
+            } catch (pdfError) {
+                photoPath = await TerminCloud.uploadPhoto(receiptPage.file, profile.id);
+            }
             const { error } = await client.from('tt_receipts').insert({
                 person_name: profile.full_name || profile.email, profile_id: profile.id, date: $('receiptDate').value,
                 place: $('receiptPlace').value.trim(), amount, kind, proof: kind === 'Tanken' ? 'Quittung' : 'Parkbeleg',
@@ -1853,6 +1908,7 @@ if (!window.TerminContact) {
             if (error) throw error;
             scanToken += 1;
             event.target.reset();
+            clearReceiptPage();
             $('receiptScan').hidden = true;
             $('receiptDate').value = TerminCloud.todayIso();
             toast('Beleg eingereicht. Danke!', 'success');

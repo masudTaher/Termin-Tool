@@ -442,6 +442,8 @@
 
     // ---------- Belege ----------
     async function showPhoto(path) {
+        // Belege aus dem Portal sind seit dem Scannen PDFs – die öffnen sich in einem neuen Tab.
+        if (/\.pdf$/i.test(path || '')) { const link = await TerminCloud.photoUrl(path); if (link) window.open(link, '_blank', 'noopener'); else showToast('Der Beleg konnte nicht geöffnet werden.', 'error'); return; }
         const url = await TerminCloud.photoUrl(path);
         if (!url) { showToast('Das Foto konnte nicht geladen werden.', 'error'); return; }
         $('photoDialogImage').src = url;
@@ -457,7 +459,7 @@
             const tr = el('tr', item.status === 'abgelehnt' ? 'payroll-rejected' : '');
             const photoCell = el('td');
             if (item.photo_path) {
-                const open = el('button', 'button-secondary fleet-end-button', 'Foto');
+                const open = el('button', 'button-secondary fleet-end-button', /\.pdf$/i.test(item.photo_path) ? 'PDF' : 'Foto');
                 open.type = 'button';
                 open.addEventListener('click', () => showPhoto(item.photo_path));
                 photoCell.append(open);

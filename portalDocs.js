@@ -240,8 +240,7 @@ window.PortalDocs = (function () {
         $('docPatientNr').value = source.patientNr || '';
         $('docPatientName').value = source.patientName || '';
         $('docDoctor').value = source.doctor || '';
-        $('docBirth').value = /^\d{2}\.\d{2}\.\d{4}$/.test(source.patientBirth || '') ? source.patientBirth.split('.').reverse().join('-') : '';
-        $('docBirth').max = today();
+        form.dataset.birth = source.patientBirth || '';      // kommt nur aus einem Auftrag – von Hand wird kein Geburtsdatum abgefragt
         $('docDate').value = source.date || today();
         $('docDate').max = today();
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -256,7 +255,7 @@ window.PortalDocs = (function () {
         if (!patientNr && !patientName) { toast('Bitte trag die Patientennummer oder den Namen ein.', 'error', '#docPatientNr'); return; }
         if (!$('docDate').value || $('docDate').value > today()) { toast('Bitte prüfe das Datum des Termins.', 'error', '#docDate'); return; }
         draft.source = { assignmentId: form.dataset.assignment || null, appointmentId: form.dataset.appointment || null, date: $('docDate').value, time: '',
-            patientNr, patientName, patientBirth: $('docBirth').value ? $('docBirth').value.split('-').reverse().join('.') : '', doctor: $('docDoctor').value.trim(), title: '' };
+            patientNr, patientName, patientBirth: form.dataset.birth || '', doctor: $('docDoctor').value.trim(), title: '' };
         showKinds();
     });
 

@@ -3,7 +3,10 @@
 // Zuschneiden, Geraderücken und Aufhellen erledigt danach docScan.js – alles auf dem Gerät, nichts geht an fremde Dienste.
 //
 //   ScanCam.supported()                       → gibt es eine Kamera, die die Seite direkt nutzen kann?
-//   ScanCam.open({ title, count, onCapture }) → öffnet die Kamera; onCapture(file) je Aufnahme. Ergebnis (Promise):
+//   ScanCam.open({ title, count, single, shape, onCapture }) → öffnet die Kamera; onCapture(file) je Aufnahme.
+//                                               shape: 'blatt' (A4, Standard) oder 'beleg' (schmaler Kassenzettel, Parkticket).
+//                                               Ist ein Blatt sicher erkannt und liegt es ruhig, wird von selbst gescannt
+//                                               (abschaltbar mit „Automatisch“). Ergebnis (Promise):
 //                                               { captured: Anzahl, reason: 'fertig' | 'galerie' | 'fehler', error? }
 window.ScanCam = (function () {
     const supported = () => Boolean(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
@@ -59,19 +62,32 @@ window.ScanCam = (function () {
             shutter.type = 'button';
             shutter.setAttribute('aria-label', 'Scannen');
             shutter.append(el('span', '', 'Scannen'));
+            const auto = el('button', 'scan-cam-auto');
+            auto.type = 'button';
+            const AUTO_KEY = 'terminTool.scanCam.auto';
+            let autoOn = true;
+            try { autoOn = localStorage.getItem(AUTO_KEY) !== 'aus'; } catch (error) { /* bleibt an */ }
+            const showAuto = () => { auto.textContent = autoOn ? 'Automatisch: an' : 'Automatisch: aus'; auto.setAttribute('aria-pressed', String(autoOn)); };
+            showAuto();
+            auto.addEventListener('click', () => { autoOn = !autoOn; steady = 0; try { localStorage.setItem(AUTO_KEY, autoOn ? 'an' : 'aus'); } catch (error) { /* gilt bis zum Schließen */ } showAuto(); });
+            if (options.shape === 'beleg') root.dataset.shape = 'beleg';
             const torch = el('button', 'scan-cam-side scan-cam-torch', 'Licht');
             torch.type = 'button';
             torch.hidden = true;
             const counter = el('span', 'scan-cam-count');
             bottom.append(gallery, shutter, torch);
             const flash = el('div', 'scan-cam-flash');
-            root.append(video, overlay, frame, top, status, counter, bottom, flash);
+            root.append(video, overlay, frame, top, status, counter, auto, bottom, flash);
             document.body.append(root);
             document.documentElement.classList.add('scan-cam-open');
 
             let captured = 0;
             let already = Number(options.count) || 0;
             let lastCorners = null;       // erkannte Ecken im Videobild (Pixel des Videos) – nur wenn sicher erkannt
+            let previous = null;          // Ecken beim vorigen Blick – liegt das Blatt ruhig?
+            let steady = 0;               // so viele Blicke nacheinander lag es ruhig
+            let shot = null;              // Ecken der letzten Aufnahme: erst wenn sich das Bild ändert, wird wieder automatisch gescannt
+            const moved = (a, b) => { if (!a || !b) return Infinity; const size = Math.hypot(video.videoWidth, video.videoHeight) || 1; return Math.max(...a.map((point, index) => Math.hypot(point.x - b[index].x, point.y - b[index].y))) / size; };
             let timer = 0;
             let busy = false;
             let closed = false;
@@ -109,15 +125,28 @@ window.ScanCam = (function () {
                 const sure = found && found.confidence >= 0.6 && Array.isArray(found.corners);
                 lastCorners = sure ? found.corners.map(point => ({ x: point.x / ratio, y: point.y / ratio })) : null;
                 root.dataset.found = sure ? 'ja' : 'nein';
-                status.textContent = sure ? 'Blatt erkannt – jetzt „Scannen“ tippen.' : 'Leg das Blatt in den Rahmen. Dunkler Untergrund hilft.';
+                // Automatisch scannen: Das Blatt muss sicher erkannt sein, groß genug im Bild und über mehrere Blicke ruhig liegen.
+                const area = sure ? Math.abs(lastCorners.reduce((sum, point, index) => { const next = lastCorners[(index + 1) % 4]; return sum + point.x * next.y - next.x * point.y; }, 0)) / 2 / (video.videoWidth * video.videoHeight) : 0;
+                const calm = sure && moved(lastCorners, previous) < 0.012;
+                const fresh = !shot || moved(lastCorners, shot) > 0.06;
+                if (!sure) shot = null;                       // Blatt weggenommen → das nächste zählt wieder als neu
+                steady = calm && area > 0.12 ? steady + 1 : 0;
+                previous = lastCorners;
+                const waiting = sure && autoOn && fresh && area > 0.12;
+                status.textContent = !sure ? (options.shape === 'beleg' ? 'Leg den Beleg in den Rahmen. Dunkler Untergrund hilft.' : 'Leg das Blatt in den Rahmen. Dunkler Untergrund hilft.')
+                    : waiting ? 'Erkannt – ruhig halten, es wird automatisch gescannt …'
+                    : autoOn && !fresh ? 'Gescannt. Nächste Seite hinlegen – oder „Fertig“.'
+                    : 'Erkannt – jetzt „Scannen“ tippen.';
+                if (waiting && steady >= 3) { steady = 0; capture(true); }
                 if (sure) {
                     const map = mapping();
                     outline.setAttribute('points', lastCorners.map(point => `${(point.x * map.scale + map.left).toFixed(1)},${(point.y * map.scale + map.top).toFixed(1)}`).join(' '));
                 } else outline.setAttribute('points', '');
             }
 
-            async function capture() {
+            async function capture(automatic = false) {
                 if (busy || closed || !video.videoWidth) return;
+                shot = lastCorners;
                 busy = true;
                 shutter.disabled = true;
                 try {
@@ -134,7 +163,7 @@ window.ScanCam = (function () {
                     showCount();
                     status.textContent = 'Aufgenommen. Nächste Seite – oder „Fertig“.';
                     const file = new File([blob], `scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
-                    await options.onCapture?.(file, { framed: !lastCorners });
+                    await options.onCapture?.(file, { framed: !lastCorners, automatic });
                     if (options.single) finish('fertig');
                 } catch (error) {
                     status.textContent = 'Die Aufnahme hat nicht geklappt. Bitte noch einmal tippen.';
@@ -159,7 +188,7 @@ window.ScanCam = (function () {
             document.addEventListener('keydown', onKey, true);
             done.addEventListener('click', () => finish('fertig'));
             gallery.addEventListener('click', () => finish('galerie'));
-            shutter.addEventListener('click', capture);
+            shutter.addEventListener('click', () => capture(false));
             track?.addEventListener?.('ended', () => finish('fehler', 'Die Kamera wurde beendet.'));
 
             // Taschenlampe, wo das Gerät sie anbietet

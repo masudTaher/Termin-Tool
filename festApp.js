@@ -241,6 +241,8 @@
     });
 
     async function showPhoto(path) {
+        // Belege aus dem Portal sind seit dem Scannen PDFs – die öffnen sich in einem neuen Tab.
+        if (/\.pdf$/i.test(path || '')) { const link = await TerminCloud.photoUrl(path); if (link) window.open(link, '_blank', 'noopener'); else showToast('Der Beleg konnte nicht geöffnet werden.', 'error'); return; }
         const url = await TerminCloud.photoUrl(path);
         if (!url) { showToast('Das Foto konnte nicht geladen werden.', 'error'); return; }
         $('photoDialogImage').src = url;
@@ -255,7 +257,7 @@
         [...receipts].sort((left, right) => left.person_name.localeCompare(right.person_name, 'de') || String(left.date).localeCompare(String(right.date))).forEach(item => {
             const tr = el('tr', item.status === 'abgelehnt' ? 'payroll-rejected' : '');
             const photoCell = el('td');
-            if (item.photo_path) photoCell.append(button('button-secondary fleet-end-button', 'Foto', () => showPhoto(item.photo_path)));
+            if (item.photo_path) photoCell.append(button('button-secondary fleet-end-button', /\.pdf$/i.test(item.photo_path) ? 'PDF' : 'Foto', () => showPhoto(item.photo_path)));
             else photoCell.textContent = '–';
             // Ist das Foto unleserlich (oder fehlt es), die Person um ein neues bitten.
             if (window.PhotoRequest && item.profile_id && item.source === 'portal') {
