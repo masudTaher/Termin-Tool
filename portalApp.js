@@ -1085,7 +1085,7 @@ if (!window.TerminContact) {
         if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
             const docs = el('button', 'job-docs-button');
             docs.type = 'button';
-            docs.append(svgSpan('job-docs-icon', JOB_ICONS.camera), el('span', '', 'Unterlagen fotografieren'));
+            docs.append(svgSpan('job-docs-icon', JOB_ICONS.camera), el('span', '', 'Unterlagen scannen'));
             docs.addEventListener('click', () => window.PortalDocs?.startFor(item));
             rest.append(docs);
         }

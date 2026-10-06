@@ -61,7 +61,7 @@
                     ['12d-auftrag-unterwegs', 'Fertig', 'Nach dem Termin [[Fertig – Auftrag beenden]] tippen. Die Einsatzleitung sieht sofort, dass du wieder frei bist.']
                 ] },
                 { id: 'unterlagen', title: 'Unterlagen fotografieren', lead: 'Arztbericht, Rezept oder Überweisung – direkt nach dem Termin.', steps: [
-                    ['13-unterlagen', 'Starten', '[[Unterlage fotografieren]] unter [[Unterlagen]] – oder [[Unterlagen fotografieren]] direkt am Auftrag.'],
+                    ['13-unterlagen', 'Starten', '[[Unterlage scannen]] unter [[Unterlagen]] – oder [[Unterlagen scannen]] direkt am Auftrag.'],
                     ['13c-unterlage-art', 'Art wählen', 'Arztbericht, Rezept (Medikamente, Physiotherapie, Hilfsmittel), Überweisung (Facharzt, Radiologie) oder Sonstiges.'],
                     ['13e-unterlage-seiten', 'Seiten fotografieren', 'Blatt auf einen dunklen Untergrund legen, jede Seite einzeln. Das Portal schneidet den Rand zu und prüft, ob alles lesbar ist.'],
                     ['13f-unterlage-senden', 'Prüfen und senden', '[[Als PDF senden]] tippen. Fehlt eine Seite, sagt dir das Portal vorher Bescheid.']
@@ -149,7 +149,7 @@
                     ['12d-auftrag-unterwegs', 'عند الانتهاء', 'بعد الموعد اضغط [[Fertig – Auftrag beenden]]، فتعرف الإدارة فورًا أنك أصبحت متاحًا.']
                 ] },
                 { id: 'unterlagen', title: 'تصوير المستندات', lead: 'التقرير الطبي أو الوصفة أو الإحالة، مباشرةً بعد الموعد.', steps: [
-                    ['13-unterlagen', 'ابدأ', 'اضغط [[Unterlage fotografieren]] في قسم [[Unterlagen]]، أو [[Unterlagen fotografieren]] في بطاقة المهمة.'],
+                    ['13-unterlagen', 'ابدأ', 'اضغط [[Unterlage scannen]] في قسم [[Unterlagen]]، أو [[Unterlagen scannen]] في بطاقة المهمة.'],
                     ['13c-unterlage-art', 'اختر النوع', 'تقرير طبي، وصفة (أدوية، علاج طبيعي، مستلزمات طبية)، إحالة (طبيب مختص، أشعة)، أو غير ذلك.'],
                     ['13e-unterlage-seiten', 'صوّر الصفحات', 'ضع الورقة على سطح داكن وصوّر كل صفحة على حدة. تقصّ البوابة الحواف وتتحقق من وضوح الصورة.'],
                     ['13f-unterlage-senden', 'راجع وأرسل', 'اضغط [[Als PDF senden]]. وإذا نقصت صفحة نبّهتك البوابة قبل الإرسال.']

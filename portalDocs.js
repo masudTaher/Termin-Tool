@@ -12,7 +12,7 @@ window.PortalDocs = (function () {
     const MAX_PDF_BYTES = 19 * 1024 * 1024;      // der Speicher nimmt höchstens 20 MB je Datei an
     const OCR_LIBRARY = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
     const OCR_TIMEOUT = 60000;
-    const COLUMNS = 'id, created_at, patient_nr, patient_name, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, warnings, status';
+    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, warnings, status';
 
     let documents = [];        // eigene Unterlagen und Berichte der letzten 30 Tage
     let draft = null;          // Unterlage, die gerade entsteht: { source, kind, pages: [], note }
@@ -72,7 +72,7 @@ window.PortalDocs = (function () {
         const todayCount = documents.filter(item => String(item.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
         $('docsSummary').textContent = todayCount
             ? `Heute hast du ${todayCount} ${todayCount === 1 ? 'Unterlage' : 'Unterlagen'} gesendet.`
-            : 'Arztbericht, Rezept oder Überweisung fotografieren – daraus wird automatisch ein PDF für das Büro.';
+            : 'Arztbericht, Rezept oder Überweisung scannen – daraus wird automatisch ein PDF für das Büro.';
         if (!documents.length) { list.replaceChildren(core.emptyItem('Du hast in den letzten 30 Tagen noch nichts gesendet.')); return; }
         list.replaceChildren(...documents.map(item => {
             const entry = el('li', 'directory-entry damage-entry sent-doc');
@@ -141,6 +141,7 @@ window.PortalDocs = (function () {
         return {
             assignmentId: job.id, appointmentId: job.appointment_id || null, date: job.date, time: String(job.time || '').slice(0, 5),
             patientNr: String(facts['Aktennummer'] || '').trim(), patientName: String(facts['Hauptpatient/in'] || facts['Patient/in'] || '').trim(),
+            patientBirth: String(facts['Geburtsdatum'] || '').trim(),
             doctor: String(doctor || '').trim(), title: job.title || ''
         };
     }
@@ -163,9 +164,10 @@ window.PortalDocs = (function () {
         $('docManualForm').reset();
         wizard.show(1);
         renderPages();
+        // Zuerst die Termine von heute (ob abgeschlossen oder nicht). Frühere Termine und „selbst eintippen“ stehen darunter.
         const list = $('docJobs');
-        const jobs = recentJobs();
-        list.replaceChildren(...jobs.map(job => {
+        const all = recentJobs();
+        const jobCard = job => {
             const source = sourceOf(job);
             const card = el('button', 'car-card doc-job');
             card.type = 'button';
@@ -179,11 +181,21 @@ window.PortalDocs = (function () {
             card.append(main, chips, el('span', 'car-card-arrow', '›'));
             card.addEventListener('click', () => chooseSource(source));
             return card;
-        }));
+        };
+        const todays = all.filter(job => job.date === today());
+        const earlier = all.filter(job => job.date !== today());
+        list.replaceChildren(...todays.map(jobCard));
+        if (!todays.length) list.append(el('p', 'directory-empty doc-no-today', 'Für heute steht kein Termin im Portal.'));
+        if (earlier.length) {
+            const more = el('button', 'link-button doc-earlier', `Termine der letzten Tage anzeigen (${earlier.length})`);
+            more.type = 'button';
+            more.addEventListener('click', () => { more.replaceWith(...earlier.map(jobCard)); });
+            list.append(more);
+        }
         const other = el('button', 'car-card doc-job doc-job-other');
         other.type = 'button';
         const otherMain = el('span', 'car-card-main');
-        otherMain.append(el('strong', '', jobs.length ? 'Anderer Patient' : 'Patient eintragen'), el('span', '', 'Der Termin steht nicht in der Liste'));
+        otherMain.append(el('strong', '', 'Termin nicht dabei'), el('span', '', 'Patient selbst eintippen'));
         other.append(otherMain, el('span', 'car-card-arrow', '›'));
         other.addEventListener('click', () => showManual({ date: today() }));
         list.append(other);
@@ -200,7 +212,7 @@ window.PortalDocs = (function () {
             if (KINDS.includes(known.kind)) {
                 draft.kind = known.kind;
                 $('docPatientLine').textContent = patientLine();
-                $('docCameraLabel').textContent = 'Seite fotografieren';
+                $('docCameraLabel').textContent = 'Seite scannen';
                 wizard.show(3);
             } else showKinds();
         } else if (direct) chooseSource(sourceOf(direct));
@@ -228,6 +240,8 @@ window.PortalDocs = (function () {
         $('docPatientNr').value = source.patientNr || '';
         $('docPatientName').value = source.patientName || '';
         $('docDoctor').value = source.doctor || '';
+        $('docBirth').value = /^\d{2}\.\d{2}\.\d{4}$/.test(source.patientBirth || '') ? source.patientBirth.split('.').reverse().join('-') : '';
+        $('docBirth').max = today();
         $('docDate').value = source.date || today();
         $('docDate').max = today();
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -242,7 +256,7 @@ window.PortalDocs = (function () {
         if (!patientNr && !patientName) { toast('Bitte trag die Patientennummer oder den Namen ein.', 'error', '#docPatientNr'); return; }
         if (!$('docDate').value || $('docDate').value > today()) { toast('Bitte prüfe das Datum des Termins.', 'error', '#docDate'); return; }
         draft.source = { assignmentId: form.dataset.assignment || null, appointmentId: form.dataset.appointment || null, date: $('docDate').value, time: '',
-            patientNr, patientName, doctor: $('docDoctor').value.trim(), title: '' };
+            patientNr, patientName, patientBirth: $('docBirth').value ? $('docBirth').value.split('-').reverse().join('.') : '', doctor: $('docDoctor').value.trim(), title: '' };
         showKinds();
     });
 
@@ -263,7 +277,7 @@ window.PortalDocs = (function () {
             button.append(svgSpan('doc-kind-icon', KIND_ICONS[kind] || KIND_ICONS.Sonstiges), label);
             button.addEventListener('click', () => {
                 draft.kind = kind;
-                $('docCameraLabel').textContent = 'Seite fotografieren';
+                $('docCameraLabel').textContent = 'Seite scannen';
                 wizard.show(3);
             });
             return button;
@@ -326,6 +340,29 @@ window.PortalDocs = (function () {
         const bad = draft.pages.find(page => page.issues.length);
         if (bad && files.length === 1) toast(bad.issues[0].text, 'error', `#docPage${bad.id}`);
     }
+
+    // Scannen mit der Kamera in der App (Rahmen, erkannte Kanten, Knopf „Scannen“). Geht das auf dem Gerät nicht
+    // (keine Erlaubnis, sehr alter Browser), öffnet sich wie früher die Foto-App des Handys.
+    let cameraOpen = false;
+    async function openCamera() {
+        if (cameraOpen) return;
+        if (!window.ScanCam?.supported()) { $('docCamera').click(); return; }
+        cameraOpen = true;
+        const replacing = Boolean(replaceId);
+        try {
+            const result = await ScanCam.open({
+                title: replacing ? 'Seite neu scannen' : 'Unterlage scannen', single: replacing,
+                count: replacing ? 0 : (draft?.pages.length || 0),
+                onCapture: file => addFiles([file])
+            });
+            if (result.reason === 'galerie') { $('docGallery').click(); return; }
+            if (result.reason === 'fehler') {
+                toast(`${result.error || 'Die Kamera konnte nicht gestartet werden.'} Es öffnet sich die Foto-App.`, 'info');
+                $('docCamera').click();
+            }
+        } finally { cameraOpen = false; }
+    }
+    document.querySelector('label[for="docCamera"]')?.addEventListener('click', event => { event.preventDefault(); openCamera(); });
 
     $('docCamera').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; addFiles(files); });
     $('docGallery').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; replaceId = null; addFiles(files); });
@@ -408,7 +445,7 @@ window.PortalDocs = (function () {
                 page.ocr === 'läuft' ? 'Text wird erkannt …' : page.ocr === 'wartet' ? 'Texterkennung wartet' : page.ocr === 'fertig' ? (page.counter?.total ? `Seite ${page.counter.page} von ${page.counter.total} erkannt` : 'Text erkannt') : ''];
             body.append(el('small', 'doc-page-facts', facts.filter(Boolean).join(' · ')));
             const actions = el('div', 'doc-page-actions');
-            actions.append(pageAction('Neu aufnehmen', () => { replaceId = page.id; $('docCamera').click(); }, page.issues.length ? 'button-secondary' : 'button-quiet'),
+            actions.append(pageAction('Neu aufnehmen', () => { replaceId = page.id; openCamera(); }, page.issues.length ? 'button-secondary' : 'button-quiet'),
                 pageAction('Drehen', () => rotatePage(page)));
             if (page.canCrop) actions.append(pageAction(page.cropped ? 'Ganzes Foto' : 'Zuschneiden', () => toggleCrop(page)));
             if (pages.length > 1) {
@@ -420,7 +457,7 @@ window.PortalDocs = (function () {
             item.append(picture, body);
             return item;
         }));
-        $('docCameraLabel').textContent = pages.length ? 'Nächste Seite fotografieren' : 'Seite fotografieren';
+        $('docCameraLabel').textContent = pages.length ? 'Nächste Seite scannen' : 'Seite scannen';
         $('docPagesNext').disabled = busy > 0 || !pages.length;
         $('docPagesNext').textContent = pages.length ? `Weiter mit ${pages.length} ${pages.length === 1 ? 'Seite' : 'Seiten'}` : 'Weiter';
         if (wizard?.step === 4) renderCheck();
@@ -570,7 +607,7 @@ window.PortalDocs = (function () {
             const text = draft.pages.map((page, index) => page.text ? `--- Seite ${index + 1} ---\n${page.text.trim()}` : '').filter(Boolean).join('\n\n').slice(0, 60000);
             const documentId = crypto.randomUUID();
             const { error } = await client.from('tt_documents').insert({
-                id: documentId, patient_nr: source.patientNr, patient_name: source.patientName, date: source.date, doctor: source.doctor,
+                id: documentId, patient_nr: source.patientNr, patient_name: source.patientName, patient_birth: source.patientBirth || '', date: source.date, doctor: source.doctor,
                 appointment_id: source.appointmentId || null, assignment_id: source.assignmentId || null,
                 kind: draft.kind, note: $('docNote').value.trim(), pages: draft.pages.length, file_path: path, file_bytes: pdf.size,
                 text_content: text, warnings: found, uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu'
@@ -706,7 +743,7 @@ window.PortalDocs = (function () {
         const button = $('reportSubmit');
         button.disabled = true;
         try {
-            const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, doctor: source.doctor, date: source.date };
+            const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, patient_birth: source.patientBirth || '', doctor: source.doctor, date: source.date };
             const result = reportExisting
                 ? await client.from('tt_documents').update(fields).eq('id', reportExisting.id)
                 : await client.from('tt_documents').insert({ ...fields, kind: REPORT_KIND, pages: 0, assignment_id: source.assignmentId || null, appointment_id: source.appointmentId || null,

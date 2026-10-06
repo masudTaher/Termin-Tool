@@ -154,7 +154,9 @@
             const key = patientKey(doc);
             if (!key) return;
             let patient = map.get(key);
-            if (!patient) map.set(key, patient = { key, nr: clean(doc.patient_nr), name: '', names: new Set(), documents: [], reports: [], last: '' });
+            if (!patient) map.set(key, patient = { key, nr: clean(doc.patient_nr), name: '', birth: '', names: new Set(), days: new Set(), documents: [], reports: [], last: '' });
+            if (!patient.birth) patient.birth = clean(doc.patient_birth);
+            if (docDay(doc)) patient.days.add(docDay(doc));
             if (!patient.name) patient.name = clean(doc.patient_name);
             if (clean(doc.patient_name)) patient.names.add(lower(doc.patient_name));
             (isReport(doc) ? patient.reports : patient.documents).push(doc);
@@ -275,7 +277,7 @@
             doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''
         ].filter(Boolean).join(' · ')));
         if (isReport(doc) && clean(doc.body)) meta.append(el('span', 'doc-note', excerpt(doc.body, 200)));
-        if (clean(doc.note)) meta.append(el('span', 'doc-note', `Hinweis: ${clean(doc.note)}`));
+        if (clean(doc.note)) meta.append(el('span', 'doc-note', clean(doc.note).startsWith('Nächster Termin: ') ? clean(doc.note) : `Hinweis: ${clean(doc.note)}`));
         const warnings = (Array.isArray(doc.warnings) ? doc.warnings : []).map(clean).filter(Boolean);
         if (warnings.length) {
             const wrap = el('span', 'doc-warnings');
@@ -336,13 +338,34 @@
             el('small', null, [plural(patient.documents.length, 'Unterlage', 'Unterlagen'), patient.reports.length ? plural(patient.reports.length, 'Bericht', 'Berichte') : ''].filter(Boolean).join(' · ')),
             el('small', null, patient.last ? `Zuletzt am ${formatDay(patient.last)}` : '')
         );
+        if (patient.birth) card.querySelector('span').after(el('small', 'patient-birth', `geb. ${patient.birth}`));
         if (hint) card.append(el('em', 'chip chip-brand', hint));
         card.addEventListener('click', () => openPatient(patient.key));
         return card;
     }
 
     // Jedes Suchwort muss in Nummer oder Name vorkommen; ab drei Zeichen zählt auch der erkannte Text der Unterlagen.
+    // Ein Datum (06.10., 06.10.2026 oder 6.10.26) findet Patienten nach Geburtsdatum oder nach dem Tag ihrer Unterlagen und Berichte.
+    function searchByDate(query) {
+        const match = query.trim().match(/^(\d{1,2})\.(\d{1,2})\.?(\d{2}|\d{4})?$/);
+        if (!match) return null;
+        const day = match[1].padStart(2, '0');
+        const month = match[2].padStart(2, '0');
+        const year = match[3] ? (match[3].length === 2 ? (Number(match[3]) > new Date().getFullYear() % 100 ? `19${match[3]}` : `20${match[3]}`) : match[3]) : '';
+        const hits = [];
+        patients.forEach(patient => {
+            const birth = patient.birth.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+            const born = birth && birth[1] === day && birth[2] === month && (!match[3] || birth[3] === year || (match[3].length === 2 && birth[3].slice(2) === match[3]));
+            const onDay = [...patient.days].some(iso => iso.slice(8, 10) === day && iso.slice(5, 7) === month && (!year || iso.slice(0, 4) === year || (match[3].length === 2 && iso.slice(2, 4) === match[3])));
+            if (born) hits.push({ patient, rank: 0, inText: false, hint: 'Geburtsdatum' });
+            else if (onDay) hits.push({ patient, rank: 1, inText: false, hint: `Unterlagen vom ${day}.${month}.` });
+        });
+        return hits.sort((left, right) => left.rank - right.rank || left.patient.nr.localeCompare(right.patient.nr, 'de', { numeric: true }));
+    }
+
     function searchPatients(query) {
+        const dated = searchByDate(query);
+        if (dated) return dated;
         const phrase = lower(query);
         const words = phrase.split(/\s+/).filter(Boolean);
         const hits = [];
@@ -358,13 +381,13 @@
         const query = clean($('patientSearch').value);
         if (!query) {
             $('patientResults').replaceChildren();
-            $('searchInfo').textContent = patients.length ? `${plural(patients.length, 'Patient', 'Patienten')} im Archiv. Tippe die Nummer oder den Namen ein.` : 'Im Archiv gibt es noch keine Patienten.';
+            $('searchInfo').textContent = patients.length ? `${plural(patients.length, 'Patient', 'Patienten')} im Archiv. Tippe Nummer, Namen, Geburtsdatum oder einen Tag ein (z. B. 06.10.2026).` : 'Im Archiv gibt es noch keine Patienten.';
             return;
         }
         const hits = searchPatients(query);
         $('searchInfo').textContent = !hits.length ? 'Kein Patient gefunden. Prüfe die Nummer oder die Schreibweise.'
             : `${hits.length} Treffer${hits.length > 30 ? ' – die ersten 30 werden gezeigt. Tippe mehr Zeichen ein.' : ''}`;
-        $('patientResults').replaceChildren(...hits.slice(0, 30).map(hit => patientCard(hit.patient, hit.inText ? 'Treffer im Text' : '')));
+        $('patientResults').replaceChildren(...hits.slice(0, 30).map(hit => patientCard(hit.patient, hit.hint || (hit.inText ? 'Treffer im Text' : ''))));
     }
 
     // ---------- Patientenakte ----------
@@ -386,7 +409,7 @@
         const patient = patients.find(item => item.key === openKey);
         $('patientFile').hidden = !patient;
         if (!patient) { openKey = ''; return; }
-        $('fileTitle').textContent = [patient.nr ? `Patient ${patient.nr}` : 'Ohne Patientennummer', patient.name].filter(Boolean).join(' · ');
+        $('fileTitle').textContent = [patient.nr ? `Patient ${patient.nr}` : 'Ohne Patientennummer', patient.name, patient.birth ? `geb. ${patient.birth}` : ''].filter(Boolean).join(' · ');
         const reports = documents.filter(doc => isReport(doc) && mentions(doc, patient));
         $('fileSubtitle').textContent = [plural(patient.documents.length, 'Unterlage', 'Unterlagen'), plural(reports.length, 'Bericht', 'Berichte'), patient.last ? `zuletzt am ${formatDay(patient.last)}` : ''].filter(Boolean).join(' · ');
 
@@ -659,9 +682,11 @@
     const NEXT_PREFIX = 'Nächster Termin: ';
     const forAppointment = doc => Boolean(doc.assignment_id || clean(doc.patient_name) || clean(doc.patient_nr));
     const nextOf = doc => clean(doc.note).startsWith(NEXT_PREFIX) ? clean(doc.note).slice(NEXT_PREFIX.length) : '';
+    const reportText = doc => [clean(doc.body), nextOf(doc) ? `${NEXT_PREFIX}${nextOf(doc)}` : ''].filter(Boolean).join('\n\n');
     const reportRows = doc => forAppointment(doc) ? [
         ['Patient/in', clean(doc.patient_name)],
         ['Patientennummer', clean(doc.patient_nr)],
+        ['Geburtsdatum', clean(doc.patient_birth)],
         ['Arzt / Praxis', clean(doc.doctor)],
         ['Termin am', formatDay(docDay(doc))],
         ['Bericht vom', formatDay(String(doc.created_at || '').slice(0, 10))],
@@ -680,7 +705,8 @@
             organisation: ORGANISATION,
             title,
             meta: reportRows(doc),
-            sections: [{ heading: 'Bericht', text: doc.body }, { heading: 'Hinweis', text: nextOf(doc) ? '' : doc.note },
+            // Der nächste Termin steht mit Datum und Uhrzeit im Bericht selbst – direkt unter dem Text.
+            sections: [{ heading: 'Bericht', text: reportText(doc) }, { heading: 'Hinweis', text: nextOf(doc) ? '' : doc.note },
                 // Unterschrift: Name des Dolmetschers und Datum, an dem der Bericht geschrieben wurde.
                 { heading: 'Unterschrift', text: forAppointment(doc) ? `${clean(doc.uploader_name)}\n${formatDay(String(doc.created_at || '').slice(0, 10))}` : '' }],
             footer: `Eingegangen am ${formatStamp(doc.created_at)} · ${SIGNATURE}`,
@@ -692,7 +718,7 @@
     function showReport(doc) {
         reportDoc = doc;
         $('reportMeta').replaceChildren(...reportRows(doc).filter(row => row[1]).flatMap(([term, value]) => [el('dt', null, term), el('dd', null, value)]));
-        $('reportBody').textContent = clean(doc.body) || 'Dieser Bericht enthält keinen Text.';
+        $('reportBody').textContent = reportText(doc) || 'Dieser Bericht enthält keinen Text.';
         $('reportFile').hidden = !doc.file_path;
         $('reportPdf').hidden = !clean(doc.body);
         dialogStatus('reportStatus', '');

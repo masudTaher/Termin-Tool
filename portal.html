@@ -352,11 +352,11 @@
             <div data-panel="docs" class="portal-page" hidden>
                <section class="directory-card" aria-labelledby="docsTitle">
                   <h2 id="docsTitle" class="wizard-title">Unterlagen</h2>
-                  <p class="wizard-hint" id="docsSummary">Arztbericht, Rezept oder Überweisung fotografieren – daraus wird automatisch ein PDF für das Büro.</p>
+                  <p class="wizard-hint" id="docsSummary">Arztbericht, Rezept oder Überweisung scannen – daraus wird automatisch ein PDF für das Büro.</p>
                   <div class="action-grid">
                      <button type="button" class="action-tile action-tile-primary" data-go="docNew">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
-                        <strong>Unterlage fotografieren</strong><small>Arztbericht, Rezept, Überweisung</small>
+                        <strong>Unterlage scannen</strong><small>Arztbericht, Rezept, Überweisung → PDF</small>
                      </button>
                      <button type="button" class="action-tile" data-go="docReport">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.500V16L15.500 5.500l3.500 3.500L8.500 19.500z"/><path d="M13.500 7.500l3.500 3.500"/></svg>
@@ -384,13 +384,15 @@
 
                <div data-doc-step="1">
                   <h2 id="docTitle" class="wizard-title">Zu welchem Termin gehört die Unterlage?</h2>
-                  <p class="wizard-hint">Tippe den Termin an. Patient und Arzt werden dann automatisch eingetragen.</p>
+                  <p class="wizard-hint">Tippe den Termin von heute an – Patient und Arzt werden automatisch eingetragen und die Unterlage kommt in die Akte des Patienten.</p>
                   <div id="docJobs" class="car-list"></div>
                   <form id="docManualForm" class="fleet-form" hidden novalidate>
                      <label for="docPatientNr">Patientennummer</label>
                      <input id="docPatientNr" type="text" inputmode="numeric" maxlength="30" autocomplete="off" placeholder="Zum Beispiel 4103">
                      <label for="docPatientName">Name des Patienten</label>
                      <input id="docPatientName" type="text" maxlength="120" autocomplete="off">
+                     <label for="docBirth">Geburtsdatum <span class="optional-label">optional</span></label>
+                     <input id="docBirth" type="date">
                      <label for="docDoctor">Arzt oder Praxis <span class="optional-label">optional</span></label>
                      <input id="docDoctor" type="text" maxlength="120" autocomplete="off">
                      <label for="docDate">Datum des Termins</label>
@@ -406,12 +408,12 @@
                </div>
 
                <div data-doc-step="3" hidden>
-                  <h2 class="wizard-title">Seiten fotografieren</h2>
-                  <p class="wizard-hint">Leg das Blatt auf einen dunklen, glatten Untergrund und halte das Handy gerade darüber. Jede Seite einzeln.</p>
+                  <h2 class="wizard-title">Seiten scannen</h2>
+                  <p class="wizard-hint">Leg das Blatt auf einen dunklen, glatten Untergrund. Die Kamera öffnet sich hier in der App: Blatt in den Rahmen, „Scannen“ tippen. Jede Seite einzeln – am Ende wird daraus ein PDF.</p>
                   <div class="doc-capture">
                      <label class="button-primary big-button doc-capture-button" for="docCamera">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
-                        <span id="docCameraLabel">Seite fotografieren</span>
+                        <span id="docCameraLabel">Seite scannen</span>
                      </label>
                      <input id="docCamera" class="visually-hidden" type="file" accept="image/*" capture="environment">
                      <label class="button-secondary doc-gallery-button" for="docGallery">Fotos aus der Galerie wählen</label>
@@ -667,6 +669,7 @@
       <script src="carSketch.js"></script>
       <script src="receiptReader.js"></script>
       <script src="docScan.js"></script>
+      <script src="scanCam.js"></script>
       <script src="docPdf.js"></script>
       <script src="contactParse.js"></script>
       <script src="portalApp.js"></script>
