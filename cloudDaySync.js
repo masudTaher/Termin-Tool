@@ -432,6 +432,47 @@
         return { record, assignment };
     }
 
+    // Kleines Fenster vor dem Erinnern: Text ändern oder leer lassen. Ergebnis: Text, '' (ohne eigene Nachricht) oder null (abgebrochen).
+    function remindDialog(assignment, waiting) {
+        return new Promise(resolve => {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'confirm-dialog remind-dialog';
+            const title = document.createElement('h2');
+            title.textContent = `${assignment.interpreter_name} erinnern`;
+            const info = document.createElement('p');
+            info.textContent = `Auftrag ${assignment.title} · ${formatFleetDate(assignment.date)}`;
+            const label = document.createElement('label');
+            label.textContent = 'Deine Nachricht dazu (freiwillig)';
+            const input = document.createElement('textarea');
+            input.id = 'remindText';
+            input.rows = 3;
+            input.maxLength = 300;
+            input.value = waiting ? 'Bitte sag den Auftrag zu oder ab.' : '';
+            input.placeholder = 'z. B. Bitte zusagen – der Patient wartet auf Bestätigung';
+            label.htmlFor = input.id;
+            const buttons = document.createElement('div');
+            buttons.className = 'modal-buttons';
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'button-secondary';
+            cancel.textContent = 'Abbrechen';
+            const ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'button-primary';
+            ok.textContent = 'Erinnerung senden';
+            buttons.append(cancel, ok);
+            dialog.append(title, info, label, input, buttons);
+            document.body.append(dialog);
+            const finish = result => { dialog.close(); dialog.remove(); resolve(result); };
+            cancel.addEventListener('click', () => finish(null));
+            ok.addEventListener('click', () => finish(input.value.trim().replace(/\s+/g, ' ')));
+            dialog.addEventListener('cancel', event => { event.preventDefault(); finish(null); });
+            dialog.showModal();
+            input.focus();
+            input.select();
+        });
+    }
+
     // Erinnern: Mitteilung aufs Handy und Nachricht im Portal – der Auftrag selbst bleibt unverändert.
     window.remindTrackingAssignment = async function (index, button) {
         if (button) button.disabled = true;
@@ -439,10 +480,14 @@
             const { assignment } = await sentAssignment(index);
             if (!assignment) return;
             const waiting = assignment.response === 'offen';
-            const body = waiting ? `Erinnerung: Bitte antworte auf den Auftrag ${assignment.title} (${formatFleetDate(assignment.date)}).` : `Erinnerung an deinen Auftrag ${assignment.title} (${formatFleetDate(assignment.date)}).`;
+            // Eine kurze eigene Nachricht dazu (z. B. „Bitte zusagen“) – damit klar ist, was gemeint ist.
+            const text = await remindDialog(assignment, waiting);
+            if (text === null) return;
+            const about = `${assignment.title} (${formatFleetDate(assignment.date)})`;
+            const body = text ? `Erinnerung zum Auftrag ${about}: ${text}` : waiting ? `Erinnerung: Bitte antworte auf den Auftrag ${about}.` : `Erinnerung an deinen Auftrag ${about}.`;
             const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [assignment.interpreter_id], body });
             if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-            const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: waiting ? 'Erinnerung: Auftrag wartet auf Antwort' : 'Erinnerung an deinen Auftrag', body: `${formatFleetDate(assignment.date)} · ${assignment.title}` });
+            const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: waiting ? 'Erinnerung: Auftrag wartet auf Antwort' : 'Erinnerung an deinen Auftrag', body: `${text ? `${text} – ` : ''}${formatFleetDate(assignment.date)} · ${assignment.title}`.slice(0, 200) });
             showToast(`Erinnerung an ${assignment.interpreter_name} gesendet – ${push?.ok && push.data?.sent ? 'als Mitteilung aufs Handy und als Nachricht im Portal.' : 'als Nachricht im Portal (Mitteilungen aufs Handy sind dort nicht eingeschaltet).'}`, 'success', { duration: 9000 });
         } finally { if (button) button.disabled = false; }
     };

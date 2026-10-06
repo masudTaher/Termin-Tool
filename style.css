@@ -1954,3 +1954,48 @@ input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border
 
 /* 43  Portal: Hinweis, wann die nächste Woche freigegeben wird */
 .workday-later { list-style: none; margin-top: 6px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: .88rem; font-weight: 600; }
+
+/* 44  Portal: Bericht über Termin */
+.report-facts { margin-bottom: 4px; }
+.report-chip.is-sent { background: var(--accent-soft); color: var(--ok); }
+.report-next { margin: 4px 0 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.report-next legend { padding: 0 6px; color: var(--ink); font-size: .9rem; font-weight: 700; }
+.report-next-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.report-next-row label { display: flex; min-width: 0; flex-direction: column; gap: 4px; color: var(--muted); font-size: .82rem; font-weight: 600; }
+.report-next-row input { min-width: 0; width: 100%; }
+.report-sign { display: flex; flex-direction: column; gap: 1px; margin: 6px 0 0; padding: 10px 12px; border-top: 2px solid var(--ink); background: var(--surface-hover); border-radius: 0 0 10px 10px; }
+.report-sign span { color: var(--muted); font-size: .74rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.report-sign strong { font-size: 1.05rem; }
+.report-sign small { color: var(--muted); }
+
+/* 45  Live-Tracking: Erinnerung mit eigener Nachricht */
+.remind-dialog h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.remind-dialog label { display: block; margin: 12px 0 4px; font-size: .86rem; font-weight: 700; }
+.remind-dialog textarea { width: 100%; min-height: 76px; }
+
+/* 46  Portal-Startseite: „Heute“ – nächster Auftrag groß, weitere als Zeilen, darunter das Fahrzeug */
+.home-today { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.home-today-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.home-today-head h2 { margin: 0; font-size: 1.12rem; white-space: nowrap; }
+.home-today-head .link-button { font-size: .84rem; white-space: nowrap; }
+.home-today-head .link-button[data-waiting="ja"] { color: #a86a00; font-weight: 700; }
+.home-next, :root[data-theme="dark"] .home-next { --job: #18794e; display: flex; width: 100%; align-items: center; gap: 12px; padding: 14px; border: 1px solid color-mix(in srgb, var(--job) 35%, var(--line)); border-left: 6px solid var(--job); border-radius: 14px; background: color-mix(in srgb, var(--job) 7%, var(--surface)); color: var(--ink); box-shadow: none; text-align: left; }
+.home-next[data-state="offen"] { --job: #c98a1b; --job-ink: #8a5a00; }
+:root[data-theme="dark"] .home-next[data-state="offen"] { --job: #c98a1b; --job-ink: #f0c060; }
+.home-next[data-state="vorbehalt"], :root[data-theme="dark"] .home-next[data-state="vorbehalt"] { --job: #64748b; }
+.home-next[data-state="unterwegs"], :root[data-theme="dark"] .home-next[data-state="unterwegs"] { --job: #1769aa; }
+.home-next:hover, :root[data-theme="dark"] .home-next:hover { background: color-mix(in srgb, var(--job) 12%, var(--surface)); color: var(--ink); }
+.home-next-text { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-start; gap: 2px; }
+.home-next-label { color: var(--job-ink, var(--job)); font-size: .74rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.home-next-time { font-size: 1.5rem; line-height: 1.1; }
+.home-next-place { font-size: 1rem; font-weight: 700; }
+.home-next-patient { color: var(--ink-soft); font-size: .92rem; }
+.home-next .status-pill { margin-top: 4px; }
+.home-next-action { flex: none; color: var(--job-ink, var(--job)); font-size: .9rem; font-weight: 800; white-space: nowrap; }
+.home-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 14px; color: var(--ink-soft); }
+.home-jobs { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.home-jobs:empty { display: none; }
+.home-job button, :root[data-theme="dark"] .home-job button { display: grid; width: 100%; min-height: 46px; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: none; text-align: left; }
+.home-job button:hover, :root[data-theme="dark"] .home-job button:hover { border-color: var(--brand); background: var(--surface-hover); color: var(--ink); }
+.home-job-text { overflow: hidden; font-size: .92rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.home-section-title { margin: 6px 2px -4px; color: var(--muted); font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }

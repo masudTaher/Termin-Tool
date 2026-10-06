@@ -38,7 +38,7 @@
                     ['04-start', 'Was auf dich wartet', 'Fragen der Einsatzleitung, neue Nachrichten und Aufträge ohne Antwort stehen ganz oben. Antippen genügt.'],
                     ['12e-start-unterwegs', 'Dein Auto, dein Auftrag', 'Hast du ein Auto übernommen, steht es groß auf der Startseite – zusammen mit dem laufenden Auftrag.']
                 ], tips: [
-                    ['Die Leiste unten', '[[Fahrzeug]] · [[Aufträge]] · [[Unterlagen]] · [[Arbeitstage]] · [[Abrechnung]]. Fest Angestellte sehen statt der letzten beiden [[Zeiten]] und [[Belege]].']
+                    ['Die Leiste unten', '[[Start]] · [[Aufträge]] · [[Unterlagen]] · [[Arbeitstage]] · [[Abrechnung]]. Fest Angestellte sehen statt der letzten beiden [[Zeiten]] und [[Belege]].']
                 ] },
                 { id: 'uebernehmen', title: 'Fahrzeug übernehmen', lead: 'Auto wählen, Zustand prüfen, Kilometer eintragen – immer bevor du losfährst.', steps: [
                     ['04d-start-danach', 'Start', 'Auf der Startseite [[Fahrzeug übernehmen]] tippen.'],
@@ -126,7 +126,7 @@
                     ['04-start', 'ما ينتظرك', 'أسئلة الإدارة والرسائل الجديدة والمهام التي لم تُجب عنها بعد تظهر في الأعلى. يكفي أن تضغط عليها.'],
                     ['12e-start-unterwegs', 'سيارتك ومهمتك', 'إذا استلمت سيارة ظهرت بوضوح في الصفحة الرئيسية، ومعها المهمة الجارية.']
                 ], tips: [
-                    ['الشريط السفلي', '[[Fahrzeug]] السيارة · [[Aufträge]] المهام · [[Unterlagen]] المستندات · [[Arbeitstage]] أيام العمل · [[Abrechnung]] الحساب. الموظفون الدائمون يرون بدلًا من الأخيرين [[Zeiten]] الدوام و [[Belege]] الإيصالات.']
+                    ['الشريط السفلي', '[[Start]] البداية · [[Aufträge]] المهام · [[Unterlagen]] المستندات · [[Arbeitstage]] أيام العمل · [[Abrechnung]] الحساب. الموظفون الدائمون يرون بدلًا من الأخيرين [[Zeiten]] الدوام و [[Belege]] الإيصالات.']
                 ] },
                 { id: 'uebernehmen', title: 'استلام السيارة', lead: 'اختر السيارة، ثم افحص حالتها، ثم أدخل قراءة العدّاد، وذلك قبل كل انطلاق.', steps: [
                     ['04d-start-danach', 'ابدأ', 'في الصفحة الرئيسية اضغط [[Fahrzeug übernehmen]].'],

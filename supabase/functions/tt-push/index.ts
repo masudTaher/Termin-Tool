@@ -81,6 +81,18 @@ function berlinNow() {
 }
 
 const HOUR = 60 * 60 * 1000;
+// Zeitpunkt eines Termins (Datum 2026-10-09, Uhrzeit 09:30 – beides Berliner Zeit) als Millisekunden; 0, wenn etwas fehlt.
+function berlinTime(isoDate: string, time: string) {
+  const clock = time.slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !/^\d{2}:\d{2}$/.test(clock)) return 0;
+  const wall = Date.parse(`${isoDate}T${clock}:00Z`);
+  for (const offset of [2, 1]) {            // Sommerzeit +2, Winterzeit +1
+    const at = wall - offset * HOUR;
+    const shown = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(at));
+    if (shown === clock) return at;
+  }
+  return wall - HOUR;
+}
 // Rechnen mit Datumsangaben der Form 2026-10-09 (ohne Uhrzeit, also ohne Zeitzonen-Fallen)
 const addDays = (isoDate: string, count: number) => {
   const date = new Date(`${isoDate}T12:00:00Z`);
@@ -124,17 +136,20 @@ Deno.serve(async (req) => {
           if (result.sent) reminded += 1;
         }
       }
-      // 2) Auftrag gestartet, aber nicht als fertig gemeldet: erste Erinnerung nach 4 Stunden, danach alle 2 Stunden,
+      // 2) Auftrag gestartet, aber nicht als fertig gemeldet: erste Erinnerung 4 Stunden nach dem Start – frühestens aber
+      //    4 Stunden nach der Uhrzeit des Termins (ein Auftrag für morgen erinnert nicht schon heute), danach alle 2 Stunden,
       //    bis „Fertig“ gemeldet ist. Nachts (22–7 Uhr) ist Ruhe; nach 12 Erinnerungen ist Schluss.
       let jobs = 0;
       if (now.hour >= 7 && now.hour < 22) {
         const { data: running } = await admin.from('tt_assignments')
-          .select('id, interpreter_id, title, started_at, reminded_at, reminder_count')
+          .select('id, interpreter_id, title, date, time, started_at, reminded_at, reminder_count')
           .eq('work_status', 'losgefahren').eq('cancelled', false).is('finished_at', null).not('started_at', 'is', null);
         for (const job of running ?? []) {
           const count = Number(job.reminder_count ?? 0);
+          const appointment = berlinTime(String(job.date ?? ''), String(job.time ?? ''));
+          if (appointment && Date.now() < appointment + 4 * HOUR) continue;      // der Termin ist noch nicht (lange genug) vorbei
           const dueAt = count === 0 || !job.reminded_at
-            ? new Date(job.started_at).getTime() + 4 * HOUR
+            ? Math.max(new Date(job.started_at).getTime(), appointment) + 4 * HOUR
             : new Date(job.reminded_at).getTime() + 2 * HOUR;
           if (Date.now() < dueAt || count >= 12) continue;
           await sendTo([job.interpreter_id], {

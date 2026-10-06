@@ -1,5 +1,5 @@
 // Dolmetscher-Portal · Unterlagen: Arztbericht, Rezept oder Überweisung fotografieren → ein PDF für das Büro.
-// Außerdem: der Bericht über den Tag. Gehört zu portalApp.js (Schnittstelle window.PortalCore).
+// Außerdem: der Bericht über Termin. Gehört zu portalApp.js (Schnittstelle window.PortalCore).
 // Ablauf: 1 Termin wählen · 2 Art wählen · 3 Seiten fotografieren (Rand wird erkannt, Qualität geprüft) · 4 prüfen und senden.
 // Alles läuft auf dem Handy: Zuschnitt, Prüfung, Texterkennung und PDF. Gesendet wird nur das fertige PDF.
 window.PortalDocs = (function () {
@@ -78,8 +78,8 @@ window.PortalDocs = (function () {
             const entry = el('li', 'directory-entry damage-entry sent-doc');
             const text = el('span', 'directory-entry-name');
             const isReport = item.kind === REPORT_KIND;
-            const who = isReport ? `Bericht vom ${dayText(item.date)}` : [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ');
-            text.append(el('strong', '', isReport ? 'Bericht über den Tag' : item.kind), el('small', '', [who, !isReport && item.date ? `Termin ${dayText(item.date)}` : '', item.pages ? `${item.pages} ${item.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
+            const who = isReport ? [item.patient_name || '', item.patient_nr ? `Patient ${item.patient_nr}` : '', `Termin ${dayText(item.date)}`].filter(Boolean).join(' · ') : [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ');
+            text.append(el('strong', '', isReport ? (item.assignment_id ? 'Bericht über Termin' : 'Bericht über den Tag') : item.kind), el('small', '', [who, !isReport && item.date ? `Termin ${dayText(item.date)}` : '', item.pages ? `${item.pages} ${item.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
             if (item.warnings?.length) text.append(el('small', 'sent-doc-warning', item.warnings.join(' ')));
             const side = el('span', 'vehicle-entry-actions');
             const [status, label] = STATUS[item.status] || STATUS.neu;
@@ -91,10 +91,10 @@ window.PortalDocs = (function () {
                 view.type = 'button';
                 view.addEventListener('click', () => viewFile(item));
                 side.append(view);
-            } else if (isReport && item.status === 'neu') {
+            } else if (isReport && item.status === 'neu' && item.assignment_id) {
                 const edit = el('button', 'button-quiet', 'Ändern');
                 edit.type = 'button';
-                edit.addEventListener('click', () => { reportDate = item.date; core.goTo('docReport'); });
+                edit.addEventListener('click', () => { reportJobId = item.assignment_id; core.goTo('docReport'); });
                 side.append(edit);
             }
             if (item.status === 'neu') {
@@ -599,79 +599,123 @@ window.PortalDocs = (function () {
     }
     $('docSend').addEventListener('click', send);
 
-    // ---------- Bericht über den Tag ----------
-    // Ein Bericht je Tag. Solange das Büro ihn noch nicht geprüft hat, lässt er sich ändern.
+    // ---------- Bericht über Termin ----------
+    // Ein Bericht gehört zu einem Auftrag: Patient, Patientennummer, Arzt und Datum kommen aus dem Auftrag,
+    // unten stehen der Name des Dolmetschers als Unterschrift und das heutige Datum. Dazu – falls vereinbart –
+    // Datum und Uhrzeit des nächsten Termins. Solange das Büro den Bericht nicht geprüft hat, lässt er sich ändern.
     // Der Entwurf bleibt auf dem Handy gespeichert, falls die App zwischendurch geschlossen wird.
-    let reportDate = '';
+    let reportJobId = '';         // Auftrag, zu dem direkt geöffnet werden soll („Ändern“ in der Liste)
+    let reportSource = null;      // gewählter Auftrag (sourceOf)
     let reportExisting = null;
-    const draftKey = () => `portal.reportDraft.${core.profile()?.id || ''}.${$('reportDate').value}`;
-    const readDraft = () => { try { return localStorage.getItem(draftKey()) || ''; } catch (error) { return ''; } };
-    const writeDraft = text => { try { if (text) localStorage.setItem(draftKey(), text); else localStorage.removeItem(draftKey()); } catch (error) { /* Entwurf gilt dann nur bis zum Schließen. */ } };
+    const NEXT_PREFIX = 'Nächster Termin: ';
+    const draftKey = () => `portal.reportDraft.${core.profile()?.id || ''}.${reportSource?.assignmentId || ''}`;
+    const readDraft = () => { try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (error) { return null; } };
+    const writeDraft = () => {
+        const value = { body: $('reportBody').value, nextDate: $('reportNextDate').value, nextTime: $('reportNextTime').value };
+        try { if (value.body || value.nextDate || value.nextTime) localStorage.setItem(draftKey(), JSON.stringify(value)); else localStorage.removeItem(draftKey()); } catch (error) { /* Entwurf gilt dann nur bis zum Schließen. */ }
+    };
+    const jobDone = job => Boolean(job.finished_at) || ['beendet', 'alleine'].includes(job.work_status);
+    const reportOf = assignmentId => documents.find(item => item.kind === REPORT_KIND && item.assignment_id === assignmentId) || null;
+    const nextText = () => {
+        const date = $('reportNextDate').value;
+        const time = $('reportNextTime').value;
+        return date ? `${NEXT_PREFIX}${dayText(date)}${time ? `, ${time} Uhr` : ''}` : '';
+    };
 
-    function jobsOn(date) {
-        return core.jobs().filter(job => job.date === date && !job.cancelled && job.response !== 'abgesagt')
-            .sort((left, right) => String(left.time).localeCompare(String(right.time))).map(sourceOf);
+    // Zur Wahl stehen die Aufträge der letzten sieben Tage: zuerst die abgeschlossenen, dann die von heute, die noch laufen.
+    function reportJobs() {
+        const from = core.isoDate(new Date(Date.now() - 7 * 86400000));
+        return core.jobs().filter(job => !job.cancelled && job.response !== 'abgesagt' && job.date <= today() && job.date >= from && (jobDone(job) || job.date === today()))
+            .sort((left, right) => (Number(jobDone(right)) - Number(jobDone(left))) || `${right.date} ${right.time}`.localeCompare(`${left.date} ${left.time}`));
     }
 
-    async function loadReport() {
-        const date = $('reportDate').value;
-        const profile = core.profile();
+    function renderReportPick() {
+        reportSource = null;
         reportExisting = null;
-        $('reportState').textContent = '';
-        $('reportBody').disabled = true;
-        const { data, error } = date ? await client.from('tt_documents').select(COLUMNS).eq('uploader_id', profile.id).eq('kind', REPORT_KIND).eq('date', date).order('created_at', { ascending: false }).limit(1) : { data: [] };
-        if ($('reportDate').value !== date) return;      // inzwischen ein anderes Datum gewählt
-        reportExisting = error ? null : (data?.[0] || null);
+        $('reportPick').hidden = false;
+        $('reportForm').hidden = true;
+        const jobs = reportJobs();
+        $('reportNoJobs').hidden = jobs.length > 0;
+        $('reportJobList').replaceChildren(...jobs.map(job => {
+            const source = sourceOf(job);
+            const existing = reportOf(job.id);
+            const card = el('button', 'car-card report-job');
+            card.type = 'button';
+            card.dataset.id = job.id;
+            const main = el('span', 'car-card-main');
+            main.append(el('strong', '', source.patientName || source.title || 'Termin'),
+                el('span', '', [job.date === today() ? 'Heute' : shortDay(job.date), source.time ? `${source.time} Uhr` : '', source.doctor].filter(Boolean).join(' · ')));
+            const chips = el('span', 'car-card-chips');
+            if (source.patientNr) chips.append(el('em', 'chip chip-brand', `Nr. ${source.patientNr}`));
+            chips.append(el('em', `chip report-chip${existing ? ' is-sent' : ''}`, existing ? (existing.status === 'neu' ? 'Bericht gesendet – ändern' : 'Bericht geprüft') : jobDone(job) ? 'abgeschlossen' : 'läuft noch'));
+            card.append(main, chips, el('span', 'car-card-arrow', '›'));
+            card.addEventListener('click', () => openReportFor(job));
+            return card;
+        }));
+    }
+
+    function openReportFor(job) {
+        const profile = core.profile();
+        reportSource = sourceOf(job);
+        reportExisting = reportOf(job.id);
         const locked = Boolean(reportExisting && reportExisting.status !== 'neu');
-        $('reportBody').disabled = locked;
+        $('reportPick').hidden = true;
+        $('reportForm').hidden = false;
+        const facts = [['Patient/in', reportSource.patientName], ['Patientennummer', reportSource.patientNr], ['Arzt / Praxis', reportSource.doctor],
+            ['Termin', [dayText(reportSource.date), reportSource.time ? `${reportSource.time} Uhr` : ''].filter(Boolean).join(' · ')], ['Bericht vom', dayText(today())]];
+        $('reportFacts').replaceChildren(...facts.filter(row => row[1]).flatMap(([term, value]) => [el('dt', '', term), el('dd', '', value)]));
+        const saved = reportExisting ? { body: reportExisting.body || '', next: String(reportExisting.note || '').startsWith(NEXT_PREFIX) ? String(reportExisting.note).slice(NEXT_PREFIX.length) : '' } : null;
+        const savedNext = saved?.next.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:, (\d{2}:\d{2}) Uhr)?/);
+        const draftValue = locked ? null : readDraft();
+        $('reportBody').value = draftValue?.body ?? saved?.body ?? '';
+        $('reportNextDate').value = draftValue?.nextDate ?? (savedNext ? `${savedNext[3]}-${savedNext[2]}-${savedNext[1]}` : '');
+        $('reportNextTime').value = draftValue?.nextTime ?? (savedNext?.[4] || '');
+        $('reportNextDate').min = today();
+        ['reportBody', 'reportNextDate', 'reportNextTime'].forEach(id => { $(id).disabled = locked; });
         $('reportSubmit').hidden = locked;
-        $('reportBody').value = locked ? reportExisting.body : (readDraft() || reportExisting?.body || '');
         $('reportSubmit').textContent = reportExisting ? 'Bericht aktualisieren' : 'Bericht senden';
+        $('reportSign').replaceChildren(el('span', '', 'Unterschrift'), el('strong', '', profile.full_name || profile.email || ''), el('small', '', dayText(today())));
         $('reportState').textContent = locked ? 'Dieser Bericht wurde vom Büro schon geprüft und lässt sich nicht mehr ändern.'
-            : reportExisting ? 'Du hast für diesen Tag schon einen Bericht gesendet – du kannst ihn hier ergänzen.' : '';
-        const jobs = jobsOn(date);
-        const hint = $('reportJobs');
-        hint.hidden = !jobs.length || locked;
-        hint.replaceChildren();
-        if (jobs.length && !locked) {
-            hint.append(el('span', '', `${jobs.length} ${jobs.length === 1 ? 'Termin' : 'Termine'} an diesem Tag. `));
-            hint.append(pageAction('Termine in den Bericht einfügen', () => {
-                const lines = jobs.map(job => `${job.time ? `${job.time} Uhr – ` : ''}${[job.doctor, [job.patientName, job.patientNr ? `(${job.patientNr})` : ''].filter(Boolean).join(' ')].filter(Boolean).join(' – ')}: `);
-                const field = $('reportBody');
-                field.value = `${field.value.trim() ? `${field.value.trimEnd()}\n\n` : ''}${lines.join('\n\n')}`;
-                writeDraft(field.value);
-                field.focus();
-            }, 'button-quiet'));
-        }
+            : reportExisting ? 'Zu diesem Termin hast du schon einen Bericht gesendet – du kannst ihn hier ändern.'
+            : jobDone(job) ? '' : 'Dieser Termin läuft noch. Du kannst den Bericht schon schreiben und nach dem Termin senden.';
+        if (!locked) $('reportBody').focus({ preventScroll: true });
+        window.scrollTo({ top: 0 });
     }
 
     function openReport() {
-        $('reportDate').max = today();
-        $('reportDate').value = reportDate || today();
-        reportDate = '';
-        loadReport();
+        const direct = reportJobId && core.jobs().find(job => job.id === reportJobId);
+        reportJobId = '';
+        if (direct) { openReportFor(direct); return; }
+        renderReportPick();
+        // Genau ein abgeschlossener Termin ohne Bericht: direkt öffnen – das spart einen Tipp.
+        const open = reportJobs().filter(job => jobDone(job) && !reportOf(job.id));
+        if (open.length === 1 && reportJobs().length === 1) openReportFor(open[0]);
     }
-    $('reportDate').addEventListener('change', loadReport);
-    $('reportBody').addEventListener('input', event => writeDraft(event.target.value));
+    $('reportOther').addEventListener('click', renderReportPick);
+    ['reportBody', 'reportNextDate', 'reportNextTime'].forEach(id => $(id).addEventListener('input', writeDraft));
 
     $('reportForm').addEventListener('submit', async event => {
         event.preventDefault();
         const profile = core.profile();
-        const date = $('reportDate').value;
+        const source = reportSource;
+        if (!source) { renderReportPick(); return; }
         const body = $('reportBody').value.trim();
-        if (!date || date > today()) { toast('Bitte prüfe das Datum.', 'error', '#reportDate'); return; }
         if (body.length < 20) { toast('Der Bericht ist noch sehr kurz. Bitte schreib ein paar Sätze.', 'error', '#reportBody'); return; }
+        if ($('reportNextTime').value && !$('reportNextDate').value) { toast('Bitte gib zum nächsten Termin auch das Datum an.', 'error', '#reportNextDate'); return; }
+        if ($('reportNextDate').value && $('reportNextDate').value < today()) { toast('Der nächste Termin liegt in der Vergangenheit. Bitte prüfe das Datum.', 'error', '#reportNextDate'); return; }
         const button = $('reportSubmit');
         button.disabled = true;
         try {
+            const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, doctor: source.doctor, date: source.date };
             const result = reportExisting
-                ? await client.from('tt_documents').update({ body }).eq('id', reportExisting.id)
-                : await client.from('tt_documents').insert({ kind: REPORT_KIND, date, body, patient_nr: '', patient_name: '', pages: 0,
+                ? await client.from('tt_documents').update(fields).eq('id', reportExisting.id)
+                : await client.from('tt_documents').insert({ ...fields, kind: REPORT_KIND, pages: 0, assignment_id: source.assignmentId || null, appointment_id: source.appointmentId || null,
                     uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu' });
             if (result.error) throw result.error;
-            writeDraft('');
+            try { localStorage.removeItem(draftKey()); } catch (error) { /* kein Entwurf gespeichert */ }
+            const updated = Boolean(reportExisting);
             await load();
-            await core.showSuccess(reportExisting ? 'Bericht aktualisiert' : 'Bericht gesendet', dayText(date));
+            await core.showSuccess(updated ? 'Bericht aktualisiert' : 'Bericht gesendet', [source.patientName, dayText(source.date)].filter(Boolean).join(' · '));
             toast('Bericht gesendet. Danke!', 'success');
             core.goTo('docs');
         } catch (error) {

@@ -111,13 +111,21 @@
          <!-- ================= Portal ================= -->
          <div id="portalApp" hidden>
 
-            <!-- ===== Bereich 1: Fahrzeug (Startseite) ===== -->
+            <!-- ===== Bereich 1: Startseite – Aufträge von heute und das Fahrzeug ===== -->
             <section data-panel="vehicle" class="portal-page" aria-labelledby="helloTitle">
                <div class="portal-hello"><h1 id="helloTitle">Hallo</h1><p id="helloDate"></p></div>
                <ul id="requestBanner" class="request-banner" aria-label="Bitten der Einsatzleitung" hidden></ul>
                <ul id="planBanner" class="request-banner plan-banner" aria-label="Fragen der Einsatzleitung" hidden></ul>
                <ul id="startNotices" class="start-notices"></ul>
                <p id="fuelCardBanner" class="fuel-card-banner" hidden></p>
+
+               <!-- Heute: der nächste Auftrag groß, die weiteren als kurze Zeilen -->
+               <section id="homeToday" class="home-today" aria-labelledby="homeTodayTitle">
+                  <div class="home-today-head"><h2 id="homeTodayTitle">Heute</h2><button type="button" class="link-button" id="homeAllJobs">Alle Aufträge</button></div>
+                  <div id="homeNext"></div>
+                  <ul id="homeJobs" class="home-jobs"></ul>
+               </section>
+               <h2 class="home-section-title">Fahrzeug</h2>
 
                <!-- Ohne Fahrzeug -->
                <section id="noVehicle" class="empty-hero">
@@ -340,7 +348,7 @@
                </details>
             </section>
 
-            <!-- ===== Bereich 3: Unterlagen (Arztbericht, Rezept, Überweisung als PDF) und Bericht über den Tag ===== -->
+            <!-- ===== Bereich 3: Unterlagen (Arztbericht, Rezept, Überweisung als PDF) und Bericht über Termin ===== -->
             <div data-panel="docs" class="portal-page" hidden>
                <section class="directory-card" aria-labelledby="docsTitle">
                   <h2 id="docsTitle" class="wizard-title">Unterlagen</h2>
@@ -352,7 +360,7 @@
                      </button>
                      <button type="button" class="action-tile" data-go="docReport">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.500V16L15.500 5.500l3.500 3.500L8.500 19.500z"/><path d="M13.500 7.500l3.500 3.500"/></svg>
-                        <strong>Bericht über den Tag</strong><small>kurz aufschreiben, was war</small>
+                        <strong>Bericht über Termin</strong><small>Patient und Daten werden übernommen</small>
                      </button>
                      <button type="button" class="action-tile" data-go="receipts">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.500h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.500h6M9 12.500h6"/></svg>
@@ -428,17 +436,28 @@
                </div>
             </section>
 
-            <!-- ===== Bericht über den Tag ===== -->
+            <!-- ===== Bericht über Termin ===== -->
             <section class="directory-card" data-panel="docReport" aria-labelledby="reportTitle" hidden>
                <button type="button" class="back-button" data-go="docs">← Zurück</button>
-               <h2 id="reportTitle" class="wizard-title">Bericht über den Tag</h2>
-               <p class="wizard-hint">Schreib kurz auf, was heute war: Termine, Besonderheiten, Probleme, was noch offen ist.</p>
-               <form id="reportForm" class="fleet-form" novalidate>
-                  <label for="reportDate">Datum</label>
-                  <input id="reportDate" type="date" required>
-                  <p id="reportJobs" class="field-hint" hidden></p>
+               <h2 id="reportTitle" class="wizard-title">Bericht über Termin</h2>
+               <div id="reportPick">
+                  <p class="wizard-hint">Zu welchem Termin schreibst du? Tippe ihn an – Patient, Patientennummer und Arzt werden übernommen.</p>
+                  <div id="reportJobList" class="car-list"></div>
+                  <p id="reportNoJobs" class="directory-empty" hidden>Du hast in den letzten sieben Tagen keinen Termin, zu dem ein Bericht fehlt. Ein Bericht gehört immer zu einem Auftrag aus dem Portal.</p>
+               </div>
+               <form id="reportForm" class="fleet-form" novalidate hidden>
+                  <dl id="reportFacts" class="vehicle-state report-facts"></dl>
+                  <button type="button" id="reportOther" class="link-button">Anderen Termin wählen</button>
                   <label for="reportBody">Dein Bericht</label>
-                  <textarea id="reportBody" rows="9" maxlength="6000" placeholder="Zum Beispiel: 09:30 Uhr Dr. Müller mit Patient 4103 – neues Rezept für Physiotherapie, nächster Termin in zwei Wochen …"></textarea>
+                  <textarea id="reportBody" rows="8" maxlength="6000" placeholder="Was wurde besprochen oder gemacht? Zum Beispiel: Untersuchung, neues Rezept für Physiotherapie, Überweisung zum Röntgen …"></textarea>
+                  <fieldset class="report-next">
+                     <legend>Nächster Termin <span class="optional-label">falls vereinbart</span></legend>
+                     <div class="report-next-row">
+                        <label for="reportNextDate">Datum<input id="reportNextDate" type="date"></label>
+                        <label for="reportNextTime">Uhrzeit<input id="reportNextTime" type="time"></label>
+                     </div>
+                  </fieldset>
+                  <p id="reportSign" class="report-sign"></p>
                   <p id="reportState" class="field-hint"></p>
                   <button type="submit" class="button-primary big-button" id="reportSubmit">Bericht senden</button>
                </form>

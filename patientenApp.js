@@ -655,7 +655,19 @@
 
     // ---------- Bericht eines Dolmetschers: ganzer Text im Dialog, auf Wunsch als PDF ----------
     let reportDoc = null;
-    const reportRows = doc => [
+    // Ein „Bericht über Termin“ gehört zu einem Auftrag (Patient, Arzt, Termin); ältere Berichte galten für einen ganzen Tag.
+    const NEXT_PREFIX = 'Nächster Termin: ';
+    const forAppointment = doc => Boolean(doc.assignment_id || clean(doc.patient_name) || clean(doc.patient_nr));
+    const nextOf = doc => clean(doc.note).startsWith(NEXT_PREFIX) ? clean(doc.note).slice(NEXT_PREFIX.length) : '';
+    const reportRows = doc => forAppointment(doc) ? [
+        ['Patient/in', clean(doc.patient_name)],
+        ['Patientennummer', clean(doc.patient_nr)],
+        ['Arzt / Praxis', clean(doc.doctor)],
+        ['Termin am', formatDay(docDay(doc))],
+        ['Bericht vom', formatDay(String(doc.created_at || '').slice(0, 10))],
+        ['Dolmetscher/in', clean(doc.uploader_name)],
+        ['Nächster Termin', nextOf(doc) || 'keiner angegeben']
+    ] : [
         ['Datum', formatDay(docDay(doc))],
         ['Dolmetscher/in', clean(doc.uploader_name)],
         ['Patient/in', [clean(doc.patient_nr), clean(doc.patient_name)].filter(Boolean).join(' · ')]
@@ -663,14 +675,17 @@
 
     // Ergebnis: { blob, replaced } – replaced zählt Zeichen, die die PDF-Schrift nicht kennt (z. B. Arabisch).
     function reportPdf(doc) {
+        const title = forAppointment(doc) ? 'Bericht über Termin' : 'Bericht des Dolmetschers';
         return DocPdf.report({
             organisation: ORGANISATION,
-            title: 'Bericht des Dolmetschers',
+            title,
             meta: reportRows(doc),
-            sections: [{ heading: 'Bericht', text: doc.body }, { heading: 'Hinweis', text: doc.note }],
+            sections: [{ heading: 'Bericht', text: doc.body }, { heading: 'Hinweis', text: nextOf(doc) ? '' : doc.note },
+                // Unterschrift: Name des Dolmetschers und Datum, an dem der Bericht geschrieben wurde.
+                { heading: 'Unterschrift', text: forAppointment(doc) ? `${clean(doc.uploader_name)}\n${formatDay(String(doc.created_at || '').slice(0, 10))}` : '' }],
             footer: `Eingegangen am ${formatStamp(doc.created_at)} · ${SIGNATURE}`,
             author: clean(doc.uploader_name),
-            subject: 'Bericht des Dolmetschers'
+            subject: title
         });
     }
 

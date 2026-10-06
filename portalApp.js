@@ -255,6 +255,8 @@ if (!window.TerminContact) {
     }
 
     // ---------- Bereiche ----------
+    // Der erste Reiter ist die Startseite (Aufträge von heute und das Fahrzeug).
+    const HOME_ICON = '<path d="M4 11.5 12 4.5l8 7"/><path d="M6.5 10v9.5h11V10"/><path d="M10 19.5v-5h4v5"/>';
     const ICONS = {
         vehicle: '<path d="M5 16.5V12l1.8-5a2 2 0 0 1 1.9-1.3h6.6A2 2 0 0 1 17.2 7L19 12v4.5"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4"/>',
         jobs: '<rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 12.5l2.3 2.3 4.7-4.8"/>',
@@ -264,8 +266,8 @@ if (!window.TerminContact) {
         receiptsHome: '<path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/>',
         docs: '<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>'
     };
-    const TABS_TEMP = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['workdays', 'Arbeitstage'], ['statement', 'Abrechnung']];
-    const TABS_FEST = [['vehicle', 'Fahrzeug'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Zeiten'], ['receiptsHome', 'Belege']];
+    const TABS_TEMP = [['vehicle', 'Start'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['workdays', 'Arbeitstage'], ['statement', 'Abrechnung']];
+    const TABS_FEST = [['vehicle', 'Start'], ['jobs', 'Aufträge'], ['docs', 'Unterlagen'], ['overtime', 'Zeiten'], ['receiptsHome', 'Belege']];
     // Unterseiten gehören zu einem Bereich der unteren Leiste.
     const TAB_OF = { vehicle: 'vehicle', take: 'vehicle', damage: 'vehicle', alert: 'vehicle', return: 'vehicle', requests: 'vehicle', jobs: 'jobs',
         docs: 'docs', docNew: 'docs', docReport: 'docs',
@@ -278,7 +280,7 @@ if (!window.TerminContact) {
             const button = document.createElement('button');
             button.type = 'button';
             button.dataset.view = view;
-            button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[view]}</svg>`;
+            button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${view === 'vehicle' ? HOME_ICON : ICONS[view]}</svg>`;
             button.append(el('span', '', text));
             const badge = el('em', 'tab-badge');
             badge.hidden = true;
@@ -350,9 +352,8 @@ if (!window.TerminContact) {
         const unread = messageData.filter(item => !readIds.has(item.id)).length;
         const notices = [];
         if (unread) notices.push([`${unread} neue ${unread === 1 ? 'Nachricht' : 'Nachrichten'} von der Einsatzleitung`, () => goTo('messages')]);
-        if (open) notices.push([`${open} ${open === 1 ? 'Auftrag wartet' : 'Aufträge warten'} auf deine Antwort`, () => goTo('jobs')]);
-        const running = jobsData.filter(item => !item.cancelled && jobStarted(item) && !jobFinished(item) && item.date <= today);
-        running.forEach(item => notices.push([`Laufender Auftrag: ${item.title}${item.started_at ? ` · seit ${clock(item.started_at)} Uhr` : ''} – bitte „Fertig“ melden, wenn du fertig bist`, () => goTo('jobs')]));
+        // Aufträge stehen jetzt im Abschnitt „Heute“ (nächster Auftrag groß, weitere als Zeilen) – nicht mehr als Textzeile.
+        renderHomeJobs(today, open);
         const waiting = statementData.find(item => item.response === 'offen');
         if (waiting && !isFest()) notices.push([`Deine Abrechnung für ${monthLabel(waiting.month)} wartet auf deine Bestätigung`, () => goTo('statement')]);
         $('startNotices').replaceChildren(...notices.map(([text, action]) => {
@@ -370,6 +371,104 @@ if (!window.TerminContact) {
         addPushNotice();
         refreshHomeBadge();
     }
+
+    // ---------- Startseite: „Heute“ ----------
+    // Oben der Auftrag, um den es jetzt geht (läuft gerade – sonst der nächste von heute), darunter die übrigen von heute.
+    // Ohne Auftrag heute: der nächste kommende. Ein Tipp öffnet genau diesen Auftrag im Bereich „Aufträge“.
+    function openJob(id) {
+        jobOpenId = id;
+        jobsRendered = '';
+        goTo('jobs');
+        loadJobs().then(() => {
+            const card = [...document.querySelectorAll('#jobList .job-card')].find(node => node.dataset.id === id);
+            if (!card) return;
+            const header = document.querySelector('.portal-header')?.getBoundingClientRect().bottom || 0;
+            window.scrollTo({ top: window.scrollY + card.getBoundingClientRect().top - header - 12 });
+        });
+    }
+
+    function homeJobText(item) {
+        const parsed = parseJobMessage(item.message);
+        const titleParts = String(item.title || '').split(' · ').filter(part => !/^\d{1,2}:\d{2}\s*Uhr$/.test(part));
+        return {
+            time: String(item.time || '').slice(0, 5),
+            place: TerminContact.singleLine(parsed?.sections.find(section => /ARZT/.test(section.title))?.fields.find(([label]) => label === 'Name')?.[1]) || titleParts[0] || 'Auftrag',
+            city: parsed?.facts['Ort'] || titleParts.slice(1).join(' · '),
+            patient: parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || ''
+        };
+    }
+
+    function homeState(item) {
+        if (jobFinished(item)) return ['erledigt', item.finished_at ? `fertig ${clock(item.finished_at)}` : 'fertig'];
+        if (jobStarted(item)) return ['in Arbeit', item.started_at ? `unterwegs seit ${clock(item.started_at)}` : 'unterwegs'];
+        return [{ offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response], RESPONSE_LABEL[item.response]];
+    }
+
+    function renderHomeJobs(today, open) {
+        const box = $('homeNext');
+        if (!box) return;
+        const active = jobsData.filter(item => !item.cancelled).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        const todays = active.filter(item => item.date === today);
+        const running = active.find(item => jobStarted(item) && !jobFinished(item) && item.date <= today);
+        const nextToday = todays.find(item => !jobFinished(item) && item.response !== 'abgesagt');
+        const upcoming = active.find(item => item.date > today && item.response !== 'abgesagt');
+        const main = running || nextToday || null;
+        $('homeTodayTitle').textContent = todays.length ? `Heute · ${todays.length} ${todays.length === 1 ? 'Auftrag' : 'Aufträge'}` : 'Heute';
+        box.replaceChildren();
+        if (main) {
+            const info = homeJobText(main);
+            const card = el('button', 'home-next');
+            card.type = 'button';
+            card.dataset.id = main.id;
+            card.dataset.state = running ? 'unterwegs' : main.response;
+            const [status, label] = homeState(main);
+            const pill = el('span', 'status-pill', label);
+            pill.dataset.status = status;
+            const what = running ? 'Läuft gerade' : main.response === 'offen' ? 'Als Nächstes · bitte antworten' : 'Als Nächstes';
+            const text = el('span', 'home-next-text');
+            text.append(el('span', 'home-next-label', what), el('strong', 'home-next-time', info.time ? `${info.time} Uhr` : 'ohne Uhrzeit'), el('span', 'home-next-place', [info.place, info.city].filter(Boolean).join(' · ')));
+            if (info.patient) text.append(el('span', 'home-next-patient', info.patient));
+            text.append(pill);
+            const action = el('span', 'home-next-action', running ? 'Fertig melden ›' : main.response === 'offen' ? 'Antworten ›' : 'Öffnen ›');
+            card.append(text, action);
+            card.addEventListener('click', () => openJob(main.id));
+            box.append(card);
+        } else {
+            const empty = el('div', 'home-empty');
+            const done = todays.filter(jobFinished).length;
+            empty.append(el('strong', '', todays.length ? (done === todays.length ? 'Alle Aufträge von heute sind erledigt.' : 'Heute steht nichts mehr an.') : 'Heute hast du keinen Auftrag.'));
+            if (upcoming) {
+                const info = homeJobText(upcoming);
+                const next = el('button', 'link-button home-upcoming', `Nächster Auftrag: ${new Date(`${upcoming.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}${info.time ? ` · ${info.time} Uhr` : ''} · ${info.place}`);
+                next.type = 'button';
+                next.addEventListener('click', () => openJob(upcoming.id));
+                empty.append(next);
+            }
+            box.append(empty);
+        }
+        // Die übrigen Aufträge von heute als kurze Zeilen
+        $('homeJobs').replaceChildren(...todays.filter(item => item !== main).map(item => {
+            const info = homeJobText(item);
+            const row = el('li', 'home-job');
+            const button = el('button', '');
+            button.type = 'button';
+            button.dataset.id = item.id;
+            const [status, label] = homeState(item);
+            const pill = el('span', 'status-pill', label);
+            pill.dataset.status = status;
+            button.append(el('strong', '', info.time || '–'), el('span', 'home-job-text', [info.place, info.patient].filter(Boolean).join(' · ')), pill);
+            button.addEventListener('click', () => openJob(item.id));
+            row.append(button);
+            return row;
+        }));
+        // Offene Antworten an kommenden Tagen: ein Hinweis mit Zahl (die von heute stehen schon oben)
+        const later = jobsData.filter(item => item.date > today && !item.cancelled && item.response === 'offen').length;
+        const all = $('homeAllJobs');
+        all.textContent = later ? `Alle Aufträge · ${later} offen` : 'Alle Aufträge';
+        all.title = later ? `${later} ${later === 1 ? 'Auftrag an einem kommenden Tag wartet' : 'Aufträge an kommenden Tagen warten'} auf deine Antwort` : '';
+        all.dataset.waiting = later ? 'ja' : '';
+    }
+    $('homeAllJobs')?.addEventListener('click', () => goTo('jobs'));
 
     // Fragen und Bitten der Einsatzleitung stehen auf der Startseite. Wer gerade in einem anderen Bereich ist (die App
     // öffnet dort, wo man zuletzt war), sieht an der Zahl am Reiter „Fahrzeug“, dass dort etwas auf ihn wartet.
@@ -1062,6 +1161,7 @@ if (!window.TerminContact) {
         // Ältere Aufträge können im Titel noch einen Zeilenumbruch aus der Terminliste tragen (Name der Praxis).
         data.forEach(item => { item.title = TerminContact.singleLine(item.title); });
         jobsData = data;
+        if (currentView === 'vehicle') renderHomeJobs(TerminCloud.todayIso());
         const today = TerminCloud.todayIso();
         // Oben stehen kommende Aufträge – und ältere, die gestartet, aber noch nicht beendet wurden.
         const isCurrent = item => !item.cancelled && (item.date >= today || (jobStarted(item) && !jobFinished(item)));
