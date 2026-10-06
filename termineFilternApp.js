@@ -649,3 +649,12 @@ function saveToExcel() {
     // Save the file with the first non-empty 'Termin_Datum' as the filename
     XLSX.writeFile(newWorkbook, `${formattedDate}_gefilterte_Termine.xlsx`);
 }
+
+// Nach „Tag abschließen“ im Live-Tracking: kurze Bestätigung – hier wird die nächste Excel-Datei geladen.
+window.addEventListener('load', () => {
+    let message = '';
+    try { message = sessionStorage.getItem('terminTool.dayClosed') || ''; sessionStorage.removeItem('terminTool.dayClosed'); } catch (error) { /* ohne Speicher keine Meldung */ }
+    if (!message) return;
+    showWorkflowStatus(message, 'success');
+    if (typeof showToast === 'function') showToast(message, 'success', { duration: 12000 });
+});

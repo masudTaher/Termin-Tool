@@ -15,6 +15,13 @@
     let lastNotes = null;         // appointment_id -> Hinweis des Dolmetschers (für die Anzeige eines neuen Hinweises)
     let pushTimer = null;
     let conflictAsked = '';
+    let lastTyped = 0;            // letzter Tastendruck in der Tabelle (solange getippt wird, wird nicht dazwischen aufgefrischt)
+    let newerChecked = 0;
+    let closedSeen = '';
+    const openState = {};         // Datum → war der Tag beim ersten Abgleich schon archiviert?
+    const NEWER_SKIP_KEY = 'terminTool.cloudDay.skipNewer';
+    document.addEventListener('input', event => { if (event.target?.closest?.('#tableBody')) lastTyped = Date.now(); }, true);
+    document.addEventListener('keydown', event => { if (event.target?.closest?.('#tableBody')) lastTyped = Date.now(); }, true);
     let idsUnsaved = false;       // neue Kennungen sind noch nicht im Arbeitsstand dieses Tabs gespeichert
 
     const records = () => window.getTrackingRecords();
@@ -78,7 +85,9 @@
 
     function applyLocal(merged, tombstones) {
         // Nicht dazwischenfunken, solange in der Tabelle getippt wird – der nächste Durchlauf holt es nach.
-        if (document.activeElement?.matches?.('#tableBody input') || document.querySelector('.modal[style*="block"]')) return false;
+        // Steht der Cursor nur in einem Feld (seit 15 Sekunden nichts getippt), wird trotzdem aufgefrischt – sonst bliebe die Tabelle alt.
+        const typing = document.activeElement?.matches?.('#tableBody input') && Date.now() - lastTyped < 15000;
+        if (typing || document.querySelector('.modal[style*="block"]')) return false;
         deleted = tombstones;
         known.clear();
         merged.forEach(record => known.set(record._id, contentKey(record)));
@@ -91,6 +100,84 @@
         return TerminCloud.isStaff(profile);
     }
 
+    // ---------- Arbeitet jemand anderes schon an einem neueren Tag? ----------
+    // Jedes Gerät gleicht den Tag ab, der bei ihm geöffnet ist. Hat die Einsatzleitung inzwischen einen neuen Tag geladen,
+    // sähe das Sekretariat sonst weiter die alte Tabelle. Ein vergangener Tag wird deshalb von selbst durch den aktuellen
+    // ersetzt; bei zwei aktuellen Tagen (z. B. heute und morgen) erscheint ein Hinweis mit Knopf.
+    function newerBanner(row) {
+        let box = document.getElementById('cloudDayNewer');
+        if (!row) { box?.remove(); return; }
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'cloudDayNewer';
+            box.className = 'cloud-day-newer';
+            box.setAttribute('role', 'status');
+            (document.querySelector('.fleet-table-wrap, #dataTable')?.parentElement || document.querySelector('main')).prepend(box);
+        }
+        const clock = new Date(row.updated_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        const text = document.createElement('span');
+        text.textContent = `Online gibt es einen neueren Tagesstand: ${formatFleetDate(row.date)} – zuletzt geändert um ${clock} Uhr${row.updated_by ? ` von ${row.updated_by}` : ''}. Du siehst gerade den ${formatFleetDate(currentDate())}.`;
+        const load = document.createElement('button');
+        load.type = 'button';
+        load.className = 'button-primary';
+        load.textContent = `Tag ${formatFleetDate(row.date)} laden`;
+        load.addEventListener('click', async () => { load.disabled = true; if (await switchDay(row.date)) newerBanner(null); else load.disabled = false; });
+        const stay = document.createElement('button');
+        stay.type = 'button';
+        stay.className = 'button-secondary';
+        stay.textContent = 'Hier bleiben';
+        stay.addEventListener('click', () => { try { sessionStorage.setItem(NEWER_SKIP_KEY, row.date); } catch (error) { /* gilt dann bis zum Neuladen */ } newerBanner(null); });
+        box.replaceChildren(text, load, stay);
+    }
+
+    async function switchDay(date) {
+        const { data, error } = await client.from('tt_days').select('*').eq('date', date).maybeSingle();
+        if (error || !data?.records?.length) { if (error) showToast(TerminCloud.germanError(error), 'error'); return false; }
+        lastTyped = 0;
+        if (!applyLocal(data.records, data.deleted || {})) { showToast('Bitte zuerst das offene Fenster schließen – dann wird der Tag geladen.', 'info'); return false; }
+        dayDate = ''; lastResponses = null; lastNotes = null; conflictAsked = date;
+        showToast(`Tagesstand vom ${formatFleetDate(date)} geladen (${data.records.length} Termine).`, 'success', { duration: 9000 });
+        window.setTimeout(syncDay, 300);
+        return true;
+    }
+
+    async function checkNewerDay(date) {
+        if (Date.now() - newerChecked < 20000) return;
+        newerChecked = Date.now();
+        const { data: rows, error } = await client.from('tt_days').select('date, updated_at, updated_by, archived').order('updated_at', { ascending: false }).limit(8);
+        const data = (rows || []).filter(row => !row.archived || row.date === date);
+        if (error || !data?.length) return;
+        const today = TerminCloud.todayIso();
+        const mine = data.find(row => row.date === date);
+        // „Abgeschlossen“ zählt nur, wenn es passiert ist, während der Tag hier offen war. Wer einen archivierten Tag
+        // bewusst aus dem Tagesarchiv öffnet, darf darin weiterarbeiten.
+        if (!(date in openState)) openState[date] = Boolean(mine?.archived);
+        const closedNow = Boolean(mine?.archived) && openState[date] === false;
+        // Der zuletzt bearbeitete Tag – nur wenn er nicht in der Vergangenheit liegt und neuer ist als der Stand dieses Geräts.
+        const newest = data.find(row => row.date !== date && !row.archived && row.date >= today && (!mine || row.updated_at > mine.updated_at || date < today || closedNow));
+        if (!newest) {
+            newerBanner(null);
+            // Jemand hat diesen Tag abgeschlossen: hier ebenfalls schließen, damit niemand im archivierten Tag weiterarbeitet.
+            if (closedNow && closedSeen !== `${date} ${mine.updated_at}`) {
+                closedSeen = `${date} ${mine.updated_at}`;
+                if (document.querySelector('.modal[style*="block"]')) { closedSeen = ''; return; }
+                leaveDay();
+                setStatus('Online: Tag abgeschlossen');
+                showToast(`Der ${formatFleetDate(date)} wurde${mine.updated_by ? ` von ${mine.updated_by}` : ''} abgeschlossen und archiviert. Er steht im Tagesarchiv.`, 'info', { duration: 15000, keep: true });
+            }
+            return;
+        }
+        if ((date < today && !mine?.archived) || closedNow) {
+            // Alter oder schon abgeschlossener Tag auf diesem Gerät: Der ist schon online gesichert – den aktuellen Tag direkt zeigen.
+            if (await switchDay(newest.date)) newerBanner(null);
+            return;
+        }
+        let skipped = '';
+        try { skipped = sessionStorage.getItem(NEWER_SKIP_KEY) || ''; } catch (error) { /* ohne Speicher wird erneut gefragt */ }
+        if (skipped === newest.date) return;
+        newerBanner(newest);
+    }
+
     async function syncDay() {
         if (busy) return;
         busy = true;
@@ -99,11 +186,17 @@
             let date = currentDate();
             // Kein lokaler Stand: den heutigen Online-Stand übernehmen (so sieht z. B. das Sekretariat sofort alles).
             if (!records().length) {
-                const { data, error } = await client.from('tt_days').select('*').eq('date', TerminCloud.todayIso()).maybeSingle();
+                let { data, error } = await client.from('tt_days').select('*').eq('date', TerminCloud.todayIso()).maybeSingle();
+                // Für heute gibt es nichts, aber für einen kommenden Tag schon (z. B. der Plan für morgen): den zuletzt bearbeiteten zeigen.
+                // Ein abgeschlossener (archivierter) Tag wird nicht von selbst wieder geöffnet – der steht im Tagesarchiv.
+                if (!error && (!data?.records?.length || data.archived)) {
+                    const next = await client.from('tt_days').select('*').gte('date', TerminCloud.todayIso()).order('updated_at', { ascending: false }).limit(6);
+                    data = next.error ? null : (next.data || []).find(row => !row.archived && row.records?.length) || null;
+                }
                 if (error) { setStatus(`Online-Abgleich nicht möglich: ${TerminCloud.germanError(error)}`, 'error'); return; }
                 if (data?.records?.length) {
                     applyLocal(data.records, data.deleted || {});
-                    showWorkflowStatus(`${data.records.length} Termine aus dem Online-Stand von heute geladen.`);
+                    showWorkflowStatus(`${data.records.length} Termine aus dem Online-Stand vom ${formatFleetDate(data.date)} geladen.`);
                     date = currentDate();
                 } else { setStatus('Online: noch kein Tagesstand'); return; }
             }
@@ -113,6 +206,7 @@
             const { data: cloud, error } = await client.from('tt_days').select('*').eq('date', date).maybeSingle();
             if (error) { setStatus(`Online-Abgleich nicht möglich: ${TerminCloud.germanError(error)}`, 'error'); return; }
 
+            if (!(date in openState)) openState[date] = Boolean(cloud?.archived);
             // Frisch geladene Datei, online gibt es den Tag aber schon: einmal nachfragen statt doppelte Termine zu erzeugen.
             const fresh = records().every(record => !record._id);
             if (fresh && cloud?.records?.length && conflictAsked !== date) {
@@ -147,6 +241,7 @@
             if (idsUnsaved) { idsUnsaved = false; saveTerminRecords(records(), 'tracking'); }
             const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             setStatus(`Online gespeichert · ${time}${cloud?.archived ? ' · archiviert' : ''}`, 'success');
+            await checkNewerDay(date);
         } catch (error) {
             setStatus(`Online-Abgleich nicht möglich: ${TerminCloud.germanError(error)}`, 'error');
         } finally {
@@ -291,7 +386,7 @@
         if (!name) { showToast('Bitte trage zuerst den Dolmetscher oder die Dolmetscherin ein.', 'error'); return; }
         if (!profiles.length) profiles = (await client.from('tt_profiles').select('id, full_name, active, role, employment')).data || [];
         const target = profiles.find(item => item.active && sameName(item.full_name, name));
-        if (!target) { showToast(`${name} hat kein freigeschaltetes Portal-Konto. Nutze für diesen Auftrag WhatsApp.`, 'error'); return; }
+        if (!target) { showToast(`${name} hat kein freigeschaltetes Portal-Konto – der Auftrag kann nicht in die App gesendet werden. Konten schaltest du auf der Seite „Team“ frei.`, 'error'); return; }
         const date = currentDate();
         if (!date) { showToast('Der Termin hat kein Datum – der Auftrag kann nicht gesendet werden.', 'error'); return; }
         stamp();
@@ -374,6 +469,34 @@
         } });
         syncDay();
     };
+
+    // Tag abschließen: online archivieren, hier schließen – danach ist Platz für die nächste Excel-Datei.
+    window.closeTrackingDay = async function () {
+        if (!(await loadProfile())) { showToast('Zum Abschließen bitte zuerst online anmelden (Seite „Team“).', 'error'); return; }
+        const date = currentDate();
+        const list = records();
+        if (!date || !list.length) { showToast('Es gibt keinen Tag zum Abschließen.', 'error'); return; }
+        const group = record => String(record.Status || 'offen').trim().toLocaleLowerCase('de-DE');
+        const open = list.filter(record => group(record) === 'offen').length;
+        const running = list.filter(record => group(record) === 'losgefahren').length;
+        const rest = [open ? `${open} ${open === 1 ? 'Termin ist' : 'Termine sind'} noch offen` : '', running ? `${running} ${running === 1 ? 'ist' : 'sind'} noch unterwegs` : ''].filter(Boolean).join(', ');
+        if (!await confirmDialog(`Den ${formatFleetDate(date)} abschließen (${list.length} Termine)?${rest ? `\n\nAchtung: ${rest}.` : ''}\n\nDer Tag wird online archiviert und verschwindet hier – auch bei den anderen Geräten. Du findest ihn weiter im Tagesarchiv. Danach kannst du eine neue Excel-Datei laden.`, 'Tag abschließen')) return;
+        await syncDay();
+        const { error } = await client.from('tt_days').update({ archived: true, archived_at: new Date().toISOString(), archived_by: profile.full_name || '', updated_at: new Date().toISOString(), updated_by: profile.full_name || '' }).eq('date', date);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        leaveDay();
+        try { sessionStorage.setItem('terminTool.dayClosed', `Der ${formatFleetDate(date)} ist abgeschlossen und archiviert (${list.length} Termine). Du kannst jetzt eine neue Excel-Datei laden.`); } catch (error) { /* dann ohne Meldung auf der nächsten Seite */ }
+        location.href = 'termineFiltern.html';
+    };
+
+    // Tabelle auf diesem Gerät leeren (der Tag bleibt online erhalten).
+    function leaveDay() {
+        deleted = {};
+        known.clear();
+        dayDate = ''; lastResponses = null; lastNotes = null;
+        window.applyRemoteTrackingRecords([]);
+        try { const flow = JSON.parse(sessionStorage.getItem('terminTool.workflow.v1') || '{}'); sessionStorage.setItem('terminTool.workflow.v1', JSON.stringify({ step: flow.step })); } catch (error) { /* nichts gespeichert */ }
+    }
 
     window.archiveTrackingDay = async function () {
         if (!(await loadProfile())) { showToast('Melde dich zuerst auf der Seite „Team“ als Einsatzleitung an.', 'error'); return; }

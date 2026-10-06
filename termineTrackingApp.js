@@ -306,7 +306,8 @@ function renderTrackingTable(data) {
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
                 + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : ''),
             `<div class="tracking-row-actions">`
-                + `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`
+                // Online gehen die Aufträge direkt in die App der Dolmetscher – WhatsApp gibt es nur noch ohne Online-Anmeldung.
+                + (cloudReady ? '' : `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`)
                 + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="${termin['Rückmeldung'] ? 'Auftrag erneut ins Dolmetscher-Portal senden' : 'Auftrag ins Dolmetscher-Portal senden'}">${ROW_ICONS.send}<span>${termin['Rückmeldung'] ? 'Erneut' : 'Auftrag'}</span></button>` : '')
                 + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">${ROW_ICONS.trash}<span class="visually-hidden">Löschen</span></button>`
                 + `</div>`
@@ -552,7 +553,40 @@ window.applyCurrentVehicles = applyCurrentVehicles;
     });
 })();
 
+// Oben steht groß, für welchen Tag die Terminliste gilt (heute, morgen, vergangen …).
+function updateDayBanner(data) {
+    const banner = document.getElementById('dayBanner');
+    if (!banner) return;
+    const dates = [...new Set(data.map(item => normalizeTerminDatum(item.Termin_Datum)).filter(Boolean))];
+    banner.hidden = !data.length;
+    if (!data.length) return;
+    const tag = document.getElementById('dayBannerTag');
+    const count = `${data.length} ${data.length === 1 ? 'Termin' : 'Termine'}`;
+    if (dates.length !== 1) {
+        document.getElementById('dayBannerDate').textContent = dates.length ? `${dates.length} verschiedene Tage` : 'ohne Datum';
+        tag.textContent = dates.length ? dates.slice(0, 3).join(', ') : 'kein Datum in der Liste';
+        tag.dataset.status = 'offen';
+        banner.dataset.when = 'unklar';
+        document.getElementById('dayBannerCount').textContent = count;
+        return;
+    }
+    const [day, month, year] = dates[0].split('.').map(Number);
+    const date = new Date(year, month - 1, day);
+    const now = new Date();
+    const diff = Math.round((date - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+    document.getElementById('dayBannerDate').textContent = `${date.toLocaleDateString('de-DE', { weekday: 'long' })}, ${dates[0]}`;
+    tag.textContent = diff === 0 ? 'heute' : diff === 1 ? 'morgen' : diff === -1 ? 'gestern' : diff > 1 ? `in ${diff} Tagen` : `vor ${-diff} Tagen`;
+    tag.dataset.status = diff === 0 ? 'erledigt' : diff > 0 ? 'in Arbeit' : 'offen';
+    banner.dataset.when = diff === 0 ? 'heute' : diff > 0 ? 'kommt' : 'vorbei';
+    document.getElementById('dayBannerCount').textContent = count;
+}
+document.getElementById('closeDayButton')?.addEventListener('click', () => {
+    if (typeof window.closeTrackingDay === 'function') window.closeTrackingDay();
+    else if (typeof showToast === 'function') showToast('Zum Abschließen bitte zuerst online anmelden (Seite „Team“).', 'error');
+});
+
 function updateTrackingOverview(data) {
+    updateDayBanner(typeof trackingData !== 'undefined' ? trackingData : data);
     const counts = { offen: 0, unterwegs: 0, erledigt: 0, storniert: 0 };
     data.forEach(item => { counts[getTrackingStatusGroup(item)] += 1; });
     const set = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = String(value); };

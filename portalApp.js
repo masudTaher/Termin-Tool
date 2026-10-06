@@ -813,10 +813,11 @@ if (!window.TerminContact) {
         return box;
     }
 
-    // Ab drei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
+    // Ab zwei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
     // jobOpenId: undefined = von selbst (der nächste anstehende Auftrag), '' = alle zu, sonst der vom Dolmetscher geöffnete.
-    const JOB_FOLD_FROM = 3;
+    const JOB_FOLD_FROM = 2;
     let jobOpenId;
+    const historyOpen = new Set();   // aufgeklappte Tage im Archiv
     const JOB_FOLD_KEY = 'terminTool.portal.jobsFold';
     let jobsFoldOff = (() => { try { return localStorage.getItem(JOB_FOLD_KEY) === 'aus'; } catch (error) { return false; } })();
     $('jobsFoldToggle')?.addEventListener('click', () => {
@@ -1131,18 +1132,41 @@ if (!window.TerminContact) {
             empty.textContent = 'Noch keine vergangenen Aufträge.';
             history.append(empty);
         }
-        past.forEach(item => {
-            const entry = document.createElement('li');
-            entry.className = 'directory-entry damage-entry';
-            const text = document.createElement('span');
-            text.className = 'directory-entry-name';
-            text.textContent = `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${item.title}`;
-            const state = document.createElement('span');
-            state.className = 'status-pill';
-            state.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
-            state.textContent = item.cancelled ? 'zurückgezogen' : [RESPONSE_LABEL[item.response], WORK_LABEL[item.work_status]].filter(Boolean).join(' · ');
-            entry.append(text, state);
-            history.append(entry);
+        // Archiv nach Tagen: je Tag eine Zeile mit Pfeil, darin die Aufträge des Tages nach Uhrzeit.
+        const summaryNode = $('jobHistorySummary');
+        if (summaryNode) summaryNode.textContent = past.length ? `Archiv: frühere Aufträge (${past.length})` : 'Archiv: frühere Aufträge';
+        const byDay = new Map();
+        past.forEach(item => { if (!byDay.has(item.date)) byDay.set(item.date, []); byDay.get(item.date).push(item); });
+        [...byDay.keys()].sort().reverse().forEach(day => {
+            const items = byDay.get(day).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+            const holder = document.createElement('li');
+            holder.className = 'history-day';
+            const fold = document.createElement('details');
+            fold.dataset.date = day;
+            fold.open = historyOpen.has(day);
+            fold.addEventListener('toggle', () => { if (fold.open) historyOpen.add(day); else historyOpen.delete(day); });
+            const head = document.createElement('summary');
+            const valid = items.filter(item => !item.cancelled).length;
+            head.append(el('strong', '', new Date(`${day}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })),
+                el('span', '', valid === items.length ? `${items.length} ${items.length === 1 ? 'Auftrag' : 'Aufträge'}` : `${valid} ${valid === 1 ? 'Auftrag' : 'Aufträge'} · ${items.length - valid} zurückgezogen`));
+            const inner = document.createElement('ul');
+            inner.className = 'directory-list portal-list';
+            items.forEach(item => {
+                const entry = document.createElement('li');
+                entry.className = 'directory-entry damage-entry';
+                const text = document.createElement('span');
+                text.className = 'directory-entry-name';
+                text.textContent = item.title;
+                const state = document.createElement('span');
+                state.className = 'status-pill';
+                state.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
+                state.textContent = item.cancelled ? 'zurückgezogen' : [RESPONSE_LABEL[item.response], WORK_LABEL[item.work_status]].filter(Boolean).join(' · ');
+                entry.append(text, state);
+                inner.append(entry);
+            });
+            fold.append(head, inner);
+            holder.append(fold);
+            history.append(holder);
         });
     }
 

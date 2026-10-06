@@ -12,6 +12,12 @@
          <div class="container" id="container">
 	            <div class="page-heading">
                <div><p class="page-kicker">TAGESABLAUF · SCHRITT 2 VON 2</p><h1>Live-Tracking</h1><p>Dolmetscher und Autos verteilen, Status verfolgen, Aufträge senden.</p></div>
+               <div class="day-banner" id="dayBanner" hidden>
+                  <span class="day-banner-label">Terminliste für</span>
+                  <strong id="dayBannerDate"></strong>
+                  <span class="day-banner-info"><span id="dayBannerTag" class="status-pill"></span><span id="dayBannerCount"></span></span>
+                  <button id="closeDayButton" type="button" class="button-secondary" title="Den Tag online archivieren und hier schließen – danach kannst du eine neue Excel-Datei laden">Tag abschließen</button>
+               </div>
             </div>
 
             <div id="notification" class="notification" role="alert" aria-live="assertive" style="display: none;"></div>

@@ -334,7 +334,8 @@
                <button type="button" id="jobsFoldToggle" class="link-button jobs-fold-toggle" hidden>Alle aufklappen</button>
                <ul id="jobList" class="job-list"></ul>
                <details class="job-history">
-                  <summary>Verlauf: was ich angenommen und gearbeitet habe</summary>
+                  <summary id="jobHistorySummary">Archiv: frühere Aufträge</summary>
+                  <p class="field-hint">Aufträge von vergangenen Tagen stehen hier – nach Tagen geordnet. Tippe einen Tag an, um ihn aufzuklappen.</p>
                   <ul id="jobHistory" class="directory-list portal-list"></ul>
                </details>
             </section>
@@ -453,8 +454,11 @@
                <section class="directory-card" aria-labelledby="workedTitle">
                   <h2 id="workedTitle" class="card-title">Meine gearbeiteten Tage</h2>
                   <p class="wizard-hint" id="workedSummary">Wird geladen …</p>
-                  <div class="portal-tabs" id="workedMonths"></div>
-                  <ul id="workedList" class="directory-list portal-list"></ul>
+                  <details class="job-history worked-details" id="workedDetails">
+                     <summary>Tage einzeln anzeigen</summary>
+                     <div class="portal-tabs" id="workedMonths"></div>
+                     <ul id="workedList" class="directory-list portal-list"></ul>
+                  </details>
                </section>
             </div>
 
