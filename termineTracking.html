@@ -16,7 +16,11 @@
                   <span class="day-banner-label">Terminliste für</span>
                   <strong id="dayBannerDate"></strong>
                   <span class="day-banner-info"><span id="dayBannerTag" class="status-pill"></span><span id="dayBannerCount"></span></span>
-                  <button id="closeDayButton" type="button" class="button-secondary" title="Den Tag online archivieren und hier schließen – danach kannst du eine neue Excel-Datei laden">Tag abschließen</button>
+                  <div class="day-banner-actions">
+                     <button id="nachtragButton" type="button" class="button-secondary nachtrag-button" title="Die aktualisierte Excel-Datei aus FileMaker laden: Nur neue Termine für Bonn kommen dazu – alles, was schon in der Liste steht, bleibt unverändert">＋ Termine nachtragen</button>
+                     <input type="file" id="nachtragFile" class="visually-hidden" accept=".xlsx, .xls" aria-label="Aktualisierte Excel-Datei zum Nachtragen auswählen" tabindex="-1">
+                     <button id="closeDayButton" type="button" class="button-secondary" title="Den Tag online archivieren und hier schließen – danach kannst du eine neue Excel-Datei laden">Tag abschließen</button>
+                  </div>
                </div>
             </div>
 
@@ -224,10 +228,12 @@
 	  	  	     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
      <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.13/jspdf.plugin.autotable.min.js"></script>
       <script src="workflowStorage.js"></script>
+      <script src="filterLogic.js"></script>
       <script src="teamDirectory.js"></script>
       <script src="fleetStore.js"></script>
       <script src="contactParse.js"></script>
       <script src="termineTrackingApp.js"></script>
+      <script src="terminNachtrag.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="cloudClient.js"></script>

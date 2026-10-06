@@ -2130,3 +2130,38 @@ html.scan-cam-open, html.scan-cam-open body { overflow: hidden; }
 .keep-dialog .choice-list { margin-bottom: 14px; }
 .keep-choice span { display: flex; flex-direction: column; gap: 1px; }
 .keep-choice small { color: var(--muted); font-size: .8rem; font-weight: 500; }
+
+/* 53  Live-Tracking: Termine nachtragen (eigener Knopf, Vorschau, Markierung „neu“) */
+.day-banner-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; grid-column: 2; grid-row: 1 / span 3; align-self: center; justify-self: end; }
+.day-banner .day-banner-actions button { grid-column: auto; grid-row: auto; }
+.nachtrag-button, :root[data-theme="dark"] .nachtrag-button { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+@media (max-width: 640px) { .day-banner-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; justify-self: start; } .day-banner .day-banner-actions button { margin-top: 6px; } }
+.nachtrag-tag { margin-left: 4px; background: var(--brand); color: #fff; letter-spacing: .02em; }
+:root[data-theme="dark"] .nachtrag-tag { color: #0b1622; }
+#dataTable tbody tr.is-nachtrag > td:first-child { box-shadow: inset 5px 0 0 var(--brand); }
+#dataTable tbody tr.is-nachtrag.has-special > td:first-child { box-shadow: inset 5px 0 0 var(--brand), inset 10px 0 0 #18794e; }
+.nachtrag-dialog { width: min(96vw, 980px); max-height: 92vh; overflow-y: auto; }
+.nachtrag-dialog h2 { margin-bottom: 8px; font-size: 1.2rem; }
+.nachtrag-dialog h3 { margin: 0; font-size: 1rem; }
+.nachtrag-summary { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 12px; }
+.nachtrag-summary span, .nachtrag-summary strong { padding: 4px 11px; border-radius: 999px; background: var(--surface-hover); color: var(--ink-soft); font-size: .84rem; font-weight: 650; white-space: nowrap; }
+.nachtrag-summary strong { background: var(--brand); color: #fff; }
+:root[data-theme="dark"] .nachtrag-summary strong { color: #0b1622; }
+.nachtrag-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+.nachtrag-none { margin: 4px 0 12px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--muted); font-weight: 600; }
+.nachtrag-table-wrap { max-height: 42vh; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+.nachtrag-table { min-width: 720px; font-size: .86rem; }
+.nachtrag-table th { position: sticky; top: 0; }
+.nachtrag-table td { vertical-align: top; cursor: default; }
+.nachtrag-table tbody tr:hover td { background: var(--surface-hover); }
+.nachtrag-table td strong, .nachtrag-table td > span { display: block; }
+.nachtrag-table .nachtrag-pick { width: 34px; }
+.nachtrag-table .nachtrag-pick input { width: 20px; min-height: 20px; height: 20px; margin: 0; cursor: pointer; }
+.nachtrag-table .nachtrag-time { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nachtrag-table .nachtrag-note { min-width: 200px; max-width: 360px; overflow-wrap: anywhere; }
+.nachtrag-table .nachtrag-sub { color: var(--muted); font-size: .78rem; }
+.nachtrag-table .nachtrag-hint { margin-top: 3px; padding: 3px 8px; border-radius: 7px; background: var(--warn-soft); color: var(--ink); font-size: .78rem; font-weight: 600; }
+.nachtrag-more { margin-bottom: 10px; }
+.nachtrag-more > summary { padding: 6px 0; color: var(--ink-soft); font-size: .9rem; font-weight: 700; cursor: pointer; }
+.nachtrag-more .field-hint { margin: 2px 0 8px; }
+.nachtrag-foot { margin: 4px 0 14px; }

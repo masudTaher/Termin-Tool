@@ -294,7 +294,7 @@ function renderTrackingTable(data) {
             `${index + 1}`,
             `<input class="time-input" type="time" data-index="${index}" value="${escapeHtml(String(termin.Termin_Uhrzeit || '').slice(0, 5))}" aria-label="Startzeit für Termin ${index + 1}">`,
             escapeHtml(termin.Patient_Nr ?? ''),
-            `<span class="patient-name">${escapeHtml(patientName)}</span>${gender ? ` <span class="patient-tag" title="Geschlecht">${escapeHtml(gender)}</span>` : ''}<span class="patient-more" data-index="${index}">${renderPatientMore(termin, data)}</span>`,
+            `<span class="patient-name">${escapeHtml(patientName)}</span>${gender ? ` <span class="patient-tag" title="Geschlecht">${escapeHtml(gender)}</span>` : ''}${termin._nachtrag ? ` <span class="patient-tag nachtrag-tag" title="Nachgetragen um ${escapeHtml(termin._nachtrag)} Uhr">neu</span>` : ''}<span class="patient-more" data-index="${index}">${renderPatientMore(termin, data)}</span>`,
             escapeHtml(termin.Bemerkung || ''),
             escapeHtml(termin['Arzt Nr::Name'] || ''),
             escapeHtml(getAppointmentLocation(termin)),
@@ -312,7 +312,7 @@ function renderTrackingTable(data) {
                 + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">${ROW_ICONS.trash}<span class="visually-hidden">Löschen</span></button>`
                 + `</div>`
         ];
-        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
+        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
     }).join('');
 
     updateTrackingOverview(data);
@@ -1360,6 +1360,8 @@ function deleteRow(index) {
     const termin = trackingData[index];
     if (!termin) return;
     recordTrackingUndo('Termin gelöscht');
+    // Merken, damit „Termine nachtragen“ diesen Termin nicht wieder vorschlägt.
+    window.noteDeletedTermin?.(termin);
     trackingData.splice(index, 1);
     updateAnzahlTermine(trackingData);
     renderTrackingTable(trackingData);
