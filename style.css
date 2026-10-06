@@ -2165,3 +2165,21 @@ html.scan-cam-open, html.scan-cam-open body { overflow: hidden; }
 .nachtrag-more > summary { padding: 6px 0; color: var(--ink-soft); font-size: .9rem; font-weight: 700; cursor: pointer; }
 .nachtrag-more .field-hint { margin: 2px 0 8px; }
 .nachtrag-foot { margin: 4px 0 14px; }
+
+/* 54  Absage mit Grund, „Termin fällt aus“ (Stornierung durch den Dolmetscher) */
+.reason-dialog { width: min(94vw, 460px); }
+.reason-dialog h2 { margin-bottom: 6px; font-size: 1.15rem; }
+.reason-dialog .field-hint { margin-bottom: 10px; }
+.reason-chips { max-height: none; margin-bottom: 10px; }
+.reason-dialog textarea { width: 100%; margin-bottom: 8px; }
+.reason-problem { margin: 0 0 10px; color: var(--danger); font-size: .88rem; font-weight: 650; }
+.reason-problem[hidden] { display: none; }
+.job-storno-button, :root[data-theme="dark"] .job-storno-button { display: block; width: 100%; margin-top: 6px; color: var(--danger); text-align: center; }
+.job-storno-button:hover { background: var(--danger-soft); }
+.job-progress.job-storno-box { flex-direction: column; align-items: flex-start; gap: 4px; border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); background: var(--danger-soft); }
+.job-storno-box .job-progress-text { display: flex; flex-direction: column; gap: 2px; color: var(--ink); }
+.job-storno-box .job-progress-text strong { color: var(--danger); }
+.job-storno-box .job-storno-undo { min-height: 34px; margin: 0 0 0 -8px; font-size: .86rem; }
+.job-mini-state.job-mini-storno { color: var(--danger); }
+.response-pill[data-response="Fällt aus"] { background: #b4393c; }
+#dataTable tbody tr.is-declined > td:first-child { box-shadow: inset 5px 0 0 #b4393c; }

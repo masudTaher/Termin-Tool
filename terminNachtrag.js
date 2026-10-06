@@ -247,9 +247,11 @@
         dialog.addEventListener('change', update);
         update();
         if (!selectable.length) { ok.hidden = true; cancel.textContent = 'Schließen'; }
-        cancel.addEventListener('click', () => dialog.close());
-        dialog.addEventListener('close', () => { dialog.remove(); dialog = null; });
-        ok.addEventListener('click', () => { const chosen = picked(); dialog.close(); apply(result, chosen); });
+        cancel.addEventListener('click', () => box.close());
+        // Das Schließen wird erst kurz danach gemeldet – dann darf nur dieses Fenster entfernt werden, nicht ein inzwischen neu geöffnetes.
+        const box = dialog;
+        box.addEventListener('close', () => { box.remove(); if (dialog === box) dialog = null; });
+        ok.addEventListener('click', () => { const chosen = picked(); box.close(); apply(result, chosen); });
         dialog.showModal();
         (result.fresh.length ? ok : cancel).focus();
     }

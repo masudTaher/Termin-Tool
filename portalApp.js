@@ -400,6 +400,7 @@ if (!window.TerminContact) {
     }
 
     function homeState(item) {
+        if (jobStorno(item)) return ['bekannt', 'fällt aus'];
         if (jobFinished(item)) return ['erledigt', item.finished_at ? `fertig ${clock(item.finished_at)}` : 'fertig'];
         if (jobStarted(item)) return ['in Arbeit', item.started_at ? `unterwegs seit ${clock(item.started_at)}` : 'unterwegs'];
         return [{ offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response], RESPONSE_LABEL[item.response]];
@@ -636,6 +637,7 @@ if (!window.TerminContact) {
     // ---------- Aufträge ----------
     const RESPONSES = [['zugesagt', 'Zusage'], ['vorbehalt', 'Unter Vorbehalt'], ['abgesagt', 'Absage']];
     const RESPONSE_LABEL = { offen: 'Antwort offen', zugesagt: 'Zusage', vorbehalt: 'Unter Vorbehalt', abgesagt: 'Absage' };
+    const ABSAGE_REASONS = ['Ich bin krank', 'Ich habe zur selben Zeit einen anderen Termin', 'Ich schaffe es zeitlich nicht', 'Privater Notfall', 'Kein Fahrzeug'];
     const WORK_LABEL = { beendet: 'gearbeitet', alleine: 'Patient ging alleine', storniert: 'storniert', losgefahren: 'unterwegs', offen: '' };
     let knownJobIds = null;
 
@@ -868,7 +870,9 @@ if (!window.TerminContact) {
     // ---------- Losfahren und Fertig: Der Dolmetscher meldet selbst, wann er startet und wann er fertig ist ----------
     const clock = value => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     const jobStarted = item => Boolean(item.started_at) || item.work_status === 'losgefahren';
-    const jobFinished = item => Boolean(item.finished_at) || ['beendet', 'alleine'].includes(item.work_status);
+    // Storniert: vom Dolmetscher gemeldet („Termin fällt aus“, mit Grund) oder von der Einsatzleitung im Tagesplan gesetzt.
+    const jobStorno = item => Boolean(item.storno_at) || item.work_status === 'storniert';
+    const jobFinished = item => Boolean(item.finished_at) || ['beendet', 'alleine'].includes(item.work_status) || jobStorno(item);
 
     async function setJobProgress(item, action, button) {
         if (action === 'start' && !myHandover) {
@@ -895,7 +899,8 @@ if (!window.TerminContact) {
 
     // Nur am Tag des Auftrags (und danach, falls noch nicht beendet) – nicht bei Absage.
     function jobProgress(item) {
-        if (item.response === 'abgesagt' || item.date > TerminCloud.todayIso() || ['storniert'].includes(item.work_status)) return null;
+        if (jobStorno(item)) return stornoBox(item);
+        if (item.response === 'abgesagt' || item.date > TerminCloud.todayIso()) return null;
         const box = el('div', 'job-progress');
         const finished = jobFinished(item);
         const started = jobStarted(item);
@@ -911,6 +916,118 @@ if (!window.TerminContact) {
         button.addEventListener('click', () => setJobProgress(item, started ? 'finish' : 'start', button));
         box.append(button);
         return box;
+    }
+
+    // ---------- Grund abfragen (Absage, „Termin fällt aus“) ----------
+    // Ergebnis: der Text – oder null, wenn abgebrochen wurde.
+    let reasonDialog = null;
+    function askReason({ title, hint, reasons, okLabel, value = '' }) {
+        reasonDialog?.remove();
+        const dialog = reasonDialog = el('dialog', 'confirm-dialog reason-dialog');
+        dialog.setAttribute('aria-labelledby', 'reasonDialogTitle');
+        const heading = el('h2', '', title);
+        heading.id = 'reasonDialogTitle';
+        const chips = el('div', 'recipient-list reason-chips');
+        const text = document.createElement('textarea');
+        text.rows = 3;
+        text.maxLength = 300;
+        text.placeholder = 'Grund kurz aufschreiben';
+        text.setAttribute('aria-label', 'Grund');
+        text.value = value;
+        const problem = el('p', 'reason-problem');
+        problem.setAttribute('role', 'alert');
+        problem.hidden = true;
+        reasons.forEach(reason => {
+            const chip = el('button', 'recipient-chip', reason);
+            chip.type = 'button';
+            chip.addEventListener('click', () => {
+                const now = text.value.trim();
+                text.value = !now ? reason : now.includes(reason) ? now : `${now}, ${reason}`;
+                problem.hidden = true;
+                text.focus({ preventScroll: true });
+            });
+            chips.append(chip);
+        });
+        const buttons = el('div', 'modal-buttons');
+        const cancel = el('button', 'button-secondary', 'Abbrechen');
+        cancel.type = 'button';
+        const ok = el('button', 'button-primary', okLabel);
+        ok.type = 'button';
+        buttons.append(cancel, ok);
+        dialog.append(heading, el('p', 'field-hint', hint), chips, text, problem, buttons);
+        document.body.append(dialog);
+        return new Promise(resolve => {
+            let result = null;
+            ok.addEventListener('click', () => {
+                const reason = text.value.trim();
+                if (reason.length < 3) { problem.textContent = 'Bitte schreib kurz den Grund – oder tippe einen Vorschlag an.'; problem.hidden = false; text.focus(); return; }
+                result = reason;
+                dialog.close();
+            });
+            cancel.addEventListener('click', () => dialog.close());
+            text.addEventListener('input', () => { problem.hidden = true; });
+            dialog.addEventListener('close', () => { dialog.remove(); if (reasonDialog === dialog) reasonDialog = null; resolve(result); });
+            dialog.showModal();
+            text.focus({ preventScroll: true });
+        });
+    }
+
+    // ---------- „Termin fällt aus“: Stornierung durch den Dolmetscher, mit Grund ----------
+    const STORNO_REASONS = ['Patient ist nicht erschienen', 'Patient hat abgesagt', 'Praxis hat den Termin abgesagt', 'Termin wurde verschoben', 'Patient ist im Krankenhaus'];
+    const stornoError = error => /tt_assignment_storno|schema cache|could not find/i.test(error?.message || '')
+        ? 'Das ist in der Datenbank noch nicht eingerichtet (Update 20). Bitte sag der Einsatzleitung Bescheid.'
+        : TerminCloud.germanError(error);
+    async function stornoJob(item, button) {
+        const reason = await askReason({
+            title: 'Termin fällt aus',
+            hint: jobStarted(item)
+                ? 'Warum findet der Termin nicht statt? Der Auftrag wird damit abgeschlossen – die Einsatzleitung sieht den Grund und weiß, dass du wieder frei bist.'
+                : 'Warum findet der Termin nicht statt? Die Einsatzleitung sieht den Grund sofort, der Termin steht bei ihr auf „Storniert“.',
+            reasons: STORNO_REASONS, okLabel: 'Stornierung melden'
+        });
+        if (reason == null) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_assignment_storno', { p_id: item.id, p_note: reason, p_undo: false });
+        button.disabled = false;
+        if (error) { toast(stornoError(error), 'error'); return; }
+        TerminCloud.callFunction?.({ action: 'progress', assignmentId: item.id, kind: 'storno' })?.catch?.(() => null);
+        toast(jobStarted(item) ? 'Stornierung gemeldet. Der Auftrag ist abgeschlossen – du bist wieder frei.' : 'Stornierung gemeldet. Die Einsatzleitung weiß Bescheid.', 'success');
+        await loadJobs();
+        renderHome();
+    }
+    async function undoStorno(item, button) {
+        button.disabled = true;
+        const { error } = await client.rpc('tt_assignment_storno', { p_id: item.id, p_note: '', p_undo: true });
+        button.disabled = false;
+        if (error) { toast(stornoError(error), 'error'); return; }
+        TerminCloud.callFunction?.({ action: 'progress', assignmentId: item.id, kind: 'stornoUndo' })?.catch?.(() => null);
+        toast('Stornierung zurückgenommen. Der Auftrag gilt wieder.', 'success');
+        await loadJobs();
+        renderHome();
+    }
+    function stornoBox(item) {
+        const box = el('div', 'job-progress job-storno-box');
+        box.dataset.state = 'storniert';
+        const text = el('span', 'job-progress-text');
+        if (item.storno_at) {
+            text.append(el('strong', '', `Termin fällt aus – gemeldet um ${clock(item.storno_at)} Uhr`), el('span', '', `Grund: ${item.storno_note || '–'}`), el('span', '', 'Auftrag abgeschlossen.'));
+            const undo = el('button', 'link-button job-storno-undo', 'Stornierung zurücknehmen');
+            undo.type = 'button';
+            undo.addEventListener('click', () => undoStorno(item, undo));
+            box.append(text, undo);
+        } else {
+            text.append(el('strong', '', 'Von der Einsatzleitung storniert'), el('span', '', 'Der Termin findet nicht statt – du musst nichts weiter tun.'));
+            box.append(text);
+        }
+        return box;
+    }
+    // Knopf „Termin fällt aus …“: bei jedem Auftrag, der noch nicht beendet, abgesagt oder storniert ist – auch nach dem Losfahren.
+    function stornoButton(item) {
+        if (item.response === 'abgesagt' || jobFinished(item) || item.cancelled) return null;
+        const button = el('button', 'job-storno-button link-button', 'Termin fällt aus? Stornierung melden …');
+        button.type = 'button';
+        button.addEventListener('click', () => stornoJob(item, button));
+        return button;
     }
 
     // Ab zwei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
@@ -1025,9 +1142,19 @@ if (!window.TerminContact) {
             button.dataset.response = value;
             button.setAttribute('aria-pressed', String(item.response === value));
             button.addEventListener('click', async () => {
-                const noteText = note.value.trim();
+                let noteText = note.value.trim();
                 if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
-                const before = { response: item.response, note: saved, draft: noteText !== saved ? note.value : null };
+                // Eine Absage geht nur mit Grund – erst recht, wenn vorher zugesagt war. Steht schon ein Hinweis im Feld, zählt er als Grund.
+                if (value === 'abgesagt' && noteText.length < 3) {
+                    const reason = await askReason({
+                        title: item.response === 'zugesagt' ? 'Zusage zurückziehen und absagen' : 'Auftrag absagen',
+                        hint: 'Warum kannst du den Auftrag nicht übernehmen? Die Einsatzleitung sieht den Grund sofort und kann neu planen.',
+                        reasons: ABSAGE_REASONS, okLabel: 'Absage senden', value: noteText
+                    });
+                    if (reason == null) return;
+                    noteText = reason;
+                }
+                const before = { response: item.response, note: saved, draft: note.value.trim() !== saved ? note.value : null };
                 if (!(await respond(value, noteText))) return;
                 // Mitteilung „TERMIN · zugesagt / abgesagt …“ an die Einsatzleitung – getrennt von den Fahrzeug-Mitteilungen.
                 TerminCloud.callFunction?.({ action: 'response', assignmentId: item.id })?.catch?.(() => null);
@@ -1066,7 +1193,8 @@ if (!window.TerminContact) {
             card.classList.add('is-foldable');
             const patientName = parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || '';
             if (patientName) main.append(el('span', 'job-mini-patient', patientName));
-            if (jobStarted(item) && !jobFinished(item)) main.append(el('span', 'job-mini-state', 'Unterwegs'));
+            if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', 'Fällt aus'));
+            else if (jobStarted(item) && !jobFinished(item)) main.append(el('span', 'job-mini-state', 'Unterwegs'));
             top.append(svgSpan('job-fold-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'));
             top.setAttribute('role', 'button');
             top.tabIndex = 0;
@@ -1090,6 +1218,9 @@ if (!window.TerminContact) {
             docs.addEventListener('click', () => window.PortalDocs?.startFor(item));
             rest.append(docs);
         }
+        // Ganz unten, weil selten gebraucht: „Termin fällt aus“.
+        const storno = stornoButton(item);
+        if (storno) rest.append(storno);
         return card;
     }
 

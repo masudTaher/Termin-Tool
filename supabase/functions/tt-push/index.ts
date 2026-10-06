@@ -229,9 +229,22 @@ Deno.serve(async (req) => {
     if (action === 'progress') {
       // Ein Dolmetscher hat „Losfahren“ oder „Fertig“ gemeldet: Mitteilung an Einsatzleitung und Sekretariat.
       const { data: job } = await admin.from('tt_assignments')
-        .select('id, title, interpreter_id, interpreter_name, work_status').eq('id', String(input.assignmentId ?? '')).maybeSingle();
+        .select('*').eq('id', String(input.assignmentId ?? '')).maybeSingle();
       if (!job || job.interpreter_id !== profile.id) return json({ error: 'Auftrag nicht gefunden.' }, 404);
       const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      // „Termin fällt aus“ (Stornierung mit Grund) oder die Rücknahme davon: eigene, deutliche Mitteilung.
+      const kind = String(input.kind ?? '');
+      if (kind === 'storno' || kind === 'stornoUndo') {
+        if ((kind === 'storno') !== Boolean(job.storno_at)) return json({ sent: 0, devices: 0 });
+        const result = await sendTo((staff ?? []).map((item) => item.id), {
+          title: kind === 'storno' ? 'TERMIN · FÄLLT AUS (storniert)' : 'TERMIN · Stornierung zurückgenommen',
+          body: kind === 'storno'
+            ? `${job.interpreter_name}: ${job.title}${job.storno_note ? ` – ${String(job.storno_note).slice(0, 160)}` : ''}`
+            : `${job.interpreter_name}: ${job.title} findet doch statt`,
+          url: 'termineTracking.html', tag: `storno-${job.id}`,
+        });
+        return json(result);
+      }
       const finished = job.work_status === 'beendet';
       const result = await sendTo((staff ?? []).map((item) => item.id), {
         title: finished ? 'TERMIN · fertig, wieder frei' : 'TERMIN · losgefahren',

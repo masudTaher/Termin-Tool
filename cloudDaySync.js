@@ -281,6 +281,36 @@
         const time = value => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         const status = String(record.Status || 'offen').trim().toLocaleLowerCase('de-DE');
         let changed = false;
+        // „Termin fällt aus“ aus dem Portal (mit Grund): Der Termin steht von selbst auf „Storniert“, der Dolmetscher ist frei.
+        // Ein dabei gesetztes Ende (er war schon losgefahren) löst keine zweite Meldung „ist fertig“ aus.
+        const stornoEnd = Boolean(assignment.storno_at) && assignment.finished_at === assignment.storno_at;
+        if (assignment.storno_at && record.Portal_Storno !== assignment.storno_at) {
+            record.Portal_Storno = assignment.storno_at;
+            if (!['offen', 'losgefahren', 'storniert'].includes(status)) {
+                // Der Termin steht hier schon auf „beendet“ oder „alleine“: nichts überschreiben, nur Bescheid geben.
+                showToast(`Termin · ${assignment.interpreter_name} meldet „fällt aus“ für ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}. Bei dir steht der Termin schon auf „${record.Status}“ – bitte prüfen.`, 'info', { duration: 20000, keep: true });
+            } else if (status !== 'storniert') {
+                record.Status = 'storniert';
+                showToast(`Termin fällt aus · ${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}`, 'error', { duration: 20000, keep: true });
+                if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+                    try { new Notification('Termin fällt aus', { body: `${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}` }); } catch (error) { /* nur als Einblendung */ }
+                }
+            }
+            changed = true;
+        } else if (!assignment.storno_at && record.Portal_Storno) {
+            // Der Dolmetscher hat die Stornierung zurückgenommen: der Termin läuft weiter wie vorher.
+            delete record.Portal_Storno;
+            if (status === 'storniert') {
+                record.Status = assignment.finished_at ? 'beendet' : assignment.started_at ? 'losgefahren' : 'offen';
+                showToast(`Termin · ${assignment.interpreter_name} hat die Stornierung zurückgenommen: ${assignment.title}`, 'info', { duration: 15000, keep: true });
+            }
+            changed = true;
+        }
+        if (stornoEnd) {
+            if (assignment.started_at && record.Portal_Start !== assignment.started_at) { record.Portal_Start = assignment.started_at; changed = true; }
+            if (record.Portal_Ende !== assignment.finished_at) { record.Portal_Ende = assignment.finished_at; changed = true; }
+            return changed;
+        }
         if (assignment.started_at && record.Portal_Start !== assignment.started_at) {
             record.Portal_Start = assignment.started_at;
             if (status === 'offen') {
@@ -335,7 +365,9 @@
                 if (record['Rückmeldung']) { record['Rückmeldung'] = ''; changed = true; }
                 continue;
             }
-            const text = RESPONSE_TEXT[assignment.response] + (assignment.response_note ? ` – ${assignment.response_note}` : '');
+            const text = assignment.storno_at
+                ? `Fällt aus${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}`
+                : RESPONSE_TEXT[assignment.response] + (assignment.response_note ? ` – ${assignment.response_note}` : '');
             if (record['Rückmeldung'] !== text) { record['Rückmeldung'] = text; changed = true; }
             responses.set(assignment.appointment_id, assignment.response);
             notes.set(assignment.appointment_id, assignment.response_note || '');
@@ -355,8 +387,12 @@
             // „Losfahren“ und „Fertig“ aus dem Portal: jede Meldung wird genau einmal in den Tagesstand übernommen.
             if (applyProgress(record, assignment)) changed = true;
             const workStatus = String(record.Status || 'offen');
-            if (assignment.work_status !== workStatus) {
+            // Die Einsatzleitung hat einen im Portal stornierten Termin wieder geöffnet: Die Stornierung gilt nicht mehr.
+            const reopened = Boolean(assignment.storno_at) && workStatus.trim().toLocaleLowerCase('de-DE') !== 'storniert';
+            if (reopened) { delete record.Portal_Storno; changed = true; }
+            if (assignment.work_status !== workStatus || reopened) {
                 const update = { work_status: workStatus };
+                if (reopened) Object.assign(update, { storno_at: null, storno_note: '' }, assignment.finished_at === assignment.storno_at ? { finished_at: null } : {});
                 // Von der Einsatzleitung auf „losgefahren“ gesetzt: ab jetzt läuft die Uhr für die Erinnerung „bitte Fertig melden“.
                 if (workStatus.trim().toLocaleLowerCase('de-DE') === 'losgefahren' && 'started_at' in assignment && !assignment.started_at) {
                     update.started_at = new Date().toISOString();

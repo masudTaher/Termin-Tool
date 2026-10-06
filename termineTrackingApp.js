@@ -312,7 +312,7 @@ function renderTrackingTable(data) {
                 + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">${ROW_ICONS.trash}<span class="visually-hidden">Löschen</span></button>`
                 + `</div>`
         ];
-        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
+        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}${/^Absage/.test(String(termin['Rückmeldung'] || '')) ? ' is-declined' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
     }).join('');
 
     updateTrackingOverview(data);
