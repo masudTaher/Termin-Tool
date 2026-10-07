@@ -4,7 +4,7 @@
 (function () {
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     const SEEN_KEY = 'terminTool.cloudInbox.seen.v1';
-    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten', 'termine', 'nachrichten'];
+    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten', 'berichte', 'rezepte', 'termine', 'nachrichten'];
 
     function setBadge(page, count) {
         // Seitenleiste und – auf dem Handy – die untere Leiste bekommen dasselbe Zählerschild.
@@ -91,7 +91,9 @@
         setBadge('fahrzeugakte', counts.damages + counts.alerts + (counts.requests || 0));
         setBadge('team', counts.accounts);
         setBadge('fest', counts.fest);
-        setBadge('patienten', counts.documents || 0);
+        setBadge('patienten', 0);
+        setBadge('berichte', counts.reports ?? counts.documents ?? 0);
+        setBadge('rezepte', counts.prescriptions || 0);
         setBadge('termine', counts.appointments || 0);
         setBadge('nachrichten', counts.chat || 0);
         refreshUsage(false);
@@ -106,7 +108,7 @@
             if (counts.payroll > (seen.payroll || 0)) messages.push('Abrechnung: neuer Beleg oder Einwand');
             if ((counts.absences || 0) > (seen.absences || 0)) messages.push('Festangestellte: neuer Urlaubsantrag oder neue Krank-/Notfallmeldung');
             if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
-            if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage oder neuer Bericht eines Dolmetschers');
+            if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage eines Dolmetschers (Seiten „Neue Berichte“ / „Neue Rezepte“)');
             if ((counts.requests || 0) > (seen.requests || 0)) messages.push('Ein angefordertes Foto ist da (Fuhrpark)');
             if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push('Ein Dolmetscher hat einen neuen Termin gemeldet (Seite „Neue Termine“)');
             // Auf der Seite „Nachrichten“ meldet der Chat neue Nachrichten selbst (mit Namen).

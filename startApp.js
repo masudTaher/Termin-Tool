@@ -217,7 +217,8 @@
         list.append(
             ...(countsOnline.chat ? [todoItem('Neue Nachrichten der Dolmetscher', countsOnline.chat, 'nachrichten.html')] : []),
             ...(countsOnline.appointments ? [todoItem('Neue Termine der Dolmetscher eintragen', countsOnline.appointments, 'neueTermine.html')] : []),
-            todoItem('Neue Unterlagen und Berichte der Dolmetscher', countsOnline.documents || 0, 'patienten.html'),
+            todoItem('Neue Berichte (Dolmetscher, Krankenhaus)', countsOnline.reports ?? countsOnline.documents ?? 0, 'neueBerichte.html'),
+            todoItem('Neue Rezepte und Überweisungen', countsOnline.prescriptions || 0, 'neueRezepte.html'),
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),
             todoItem('Neue Schäden', countsOnline.damages, 'fahrzeugakte.html'),
             ...(countsOnline.requests ? [todoItem('Angeforderte Fotos sind da', countsOnline.requests, 'fahrzeugakte.html')] : []),

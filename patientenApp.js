@@ -23,7 +23,15 @@
     let documents = [];
     let patients = [];
     let recipients = [];
-    let filter = 'neu';
+    // Vier Ansichten derselben Daten:
+    //   berichte – Seite „Neue Berichte“ (Dolmetscher- und Krankenhausberichte): prüfen, weiterleiten
+    //   rezepte  – Seite „Neue Rezepte“ (Rezepte, Überweisungen, Sonstiges – nach Kategorie)
+    //   archiv   – Seite „Patientenakten“: nur die Patienten; ein Klick öffnet die ganze Akte
+    //   alles    – die frühere Gesamtseite (patienten.html?ansicht=alles), bleibt als Reserve
+    const VIEW = new URLSearchParams(location.search).get('ansicht') === 'alles' ? 'alles' : (document.body.dataset.view || 'alles');
+    document.body.dataset.view = VIEW;
+    const INBOX = VIEW === 'berichte' || VIEW === 'rezepte';
+    let filter = VIEW === 'archiv' ? 'patienten' : 'neu';
     let shown = LIST_STEP;
     let openKey = '';              // geöffnete Akte: Patientennummer (ohne Nummer: „name:…“)
     let returnTop = null;          // Handy: Stelle der Seite, von der aus die Akte geöffnet wurde
@@ -40,6 +48,8 @@
     const clean = value => String(value ?? '').trim();
     const lower = value => clean(value).toLocaleLowerCase('de');
     const isReport = doc => doc.kind === REPORT_KIND;
+    const isBericht = doc => isReport(doc) || kindKey(doc.kind) === 'Arztbericht';
+    const inView = doc => VIEW === 'berichte' ? isBericht(doc) : VIEW === 'rezepte' ? !isBericht(doc) : true;
     const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
     const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     // „2026-10-05“ → „05.10.2026“ (ohne Umrechnung zwischen Zeitzonen)
@@ -234,7 +244,10 @@
         ueberweisung: { test: startsWith('Überweisung'), prefix: 'Überweisung', one: 'Überweisung', many: 'Überweisungen', text: '– wähle unten eine Kategorie.', empty: 'Es wurde noch keine Überweisung hochgeladen.' },
         sonstiges: { test: doc => !isReport(doc) && kindKey(doc.kind) !== 'Arztbericht' && !/^(Rezept|Überweisung)/.test(kindKey(doc.kind)), one: 'sonstige Unterlage', many: 'sonstige Unterlagen', text: '', empty: 'Keine sonstigen Unterlagen.' }
     };
-    const typeRows = () => documents.filter(TYPE_TABS[typeTab].test).filter(doc => !subKind || kindKey(doc.kind) === subKind);
+    // In „Neue Berichte“ / „Neue Rezepte“ gelten Kachel (neu, geprüft, weitergeleitet) UND Reiter zusammen.
+    const VIEW_TABS = { berichte: ['', 'berichte', 'arzt'], rezepte: ['', 'rezepte', 'ueberweisung', 'sonstiges'] }[VIEW] || null;
+    const base = () => INBOX ? documents.filter(inView).filter(FILTERS[filter] || (() => true)) : documents;
+    const typeRows = () => base().filter(typeTab ? TYPE_TABS[typeTab].test : () => true).filter(doc => !subKind || kindKey(doc.kind) === subKind);
     function renderTypeTabs() {
         document.querySelectorAll('[data-doc-type]').forEach(tab => {
             const name = tab.dataset.docType;
@@ -242,14 +255,16 @@
             tab.classList.toggle('is-active', active);
             tab.setAttribute('aria-selected', String(active));
             const badge = tab.querySelector('b');
-            if (badge) badge.textContent = String(documents.filter(TYPE_TABS[name].test).length);
+            tab.hidden = VIEW === 'archiv' || Boolean(VIEW_TABS && !VIEW_TABS.includes(name));
+            if (!name && INBOX) tab.firstChild.textContent = 'Alle ';
+            if (badge) badge.textContent = name ? String(base().filter(TYPE_TABS[name].test).length) : (INBOX ? String(base().length) : '');
         });
         // Kategorien: alle bekannten Arten mit diesem Anfang – und alles, was sonst noch so heißt.
         const box = $('docSubKinds');
         const prefix = typeTab ? TYPE_TABS[typeTab].prefix : '';
         box.hidden = !prefix;
         if (!prefix) return;
-        const inTab = documents.filter(TYPE_TABS[typeTab].test);
+        const inTab = base().filter(TYPE_TABS[typeTab].test);
         const kinds = [...new Set([...ALL_KINDS.filter(kind => kind.startsWith(prefix)), ...inTab.map(doc => kindKey(doc.kind))])];
         const chip = (value, label, count) => {
             const node = button('recipient-chip', `${label} (${count})`, () => { subKind = value; shown = LIST_STEP; renderTypeTabs(); renderList(); updateSelection(); });
@@ -262,14 +277,14 @@
     }
 
     function renderTiles() {
-        const count = name => String(documents.filter(FILTERS[name]).length);
+        const count = name => String(documents.filter(inView).filter(FILTERS[name]).length);
         $('countNew').textContent = count('neu');
         $('countChecked').textContent = count('geprüft');
         $('countForwarded').textContent = count('weitergeleitet');
         $('countReports').textContent = count('berichte');
         $('countPatients').textContent = String(patients.length);
         document.querySelectorAll('[data-doc-filter]').forEach(tile => {
-            const active = !typeTab && tile.dataset.docFilter === filter;
+            const active = (INBOX || !typeTab) && tile.dataset.docFilter === filter;
             tile.classList.toggle('is-active', active);
             tile.setAttribute('aria-pressed', String(active));
         });
@@ -331,6 +346,7 @@
             button('button-secondary fleet-end-button', 'Öffnen', node => openDocument(doc, node)),
             button('button-secondary fleet-end-button', 'Herunterladen', node => downloadDocument(doc, node))
         );
+        if (isReport(doc)) actions.append(button('button-secondary fleet-end-button doc-print', 'Drucken', node => printDocument(doc, node)));
         if (doc.status === 'neu') actions.append(button('button-primary fleet-end-button', 'Geprüft ✓', node => markChecked(doc, node)));
         actions.append(button(`${doc.status === 'geprüft' ? 'button-primary' : 'button-secondary'} fleet-end-button`, 'Weiterleiten', () => startForward([doc])));
         // Unscharf, zu dunkel, Seite fehlt? Die Person, die fotografiert hat, um eine neue Aufnahme bitten.
@@ -362,10 +378,10 @@
             return;
         }
         const tab = typeTab ? TYPE_TABS[typeTab] : null;
-        const rows = tab ? typeRows() : documents.filter(FILTERS[filter]);
+        const rows = tab || INBOX ? typeRows() : documents.filter(FILTERS[filter]);
         $('docSummary').textContent = tab
             ? (rows.length ? `${plural(rows.length, tab.one, tab.many)}${subKind ? ` · ${subKind}` : ` ${tab.text}`}`.trim() : (subKind ? `Keine Unterlagen in „${subKind}“.` : tab.empty))
-            : SUMMARY[filter](rows.length);
+            : INBOX ? (rows.length ? `${plural(rows.length, 'Unterlage', 'Unterlagen')} – ${{ neu: 'neu: ansehen, prüfen und weiterleiten', 'geprüft': 'geprüft, noch nicht weitergeleitet', weitergeleitet: 'weitergeleitet' }[filter]}.` : EMPTY[filter]) : SUMMARY[filter](rows.length);
         fillList('docList', rows.slice(0, shown).map(doc => docEntry(doc, true)), tab ? (subKind ? `Keine Unterlagen in „${subKind}“.` : tab.empty) : EMPTY[filter]);
         $('docMore').hidden = rows.length <= shown;
     }
@@ -381,7 +397,14 @@
             el('small', null, [plural(patient.documents.length, 'Unterlage', 'Unterlagen'), patient.reports.length ? plural(patient.reports.length, 'Bericht', 'Berichte') : ''].filter(Boolean).join(' · ')),
             el('small', null, patient.last ? `Zuletzt am ${formatDay(patient.last)}` : '')
         );
-        if (patient.birth) card.querySelector('span').after(el('small', 'patient-birth', `geb. ${patient.birth}`));
+        if (VIEW === 'archiv') {
+            // Von außen nur der Patient – alles Weitere steht in der Akte.
+            card.classList.add('patient-card-plain');
+            const initials = (patient.name || patient.nr || '?').split(/[\s,]+/).filter(Boolean).slice(0, 2).map(word => word[0].toLocaleUpperCase('de')).join('');
+            card.replaceChildren(el('i', 'patient-avatar', initials), el('span', 'patient-card-text'));
+            card.lastChild.append(el('strong', null, patient.name || 'Name nicht angegeben'), el('small', null, patient.nr ? `Akte ${patient.nr}` : 'ohne Nummer'));
+        }
+        if (patient.birth && VIEW !== 'archiv') card.querySelector('span').after(el('small', 'patient-birth', `geb. ${patient.birth}`));
         if (hint) card.append(el('em', 'chip chip-brand', hint));
         card.addEventListener('click', () => openPatient(patient.key));
         return card;
@@ -422,6 +445,7 @@
 
     function renderSearch() {
         const query = clean($('patientSearch').value);
+        $('patientApp').classList.toggle('is-searching', Boolean(query));
         if (!query) {
             $('patientResults').replaceChildren();
             $('searchInfo').textContent = patients.length ? `${plural(patients.length, 'Patient', 'Patienten')} im Archiv. Tippe Nummer, Namen, Geburtsdatum oder einen Tag ein (z. B. 06.10.2026).` : 'Im Archiv gibt es noch keine Patienten.';
@@ -448,10 +472,134 @@
         return row;
     }
 
+    // ---------- Patientenakte im Archiv: Kopf mit Stammdaten, Reiter je Bereich, Übersicht als Zeitleiste ----------
+    let chartTab = 'uebersicht';
+    let chartVisits = null;        // Termine der offenen Akte (null = lädt noch)
+    let chartReported = null;      // von Dolmetschern gemeldete neue Termine
+    let chartFor = '';
+    const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['sonstiges', 'Sonstiges']];
+    function renderChart(patient) {
+        const box = $('fileChart');
+        const reports = documents.filter(doc => isReport(doc) && mentions(doc, patient));
+        const parts = { berichte: reports, arzt: patient.documents.filter(TYPE_TABS.arzt.test), rezepte: patient.documents.filter(TYPE_TABS.rezepte.test), ueberweisung: patient.documents.filter(TYPE_TABS.ueberweisung.test), sonstiges: patient.documents.filter(TYPE_TABS.sonstiges.test) };
+        const today = isoDay(new Date());
+        const visits = chartVisits || [];
+        const reported = chartReported || [];
+        const coming = [...visits.filter(visit => visit.date >= today).map(visit => `${visit.date} ${visitTime(visit.record)}`), ...reported.filter(item => item.date >= today).map(item => `${item.date} ${clean(item.time).slice(0, 5)}`)].sort()[0];
+        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, sonstiges: parts.sonstiges.length };
+
+        // Kopf
+        const head = el('div', 'chart-head');
+        const initials = (patient.name || patient.nr || '?').split(/[\s,]+/).filter(Boolean).slice(0, 2).map(word => word[0].toLocaleUpperCase('de')).join('');
+        const id = el('div', 'chart-id');
+        id.append(el('span', 'chart-kicker', 'Patientenakte'), el('strong', 'chart-name', patient.name || 'Name nicht angegeben'),
+            el('span', 'chart-sub', [patient.nr ? `Patienten-Nr. ${patient.nr}` : 'ohne Patientennummer', patient.birth ? `geb. ${patient.birth}` : ''].filter(Boolean).join(' · ')));
+        const facts = el('dl', 'chart-facts');
+        const fact = (label, value) => { const item = el('div'); item.append(el('dt', null, label), el('dd', null, value)); facts.append(item); };
+        fact('Nächster Termin', chartVisits == null ? '…' : coming ? `${formatDay(coming.slice(0, 10))}${coming.slice(11) ? ` · ${coming.slice(11)} Uhr` : ''}` : 'keiner bekannt');
+        fact('Letzter Eintrag', patient.last ? formatDay(patient.last) : '–');
+        fact('Unterlagen', String(patient.documents.length));
+        fact('Berichte', String(reports.length));
+        head.append(el('i', 'patient-avatar chart-avatar', initials), id, facts);
+
+        // Reiter
+        const tabs = el('div', 'doc-type-tabs chart-tabs');
+        tabs.setAttribute('role', 'tablist');
+        CHART_TABS.forEach(([key, label]) => {
+            const tab = button(key === chartTab ? 'is-active' : '', label, () => { chartTab = key; renderChart(patient); updateSelection(); });
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-selected', String(key === chartTab));
+            tab.dataset.chartTab = key;
+            if (key !== 'uebersicht') tab.append(el('b', null, key === 'termine' && chartVisits == null ? '…' : String(counts[key])));
+            tabs.append(tab);
+        });
+
+        // Inhalt
+        const body = el('div', 'chart-body');
+        const list = (docs, empty) => { const node = el('ul', 'directory-list file-list'); node.append(...(docs.length ? docs.map(doc => docEntry(doc, false)) : [el('li', 'directory-empty', empty)])); return node; };
+        const reportedEntry = item => {
+            const row = el('li', 'vehicle-entry file-entry visit-entry');
+            const meta = el('span');
+            meta.append(el('strong', null, [formatDay(item.date), clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : ''].filter(Boolean).join(' · ')),
+                el('small', null, [clean(item.place), clean(item.city), clean(item.doctor)].filter(Boolean).join(' · ') || 'Ort nicht angegeben'),
+                el('small', null, [clean(item.description), `gemeldet von ${clean(item.reporter_name) || 'unbekannt'}`].filter(Boolean).join(' · ')));
+            row.append(pill(item.status === 'eingetragen' ? 'erledigt' : 'in Arbeit', item.status === 'eingetragen' ? 'gemeldet · eingetragen' : 'gemeldet · neu'), meta);
+            return row;
+        };
+        if (chartTab === 'uebersicht') {
+            // Alles in einer Zeitleiste, das Neueste oben: Termine, Berichte, Rezepte, Überweisungen.
+            const events = [
+                ...visits.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
+                ...reported.map(item => ({ day: item.date, kind: 'Neuer Termin', tab: 'termine', text: [clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : '', clean(item.place), clean(item.description)].filter(Boolean).join(' · ') })),
+                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: doc.kind || 'Sonstiges', tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : 'sonstiges',
+                    text: [clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status }))
+            ].sort((left, right) => String(right.day).localeCompare(String(left.day)));
+            if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
+            if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', 'In dieser Akte steht noch nichts.'));
+            const line = el('ol', 'chart-timeline');
+            let lastYear = '';
+            events.forEach(event => {
+                const year = String(event.day).slice(0, 4);
+                if (year !== lastYear) { line.append(el('li', 'chart-year', year || 'Ohne Datum')); lastYear = year; }
+                const row = el('li', 'chart-event');
+                row.dataset.tab = event.tab;
+                const open = button('chart-event-button', '', () => { chartTab = event.tab; renderChart(patient); updateSelection(); });
+                open.append(el('span', 'chart-event-day', event.day ? `${event.day.slice(8, 10)}.${event.day.slice(5, 7)}.` : '–'), el('strong', null, event.kind), el('span', 'chart-event-text', event.text));
+                if (event.day > today) open.append(el('em', 'chip chip-brand', 'kommt noch'));
+                else if (event.status === 'neu') open.append(el('em', 'chip', 'neu'));
+                row.append(open);
+                line.append(row);
+            });
+            body.append(line);
+        } else if (chartTab === 'termine') {
+            if (!patient.nr) body.append(el('p', 'directory-empty', 'Ohne Patientennummer lassen sich keine Termine zuordnen.'));
+            else if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
+            else {
+                if (reported.length) { const node = el('ul', 'directory-list file-list'); node.append(...reported.map(reportedEntry)); body.append(el('h4', 'file-date', 'Von Dolmetschern gemeldete neue Termine'), node); }
+                const node = el('ul', 'directory-list file-list');
+                node.append(...(visits.length ? visits.map(visitEntry) : [el('li', 'directory-empty', `In den letzten ${DAY_RANGE} Tagen gibt es keine Termine für diesen Patienten.`)]));
+                body.append(el('h4', 'file-date', 'Termine aus dem Tagesplan'), node);
+            }
+        } else if (chartTab === 'rezepte' || chartTab === 'ueberweisung') {
+            // Nach Kategorie geordnet (Medikamente, Physiotherapie, Hilfsmittel …)
+            const docs = parts[chartTab];
+            const prefix = TYPE_TABS[chartTab].prefix;
+            if (!docs.length) body.append(el('p', 'directory-empty', chartTab === 'rezepte' ? 'Für diesen Patienten gibt es noch kein Rezept.' : 'Für diesen Patienten gibt es noch keine Überweisung.'));
+            [...new Set(docs.map(doc => kindKey(doc.kind)))].sort((left, right) => left.localeCompare(right, 'de')).forEach(kind => {
+                const group = docs.filter(doc => kindKey(doc.kind) === kind);
+                body.append(el('h4', 'file-date', `${kind.slice(prefix.length).trim() || kind} (${group.length})`), list(group, ''));
+            });
+        } else {
+            body.append(list(parts[chartTab], { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', sonstiges: 'Keine sonstigen Unterlagen.' }[chartTab]));
+        }
+        box.replaceChildren(head, tabs, body);
+        box.hidden = false;
+    }
+    // Termine und gemeldete Termine der Akte laden (einmal je geöffneter Akte).
+    async function loadChart(patient) {
+        if (chartFor === patient.key && chartVisits != null) return;
+        chartFor = patient.key; chartVisits = null; chartReported = null;
+        const [loaded, reported] = await Promise.all([patient.nr ? loadDays() : null,
+            patient.nr ? Promise.resolve(client.from('tt_new_appointments').select('*').eq('patient_nr', patient.nr).order('date', { ascending: false })).then(result => result.error ? [] : result.data || [], () => []) : []]);
+        if (chartFor !== patient.key) return;
+        chartVisits = loaded ? visitsFor(loaded, patient.nr) : [];
+        chartReported = reported;
+        if (openKey === patient.key) { renderChart(patient); updateSelection(); }
+    }
+
     async function renderFile() {
         const patient = patients.find(item => item.key === openKey);
         $('patientFile').hidden = !patient;
+        $('patientApp').classList.toggle('has-file', Boolean(patient));
         if (!patient) { openKey = ''; return; }
+        if (VIEW === 'archiv') {
+            $('fileTitle').textContent = 'Patientenakte';
+            $('fileSubtitle').textContent = '';
+            $('fileClose').textContent = '← Alle Patientenakten';
+            renderChart(patient);
+            loadChart(patient);
+            return;
+        }
         $('fileTitle').textContent = [patient.nr ? `Patient ${patient.nr}` : 'Ohne Patientennummer', patient.name, patient.birth ? `geb. ${patient.birth}` : ''].filter(Boolean).join(' · ');
         const reports = documents.filter(doc => isReport(doc) && mentions(doc, patient));
         $('fileSubtitle').textContent = [plural(patient.documents.length, 'Unterlage', 'Unterlagen'), plural(reports.length, 'Bericht', 'Berichte'), patient.last ? `zuletzt am ${formatDay(patient.last)}` : ''].filter(Boolean).join(' · ');
@@ -550,6 +698,8 @@
     function openPatient(key) {
         const patient = patients.find(item => item.key === clean(key));
         if (!patient) { showToast('Zu diesem Patienten gibt es keine Unterlagen.', 'error'); return; }
+        if (INBOX) { window.location.href = `patienten.html?akte=${encodeURIComponent(patient.key)}`; return; }
+        if (VIEW === 'archiv') { openKey = patient.key; chartTab = 'uebersicht'; render(); window.scrollTo({ top: 0 }); return; }
         const from = window.scrollY;
         openKey = patient.key;
         render();
@@ -636,6 +786,36 @@
         if (isReport(doc) && (clean(doc.body) || !doc.file_path)) { showReport(doc); return; }
         if (!doc.file_path) { showToast('Zu diesem Eintrag gibt es keine Datei.', 'error'); return; }
         openFile(doc, node);
+    }
+
+    // Direkt drucken: Das PDF (bei einem Bericht ohne Datei wird es hier gesetzt) öffnet unsichtbar und geht an den Drucker.
+    let printFrame = null;
+    async function printDocument(doc, node) {
+        node.disabled = true;
+        try {
+            const file = await fetchFile(doc);
+            printFrame?.remove();
+            const frame = printFrame = document.createElement('iframe');
+            frame.className = 'print-frame';
+            frame.setAttribute('aria-hidden', 'true');
+            const url = URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
+            let started = false;
+            const start = () => {
+                if (started) return;
+                started = true;
+                try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+                catch (error) { window.open(url, '_blank', 'noopener'); showToast('Der Bericht ist in einem neuen Fenster geöffnet – dort mit Strg + P drucken.', 'info'); }
+            };
+            frame.addEventListener('load', () => window.setTimeout(start, 300));
+            window.setTimeout(start, 3000);      // manche Browser melden das Laden eines PDFs nicht
+            frame.src = url;
+            document.body.append(frame);
+            window.setTimeout(() => URL.revokeObjectURL(url), 300000);
+        } catch (error) {
+            showToast(`Drucken nicht möglich: ${error.message}`, 'error');
+        } finally {
+            node.disabled = false;
+        }
     }
 
     async function downloadDocument(doc, node) {
@@ -1094,9 +1274,8 @@
         updateSelection();
     }));
     document.querySelectorAll('[data-doc-filter]').forEach(tile => tile.addEventListener('click', () => {
-        // Eine Kachel gehört zum Eingang: der Reiter springt zurück.
-        typeTab = '';
-        subKind = '';
+        // Eine Kachel gehört zum Eingang: der Reiter springt zurück (in „Neue Berichte“ / „Neue Rezepte“ bleibt er stehen).
+        if (!INBOX) { typeTab = ''; subKind = ''; }
         filter = tile.dataset.docFilter;
         shown = LIST_STEP;
         renderTiles();
@@ -1150,6 +1329,19 @@
     // Auch nach „Esc“: Was noch lädt, gehört danach nicht mehr in den Dialog.
     $('forwardDialog').addEventListener('close', () => { forwardRun += 1; forwardDocs = []; forwardFiles = null; });
 
-    window.PatientenApp = { refresh, openPatient, state: () => ({ documents, filter, selected: [...selected] }) };
-    refresh();
+    const HEADINGS = {
+        berichte: ['ONLINE · EINGANG', 'Neue Berichte', 'Berichte der Dolmetscher und hochgeladene Krankenhausberichte: ansehen, prüfen, weiterleiten. Danach liegen sie in der Patientenakte.'],
+        rezepte: ['ONLINE · EINGANG', 'Neue Rezepte', 'Rezepte nach Kategorie (Medikamente, Physiotherapie, Hilfsmittel), dazu Überweisungen und Sonstiges: ansehen, prüfen, weiterleiten.'],
+        alles: ['ONLINE · PATIENTEN', 'Patienten und Unterlagen', 'Arztberichte, Rezepte, Überweisungen und Berichte der Dolmetscher – nach Patient geordnet.']
+    };
+    if (HEADINGS[VIEW] && $('viewTitle')) { $('viewKicker').textContent = HEADINGS[VIEW][0]; $('viewTitle').textContent = HEADINGS[VIEW][1]; $('viewLead').textContent = HEADINGS[VIEW][2]; }
+    if (VIEW === 'archiv') { $('docTitle').textContent = 'Alle Patientenakten'; $('searchTitle').textContent = 'Patientenakte suchen'; }
+    if (VIEW === 'rezepte') $('docTitle').textContent = 'Rezepte und Überweisungen';
+    if (VIEW === 'berichte') $('docTitle').textContent = 'Berichte';
+    // Sprung aus „Neue Berichte“ / „Neue Rezepte“: patienten.html?akte=4103 öffnet gleich die Akte.
+    const wantedFile = VIEW === 'archiv' ? new URLSearchParams(location.search).get('akte') : '';
+    if (wantedFile) history.replaceState(null, '', location.pathname);
+
+    window.PatientenApp = { refresh, openPatient, view: VIEW, state: () => ({ documents, filter, selected: [...selected] }) };
+    refresh().then(() => { if (wantedFile && patients.some(item => item.key === wantedFile)) openPatient(wantedFile); });
 })();

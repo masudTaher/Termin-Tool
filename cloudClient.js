@@ -119,7 +119,9 @@ const TerminCloud = (() => {
         const openReceipts = newReceipts.error ? [] : newReceipts.data;
         const festReceipts = openReceipts.filter(item => festIds.has(item.profile_id)).length;
         // Neue Unterlagen und Berichte der Dolmetscher (Seite „Patienten“). Fehlt die Tabelle noch, zählt es als 0.
-        const newDocuments = await client.from('tt_documents').select('id').eq('status', 'neu');
+        const newDocuments = await client.from('tt_documents').select('id, kind').eq('status', 'neu');
+        // Aufgeteilt für das Menü: „Neue Berichte“ (Dolmetscher- und Arztberichte) und „Neue Rezepte“ (Rezepte, Überweisungen, Sonstiges).
+        const newReports = newDocuments.error ? 0 : newDocuments.data.filter(item => ['Dolmetscherbericht', 'Arztbericht'].includes(item.kind)).length;
         // Auf Bitte neu geschickte Fotos (Schaden oder Meldung), die noch niemand angesehen hat. Fehlt die Tabelle noch, zählt es als 0.
         const newPhotos = await client.from('tt_requests').select('id, kind').eq('status', 'erledigt').is('seen_at', null);
         // Urlaubsanträge und neue Krankmeldungen/Notfälle der Festangestellten. Fehlt die Tabelle noch, zählt es als 0.
@@ -131,7 +133,7 @@ const TerminCloud = (() => {
         const unreadChat = await client.from('tt_chat').select('id').eq('from_staff', false).is('read_at', null);
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
         const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
-        return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length,
+        return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length, reports: newReports, prescriptions: newDocuments.error ? 0 : newDocuments.data.length - newReports,
             requests: newPhotos.error ? 0 : newPhotos.data.filter(item => item.kind === 'schaden' || item.kind === 'meldung').length,
             accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),

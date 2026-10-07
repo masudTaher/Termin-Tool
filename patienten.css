@@ -109,3 +109,53 @@
 .duty-chip:disabled { opacity: .6; cursor: progress; }
 .recipient-hint:empty { display: none; }
 .recipient-hint { margin: 2px 0 4px; }
+
+/* ---------- Ansichten: „Neue Berichte“, „Neue Rezepte“ (Eingang) und „Patientenakten“ (Archiv) ---------- */
+body[data-view="berichte"] [data-doc-filter="berichte"], body[data-view="berichte"] [data-doc-filter="patienten"],
+body[data-view="rezepte"] [data-doc-filter="berichte"], body[data-view="rezepte"] [data-doc-filter="patienten"] { display: none; }
+body[data-view="berichte"] .patient-filter, body[data-view="rezepte"] .patient-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body[data-view="berichte"] .patient-side, body[data-view="rezepte"] .patient-side, body[data-view="berichte"] .jump-search, body[data-view="rezepte"] .jump-search { display: none; }
+body[data-view="berichte"] .patient-layout, body[data-view="rezepte"] .patient-layout, body[data-view="archiv"] .patient-layout { grid-template-columns: minmax(0, 1fr); }
+.doc-type-tabs button[hidden] { display: none; }
+/* Archiv: oben die Suche, darunter alle Akten – nur Namen. Ist eine Akte offen, füllt sie die Seite. */
+body[data-view="archiv"] .patient-filter, body[data-view="archiv"] #forwardSelected, body[data-view="archiv"] .jump-search, body[data-view="archiv"] #docTypeTabs, body[data-view="archiv"] #docSubKinds, body[data-view="archiv"] #requestNotes { display: none; }
+body[data-view="archiv"] .patient-side { position: static; max-height: none; order: -1; }
+body[data-view="archiv"] .patient-side > .patient-file { overflow: visible; }
+body[data-view="archiv"] #patientApp.is-searching .patient-layout > section:first-child { display: none; }
+body[data-view="archiv"] #patientApp.has-file .patient-layout > section:first-child, body[data-view="archiv"] #patientApp.has-file .patient-side > section:first-child { display: none; }
+body[data-view="archiv"] #patientFile > .file-heading, body[data-view="archiv"] #fileDocuments, body[data-view="archiv"] #fileReports, body[data-view="archiv"] #fileAppointments { display: none; }
+body[data-view="archiv"] #patientList, body[data-view="archiv"] #patientResults { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); max-height: none; }
+.patient-card.patient-card-plain, :root[data-theme="dark"] .patient-card.patient-card-plain { flex-direction: row; align-items: center; gap: 11px; padding: 11px 13px; }
+.patient-card-text { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 1px; }
+.patient-card-plain strong { font-size: .98rem; letter-spacing: 0; text-align: left; }
+.patient-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-style: normal; font-weight: 800; }
+/* Die Akte: Kopf wie ein Deckblatt, Reiter je Bereich, Übersicht als Zeitleiste */
+.chart { display: flex; flex-direction: column; gap: 14px; }
+.chart[hidden] { display: none; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding: 18px 20px; border-radius: 14px; background: linear-gradient(135deg, #14538a, #0b7f78); color: #fff; }
+.chart-avatar { width: 58px; height: 58px; background: rgba(255, 255, 255, .18); color: #fff; font-size: 1.25rem; }
+.chart-id { display: flex; min-width: 200px; flex: 1 1 240px; flex-direction: column; gap: 2px; }
+.chart-kicker { font-size: .7rem; font-weight: 800; letter-spacing: .1em; opacity: .85; text-transform: uppercase; }
+.chart-name { font-size: 1.55rem; line-height: 1.2; overflow-wrap: anywhere; }
+.chart-sub { font-size: .92rem; font-weight: 600; opacity: .95; }
+.chart-facts { display: grid; flex: 1 1 320px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 0; }
+.chart-facts > div { padding: 8px 11px; border-radius: 10px; background: rgba(255, 255, 255, .14); }
+.chart-facts dt { font-size: .68rem; font-weight: 700; letter-spacing: .05em; opacity: .85; text-transform: uppercase; }
+.chart-facts dd { margin: 1px 0 0; font-size: 1rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.chart-tabs { margin: 0; }
+.chart-body { min-height: 120px; }
+.chart-timeline { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); list-style: none; }
+.chart-year { margin: 10px 0 2px -14px; padding-left: 12px; color: var(--muted); font-size: .76rem; font-weight: 800; letter-spacing: .08em; }
+.chart-event { position: relative; }
+.chart-event::before { position: absolute; top: 15px; left: -20px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--brand); content: ""; }
+.chart-event[data-tab="termine"]::before { background: #64748b; }
+.chart-event[data-tab="rezepte"]::before, .chart-event[data-tab="ueberweisung"]::before { background: #18794e; }
+.chart-event[data-tab="arzt"]::before { background: #b7791f; }
+.chart-event-button, :root[data-theme="dark"] .chart-event-button { display: flex; width: 100%; min-height: 40px; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 500; text-align: left; }
+.chart-event-button:hover { border-color: var(--brand); background: var(--surface-hover); }
+.chart-event-day { min-width: 46px; color: var(--muted); font-size: .86rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chart-event-button strong { font-size: .94rem; }
+.chart-event-text { min-width: 0; flex: 1 1 220px; color: var(--ink-soft); font-size: .88rem; overflow-wrap: anywhere; }
+
+/* Unsichtbarer Rahmen für „Drucken“ */
+.print-frame { position: fixed; right: 0; bottom: 0; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }

@@ -73,10 +73,12 @@
             { page: 'filtern', href: 'termineFiltern.html', label: 'Filtern', step: '1', icon: ICONS.filter },
             { page: 'tracking', href: 'termineTracking.html', label: 'Live-Tracking', step: '2', icon: ICONS.tracking },
             { page: 'archiv', href: 'archiv.html', label: 'Tagesarchiv', icon: ICONS.archive },
-            { page: 'termine', href: 'neueTermine.html', label: 'Neue Termine', icon: ICONS.calendar }
+            { page: 'termine', href: 'neueTermine.html', label: 'Neue Termine', icon: ICONS.calendar },
+            { page: 'berichte', href: 'neueBerichte.html', label: 'Neue Berichte', icon: ICONS.patients },
+            { page: 'rezepte', href: 'neueRezepte.html', label: 'Neue Rezepte', icon: ICONS.patients }
         ] },
         { group: 'Patienten', items: [
-            { page: 'patienten', href: 'patienten.html', label: 'Patienten', icon: ICONS.patients }
+            { page: 'patienten', href: 'patienten.html', label: 'Patientenakten', icon: ICONS.patients }
         ] },
         { group: 'Fahrzeuge', items: [
             { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
