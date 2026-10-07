@@ -10,14 +10,36 @@
    <body data-page="nachrichten">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · NACHRICHTEN</p><h1>Nachricht an die Dolmetscher</h1><p>An alle, an eine Gruppe oder an einzelne Personen. Die Nachricht erscheint im Portal und – wenn eingeschaltet – als Mitteilung auf dem Handy.</p></div>
+            <div><p class="page-kicker">ONLINE · NACHRICHTEN</p><h1>Nachrichten</h1><p>Chat mit einzelnen Dolmetschern – mit Antworten und „gelesen“ – und Rundnachrichten an alle oder eine Gruppe. Alles erscheint im Portal und, wenn eingeschaltet, als Mitteilung auf dem Handy.</p></div>
             <div class="fleet-heading-actions"><button type="button" id="messageReload" class="button-secondary">Aktualisieren</button></div>
          </div>
          <p id="messageStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
+         <section class="directory-card chat-office" id="chatOffice" aria-labelledby="chatTitle" hidden>
+            <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="chatTitle">Chat mit den Dolmetschern</h2><p id="chatSummary">Wird geladen …</p></div></div>
+            <div class="chat-office-grid" id="chatGrid" data-open="false">
+               <aside class="chat-people" aria-label="Personen">
+                  <input id="chatPeopleSearch" type="search" autocomplete="off" placeholder="Namen suchen" aria-label="Personen suchen">
+                  <ul id="chatPeople" class="chat-people-list"></ul>
+               </aside>
+               <div class="chat-window">
+                  <div class="chat-window-head" id="chatWindowHead" hidden>
+                     <button type="button" class="back-button" id="chatBack">← Alle</button>
+                     <strong id="chatWith"></strong><span id="chatWithInfo"></span>
+                  </div>
+                  <p id="chatEmpty" class="directory-empty">Wähle links eine Person – dann siehst du das Gespräch und kannst schreiben.</p>
+                  <ul id="chatMessages" class="chat-list chat-list-office" aria-live="polite"></ul>
+                  <form id="chatOfficeForm" class="chat-compose" novalidate hidden>
+                     <textarea id="chatOfficeText" rows="1" maxlength="2000" placeholder="Nachricht schreiben – Enter sendet, Umschalt + Enter macht eine neue Zeile" aria-label="Nachricht schreiben"></textarea>
+                     <button type="submit" class="button-primary chat-send" id="chatOfficeSend">Senden</button>
+                  </form>
+               </div>
+            </div>
+         </section>
+
          <div id="messageApp" class="fleet-layout" hidden>
             <section class="directory-card" aria-labelledby="composeTitle">
-               <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="composeTitle">Neue Nachricht</h2><p>In drei Schritten: Empfänger wählen, Text schreiben, senden.</p></div></div>
+               <div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="composeTitle">Rundnachricht</h2><p>An alle, an eine Gruppe oder an mehrere Einzelne auf einmal. Einzelne bekommen sie in ihren Chat und können antworten.</p></div></div>
                <form id="messageForm" class="fleet-form">
                   <span class="field-label" id="audienceLabel">An wen?</span>
                   <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="audienceLabel">
@@ -40,7 +62,7 @@
             </section>
 
             <section class="directory-card" aria-labelledby="sentTitle">
-               <div class="directory-card-heading"><span class="directory-step directory-step-teal">2</span><div><h2 id="sentTitle">Gesendete Nachrichten</h2><p id="sentSummary">Wird geladen …</p></div></div>
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">3</span><div><h2 id="sentTitle">Gesendete Rundnachrichten</h2><p id="sentSummary">Wird geladen …</p></div></div>
                <ul id="sentList" class="directory-list file-list"></ul>
             </section>
          </div>
@@ -50,6 +72,7 @@
       <script src="cloudClient.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="chatApp.js"></script>
       <script src="nachrichtenApp.js"></script>
    </body>
 </html>

@@ -277,6 +277,9 @@
 
     // Übernimmt eine Meldung des Dolmetschers in den Termin. Die Uhrzeit der Meldung wird im Termin gemerkt,
     // damit sie nicht erneut greift, wenn die Einsatzleitung den Status danach von Hand ändert.
+    // „Patient geht alleine“ ist kein Ausfall: Der Termin findet statt, nur ohne Dolmetscher → Status „alleine“ statt „storniert“.
+    const stornoAlone = assignment => /geht\s+allein/i.test(assignment?.storno_note || '');
+    const stornoStatus = assignment => stornoAlone(assignment) ? 'alleine' : 'storniert';
     function applyProgress(record, assignment) {
         const time = value => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         const status = String(record.Status || 'offen').trim().toLocaleLowerCase('de-DE');
@@ -284,23 +287,26 @@
         // „Termin fällt aus“ aus dem Portal (mit Grund): Der Termin steht von selbst auf „Storniert“, der Dolmetscher ist frei.
         // Ein dabei gesetztes Ende (er war schon losgefahren) löst keine zweite Meldung „ist fertig“ aus.
         const stornoEnd = Boolean(assignment.storno_at) && assignment.finished_at === assignment.storno_at;
+        const alone = stornoAlone(assignment);
+        const closedStatus = stornoStatus(assignment);
+        const closedLabel = alone ? 'Patient geht alleine' : 'Termin fällt aus';
         if (assignment.storno_at && record.Portal_Storno !== assignment.storno_at) {
             record.Portal_Storno = assignment.storno_at;
-            if (!['offen', 'losgefahren', 'storniert'].includes(status)) {
-                // Der Termin steht hier schon auf „beendet“ oder „alleine“: nichts überschreiben, nur Bescheid geben.
-                showToast(`Termin · ${assignment.interpreter_name} meldet „fällt aus“ für ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}. Bei dir steht der Termin schon auf „${record.Status}“ – bitte prüfen.`, 'info', { duration: 20000, keep: true });
-            } else if (status !== 'storniert') {
-                record.Status = 'storniert';
-                showToast(`Termin fällt aus · ${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}`, 'error', { duration: 20000, keep: true });
+            if (!['offen', 'losgefahren', closedStatus].includes(status)) {
+                // Der Termin steht hier schon auf einem anderen Endstand (z. B. „beendet“): nichts überschreiben, nur Bescheid geben.
+                showToast(`Termin · ${assignment.interpreter_name} meldet „${alone ? 'Patient geht alleine' : 'fällt aus'}“ für ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}. Bei dir steht der Termin schon auf „${record.Status}“ – bitte prüfen.`, 'info', { duration: 20000, keep: true });
+            } else if (status !== closedStatus) {
+                record.Status = closedStatus;
+                showToast(`${closedLabel} · ${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note && !alone ? ` – „${assignment.storno_note}“` : ''}`, alone ? 'info' : 'error', { duration: 20000, keep: true });
                 if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-                    try { new Notification('Termin fällt aus', { body: `${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}` }); } catch (error) { /* nur als Einblendung */ }
+                    try { new Notification(closedLabel, { body: `${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}` }); } catch (error) { /* nur als Einblendung */ }
                 }
             }
             changed = true;
         } else if (!assignment.storno_at && record.Portal_Storno) {
             // Der Dolmetscher hat die Stornierung zurückgenommen: der Termin läuft weiter wie vorher.
             delete record.Portal_Storno;
-            if (status === 'storniert') {
+            if (status === 'storniert' || status === 'alleine') {
                 record.Status = assignment.finished_at ? 'beendet' : assignment.started_at ? 'losgefahren' : 'offen';
                 showToast(`Termin · ${assignment.interpreter_name} hat die Stornierung zurückgenommen: ${assignment.title}`, 'info', { duration: 15000, keep: true });
             }
@@ -366,7 +372,9 @@
                 continue;
             }
             const text = assignment.storno_at
-                ? `Fällt aus${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}`
+                ? (stornoAlone(assignment)
+                    ? `Geht alleine${/^patient geht alleine$/i.test(String(assignment.storno_note).trim()) ? '' : ` – ${assignment.storno_note}`}`
+                    : `Fällt aus${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}`)
                 : RESPONSE_TEXT[assignment.response] + (assignment.response_note ? ` – ${assignment.response_note}` : '');
             if (record['Rückmeldung'] !== text) { record['Rückmeldung'] = text; changed = true; }
             responses.set(assignment.appointment_id, assignment.response);
@@ -388,7 +396,7 @@
             if (applyProgress(record, assignment)) changed = true;
             const workStatus = String(record.Status || 'offen');
             // Die Einsatzleitung hat einen im Portal stornierten Termin wieder geöffnet: Die Stornierung gilt nicht mehr.
-            const reopened = Boolean(assignment.storno_at) && workStatus.trim().toLocaleLowerCase('de-DE') !== 'storniert';
+            const reopened = Boolean(assignment.storno_at) && workStatus.trim().toLocaleLowerCase('de-DE') !== stornoStatus(assignment);
             if (reopened) { delete record.Portal_Storno; changed = true; }
             if (assignment.work_status !== workStatus || reopened) {
                 const update = { work_status: workStatus };
@@ -417,7 +425,89 @@
         if (changed) window.refreshTrackingRows?.();
     }
 
-    window.sendTrackingAssignment = async function (index) {
+    // ---------- Bemerkung und Anhang (PDF) zu einem Auftrag ----------
+    // Der Knopf „Bemerkung“ in der Zeile öffnet dieses Fenster; „Auftrag“ sendet wie bisher mit einem Klick –
+    // eine schon gespeicherte Bemerkung und der Anhang gehen dabei wieder mit.
+    const NOTE_CHIPS = ['CD mitnehmen', 'Arztbericht mitbringen', 'Überweisung mitnehmen', 'Vorbefunde mitnehmen', 'Versichertenkarte mitnehmen', 'Patient muss nüchtern sein'];
+    const MAX_ATTACHMENT = 20 * 1024 * 1024;
+    function assignmentDialog(record, name) {
+        return new Promise(resolve => {
+            const make = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
+            const dialog = make('dialog', 'confirm-dialog assign-dialog');
+            dialog.setAttribute('aria-labelledby', 'assignDialogTitle');
+            const title = make('h2', '', `Auftrag an ${name} – Bemerkung und Anhang`);
+            title.id = 'assignDialogTitle';
+            const time = String(record.Termin_Uhrzeit || '').slice(0, 5);
+            const about = make('p', 'field-hint', [time ? `${time} Uhr` : '', String(record['Arzt Nr::Name'] || '').replace(/\s+/g, ' ').trim(), getAppointmentLocation(record)].filter(Boolean).join(' · '));
+            const chips = make('div', 'board-chips request-reasons');
+            const label = make('label', '', 'Bemerkung für den Dolmetscher');
+            label.htmlFor = 'assignNote';
+            const note = make('textarea');
+            note.id = 'assignNote';
+            note.rows = 3;
+            note.maxLength = 500;
+            note.placeholder = 'Zum Beispiel: CD vom MRT mitnehmen, Bericht beim Empfang abgeben …';
+            note.value = record._hinweis || '';
+            NOTE_CHIPS.forEach(text => {
+                const chip = make('button', 'board-chip', text);
+                chip.type = 'button';
+                chip.addEventListener('click', () => { const now = note.value.trim(); if (!now.includes(text)) note.value = now ? `${now}${/[.,;:]$/.test(now) ? ' ' : ', '}${text}` : text; note.focus(); });
+                chips.append(chip);
+            });
+            // Anhang: vorhandene Datei behalten, entfernen oder durch eine neue ersetzen.
+            let keep = Boolean(record._anhang);
+            const fileLabel = make('label', '', 'Anhang (PDF, freiwillig)');
+            fileLabel.htmlFor = 'assignFile';
+            const current = make('p', 'assign-current');
+            const currentName = make('span', '', `Angehängt: ${record._anhangName || 'Datei'}`);
+            const drop = make('button', 'button-quiet-danger', 'Anhang entfernen');
+            drop.type = 'button';
+            current.append(currentName, drop);
+            current.hidden = !keep;
+            const file = make('input');
+            file.type = 'file';
+            file.id = 'assignFile';
+            file.accept = '.pdf,application/pdf';
+            const problem = make('p', 'workflow-status');
+            problem.dataset.kind = 'error';
+            problem.setAttribute('role', 'alert');
+            problem.hidden = true;
+            drop.addEventListener('click', () => { keep = false; current.hidden = true; });
+            file.addEventListener('change', () => { problem.hidden = true; });
+            const hint = make('p', 'field-hint', 'Der Dolmetscher sieht die Bemerkung oben im Auftrag und kann den Anhang dort öffnen. Später ändern oder entfernen: dieses Fenster noch einmal öffnen und erneut senden.');
+            const buttons = make('div', 'modal-buttons');
+            const cancel = make('button', 'button-secondary', 'Abbrechen');
+            cancel.type = 'button';
+            const ok = make('button', 'button-primary', 'Auftrag senden');
+            ok.type = 'button';
+            buttons.append(cancel, ok);
+            dialog.append(title, about, chips, label, note, fileLabel, current, file, problem, hint, buttons);
+            document.body.append(dialog);
+            let result = null;
+            cancel.addEventListener('click', () => dialog.close());
+            ok.addEventListener('click', () => {
+                const picked = file.files?.[0] || null;
+                if (picked && !(picked.type === 'application/pdf' || /\.pdf$/i.test(picked.name))) { problem.textContent = 'Bitte eine PDF-Datei wählen.'; problem.hidden = false; return; }
+                if (picked && picked.size > MAX_ATTACHMENT) { problem.textContent = 'Die Datei ist größer als 20 MB. Bitte eine kleinere PDF-Datei wählen.'; problem.hidden = false; return; }
+                result = { note: note.value.trim(), file: picked, keep: keep && !picked };
+                dialog.close();
+            });
+            dialog.addEventListener('close', () => { dialog.remove(); resolve(result); });
+            dialog.showModal();
+            note.focus();
+        });
+    }
+    window.noteTrackingAssignment = async function (index) {
+        const record = records()[index];
+        if (!record) return;
+        const name = getAppointmentInterpreterName(record);
+        if (!name) { showToast('Bitte trage zuerst den Dolmetscher oder die Dolmetscherin ein.', 'error'); return; }
+        const extra = await assignmentDialog(record, name);
+        if (extra) await window.sendTrackingAssignment(records().indexOf(record), extra);
+    };
+
+    // extra (aus dem Fenster „Bemerkung“): { note, file, keep }. Ohne extra gilt, was am Termin schon gespeichert ist.
+    window.sendTrackingAssignment = async function (index, extra = null) {
         const record = records()[index];
         if (!record) return;
         if (!(await loadProfile())) { showToast('Melde dich zuerst auf der Seite „Team“ als Einsatzleitung an, um Aufträge zu senden.', 'error'); return; }
@@ -439,21 +529,52 @@
         const restart = previous && 'started_at' in previous && previous.interpreter_id !== target.id
             ? { started_at: null, finished_at: null, reminded_at: null, reminder_count: 0 } : {};
         if (restart.reminder_count === 0) { delete record.Portal_Start; delete record.Portal_Ende; }
-        const { error } = await client.from('tt_assignments').upsert({
+        // Bemerkung und Anhang: neu aus dem Fenster oder wie zuletzt am Termin gespeichert.
+        const note = extra ? extra.note : String(record._hinweis || '');
+        let attachment = { path: record._anhang || null, name: record._anhangName || '' };
+        const oldPath = attachment.path;
+        if (extra?.file) {
+            const safe = extra.file.name.replace(/\.pdf$/i, '').normalize('NFD').replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'anhang';
+            const path = `auftraege/${record._id}/${Date.now()}-${safe}.pdf`;
+            const upload = await client.storage.from('dokumente').upload(path, extra.file, { contentType: 'application/pdf' });
+            if (upload.error) {
+                showToast(/row-level security|policy/i.test(upload.error.message || '')
+                    ? 'Der Anhang konnte nicht hochgeladen werden: In der Datenbank fehlt noch Update 22 (supabase/update-22.sql).'
+                    : `Der Anhang konnte nicht hochgeladen werden: ${TerminCloud.germanError(upload.error)}`, 'error');
+                return;
+            }
+            attachment = { path, name: extra.file.name.slice(0, 120) };
+        } else if (extra && !extra.keep) attachment = { path: null, name: '' };
+        const fields = {
             ...restart,
             appointment_id: record._id, date, time, interpreter_id: target.id, interpreter_name: target.full_name,
             title: [time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · '),
             message: createWhatsAppAppointmentMessage(record, true),
             response: 'offen', response_note: '', responded_at: null, cancelled: false,
             work_status: String(record.Status || 'offen'), sent_at: new Date().toISOString(), sent_by: profile.full_name || ''
-        }, { onConflict: 'appointment_id' });
-        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        };
+        const withExtra = { ...fields, office_note: note, attachment_path: attachment.path, attachment_name: attachment.name };
+        let { error } = await client.from('tt_assignments').upsert(withExtra, { onConflict: 'appointment_id' });
+        // Ohne Update 22 kennt die Datenbank die neuen Spalten noch nicht: Der Auftrag geht dann ohne Bemerkung hinaus.
+        if (error && /office_note|attachment_/i.test(error.message || '')) {
+            ({ error } = await client.from('tt_assignments').upsert(fields, { onConflict: 'appointment_id' }));
+            if (!error && (note || attachment.path)) showToast('Bemerkung und Anhang wurden nicht gespeichert: In der Datenbank fehlt noch Update 22 (supabase/update-22.sql).', 'error', { duration: 14000 });
+        }
+        if (error) {
+            if (extra?.file && attachment.path) await client.storage.from('dokumente').remove([attachment.path]).catch(() => null);
+            showToast(TerminCloud.germanError(error), 'error');
+            return;
+        }
+        // Eine ersetzte oder entfernte Datei wird nicht mehr gebraucht.
+        if (oldPath && oldPath !== attachment.path) await client.storage.from('dokumente').remove([oldPath]).catch(() => null);
+        if (note) record._hinweis = note; else delete record._hinweis;
+        if (attachment.path) { record._anhang = attachment.path; record._anhangName = attachment.name; } else { delete record._anhang; delete record._anhangName; }
         record['Rückmeldung'] = RESPONSE_TEXT.offen;
         persistTerminRecords(records(), 'tracking');
         window.refreshTrackingRows?.();
-        showToast(`Auftrag an ${target.full_name} gesendet`, 'success');
+        showToast(`Auftrag an ${target.full_name} gesendet${note && attachment.path ? ' – mit Bemerkung und Anhang' : note ? ' – mit Bemerkung' : attachment.path ? ' – mit Anhang' : ''}`, 'success');
         // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
-        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · ') });
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place, note ? `Hinweis: ${note}` : '', attachment.path ? 'mit Anhang' : ''].filter(Boolean).join(' · ').slice(0, 280) });
         syncDay();
     };
 
@@ -521,10 +642,18 @@
             if (text === null) return;
             const about = `${assignment.title} (${formatFleetDate(assignment.date)})`;
             const body = text ? `Erinnerung zum Auftrag ${about}: ${text}` : waiting ? `Erinnerung: Bitte antworte auf den Auftrag ${about}.` : `Erinnerung an deinen Auftrag ${about}.`;
-            const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [assignment.interpreter_id], body });
-            if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-            const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: waiting ? 'Erinnerung: Auftrag wartet auf Antwort' : 'Erinnerung an deinen Auftrag', body: `${text ? `${text} – ` : ''}${formatFleetDate(assignment.date)} · ${assignment.title}`.slice(0, 200) });
-            showToast(`Erinnerung an ${assignment.interpreter_name} gesendet – ${push?.ok && push.data?.sent ? 'als Mitteilung aufs Handy und als Nachricht im Portal.' : 'als Nachricht im Portal (Mitteilungen aufs Handy sind dort nicht eingeschaltet).'}`, 'success', { duration: 9000 });
+            // Die Erinnerung steht im Chat der Person – dort kann sie gleich antworten. Ohne Update 21 wie früher als Nachricht.
+            const pushTitle = waiting ? 'Erinnerung: Auftrag wartet auf Antwort' : 'Erinnerung an deinen Auftrag';
+            const pushBody = `${text ? `${text} – ` : ''}${formatFleetDate(assignment.date)} · ${assignment.title}`.slice(0, 200);
+            let sent = await TerminCloud.sendChat(assignment.interpreter_id, body, { title: pushTitle, pushBody });
+            if (!sent.ok && sent.missing) {
+                const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [assignment.interpreter_id], body });
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: pushTitle, body: pushBody });
+                sent = { ok: true, pushed: Boolean(push?.ok && push.data?.sent) };
+            }
+            if (!sent.ok) { showToast(sent.message, 'error'); return; }
+            showToast(`Erinnerung an ${assignment.interpreter_name} gesendet – ${sent.pushed ? 'als Mitteilung aufs Handy und als Nachricht im Portal.' : 'als Nachricht im Portal (Mitteilungen aufs Handy sind dort nicht eingeschaltet).'}`, 'success', { duration: 9000 });
         } finally { if (button) button.disabled = false; }
     };
 

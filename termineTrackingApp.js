@@ -273,7 +273,8 @@ function renderTrackingTable(data) {
     const ROW_ICONS = {
         chat: rowIcon('<path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.7-5.1A8.5 8.5 0 1 1 21 11.5z"/>'),
         send: rowIcon('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'),
-        trash: rowIcon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>')
+        trash: rowIcon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>'),
+        clip: rowIcon('<path d="M20 11.5 12.5 19a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.700 4.700l-8 8a1.700 1.700 0 0 1-2.400-2.400l7.200-7.200"/>')
     };
     const cloudReady = typeof window.sendTrackingAssignment === 'function';
     const statusOptions = [['offen', 'Offen'], ['losgefahren', 'Losgefahren'], ['beendet', 'Beendet'], ['alleine', 'Alleine'], ['storniert', 'Storniert']];
@@ -310,9 +311,11 @@ function renderTrackingTable(data) {
                 + (cloudReady ? '' : `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`)
                 + (cloudReady ? `<button type="button" class="assign-button" data-index="${index}" title="${termin['Rückmeldung'] ? 'Auftrag erneut ins Dolmetscher-Portal senden' : 'Auftrag ins Dolmetscher-Portal senden'}">${ROW_ICONS.send}<span>${termin['Rückmeldung'] ? 'Erneut' : 'Auftrag'}</span></button>` : '')
                 + `<button type="button" class="delete-button" data-index="${index}" aria-label="Termin ${index + 1} löschen" title="Termin löschen (kann rückgängig gemacht werden)">${ROW_ICONS.trash}<span class="visually-hidden">Löschen</span></button>`
+                // Bemerkung für den Dolmetscher („CD mitnehmen“) und Anhang als PDF – geht mit dem Auftrag ins Portal.
+                + (cloudReady ? `<button type="button" class="assign-note-button${termin._hinweis || termin._anhang ? ' has-note' : ''}" data-index="${index}" title="${termin._hinweis || termin._anhang ? `${termin._hinweis ? `Bemerkung: ${escapeHtml(termin._hinweis)}` : ''}${termin._hinweis && termin._anhang ? ' · ' : ''}${termin._anhang ? `Anhang: ${escapeHtml(termin._anhangName || 'PDF')}` : ''} (ändern)` : 'Bemerkung für den Dolmetscher schreiben (z. B. „CD mitnehmen“) und eine PDF-Datei anhängen'}">${ROW_ICONS.clip}<span>${termin._hinweis || termin._anhang ? `Bemerkung ✓${termin._anhang ? ' + PDF' : ''}` : 'Bemerkung'}</span></button>` : '')
                 + `</div>`
         ];
-        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}${/^Absage/.test(String(termin['Rückmeldung'] || '')) ? ' is-declined' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
+        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}${/^Absage/.test(String(termin['Rückmeldung'] || '')) ? ' is-declined' : /^Zusage/.test(String(termin['Rückmeldung'] || '')) ? ' is-accepted' : /^Unter Vorbehalt/.test(String(termin['Rückmeldung'] || '')) ? ' is-reserved' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
     }).join('');
 
     updateTrackingOverview(data);
@@ -531,6 +534,7 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         if (button.classList.contains('whatsapp-button')) openWhatsAppModal(index);
         else if (button.classList.contains('delete-button')) deleteRow(index);
         else if (button.classList.contains('assign-button')) window.sendTrackingAssignment?.(index);
+        else if (button.classList.contains('assign-note-button')) window.noteTrackingAssignment?.(index);
         else if (button.classList.contains('assign-remind')) window.remindTrackingAssignment?.(index, button);
         else if (button.classList.contains('assign-withdraw')) window.withdrawTrackingAssignment?.(index, button);
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);

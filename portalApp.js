@@ -350,7 +350,7 @@ if (!window.TerminContact) {
         $('helloDate').textContent = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' });
 
         const open = jobsData.filter(item => item.date >= today && !item.cancelled && item.response === 'offen').length;
-        const unread = messageData.filter(item => !readIds.has(item.id)).length;
+        const unread = unreadMessages();
         const notices = [];
         if (unread) notices.push([`${unread} neue ${unread === 1 ? 'Nachricht' : 'Nachrichten'} von der Einsatzleitung`, () => goTo('messages')]);
         // Aufträge stehen jetzt im Abschnitt „Heute“ (nächster Auftrag groß, weitere als Zeilen) – nicht mehr als Textzeile.
@@ -400,7 +400,7 @@ if (!window.TerminContact) {
     }
 
     function homeState(item) {
-        if (jobStorno(item)) return ['bekannt', 'fällt aus'];
+        if (jobStorno(item)) return ['bekannt', jobAlone(item) ? 'geht alleine' : 'fällt aus'];
         if (jobFinished(item)) return ['erledigt', item.finished_at ? `fertig ${clock(item.finished_at)}` : 'fertig'];
         if (jobStarted(item)) return ['in Arbeit', item.started_at ? `unterwegs seit ${clock(item.started_at)}` : 'unterwegs'];
         return [{ offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response], RESPONSE_LABEL[item.response]];
@@ -872,9 +872,14 @@ if (!window.TerminContact) {
     const jobStarted = item => Boolean(item.started_at) || item.work_status === 'losgefahren';
     // Storniert: vom Dolmetscher gemeldet („Termin fällt aus“, mit Grund) oder von der Einsatzleitung im Tagesplan gesetzt.
     const jobStorno = item => Boolean(item.storno_at) || item.work_status === 'storniert';
+    // „Patient geht alleine“: Der Termin findet statt, nur ohne Dolmetscher – das ist kein Ausfall.
+    const jobAlone = item => Boolean(item.storno_at) && /geht\s+allein/i.test(item.storno_note || '');
+    const jobDeclined = item => item.response === 'abgesagt' && !item.cancelled && !jobStorno(item);
     const jobFinished = item => Boolean(item.finished_at) || ['beendet', 'alleine'].includes(item.work_status) || jobStorno(item);
 
     async function setJobProgress(item, action, button) {
+        const running = action === 'start' ? runningJobBeside(item) : null;
+        if (running) { lockedToast(running); return; }
         if (action === 'start' && !myHandover) {
             toast('Bitte zuerst ein Fahrzeug übernehmen. Ohne Fahrzeug kann der Auftrag nicht gestartet werden.', 'error', () => goTo('vehicle'));
             return;
@@ -892,14 +897,38 @@ if (!window.TerminContact) {
             : `Auftrag beendet. Die Einsatzleitung weiß, dass du wieder frei bist.${overtime ? ` Überstunden eingetragen: ${duration(overtime)}.` : ''}`, 'success');
         // Zusätzlich als Mitteilung an die Einsatzleitung (falls dort eingeschaltet).
         TerminCloud.callFunction({ action: 'progress', assignmentId: item.id }).catch(() => null);
+        // Fertig: Die Karte klappt zu, der nächste Auftrag klappt von selbst auf.
+        if (action === 'finish') jobOpenId = undefined;
         await loadJobs();
         if (isFest() && overtime) loadOvertime();
         renderHome();
     }
 
+    // Es läuft immer nur EIN Auftrag: Der nächste lässt sich erst starten, wenn der laufende beendet (oder als ausgefallen gemeldet) ist.
+    const runningJobBeside = item => jobsData.find(other => other.id !== item.id && !other.cancelled && jobStarted(other) && !jobFinished(other)) || null;
+    const jobShort = item => { const info = homeJobText(item); return [info.time ? `${info.time} Uhr` : '', info.place].filter(Boolean).join(' · '); };
+    function lockedToast(running) {
+        toast(`Bitte beende zuerst den laufenden Auftrag (${jobShort(running)}) – tippe dort auf „Fertig“. Danach kannst du hier losfahren.`, 'info', null, { label: 'Zum laufenden Auftrag', run: () => openJob(running.id) });
+    }
+    // Die drei Schritte als kleine Leiste: erledigt ✓ – jetzt – kommt noch.
+    const STEPS = [['antwort', 'Zusage'], ['los', 'Losfahren'], ['fertig', 'Fertig']];
+    function stepTrack(stage) {
+        const track = el('ol', 'job-track');
+        const now = stage === 'beendet' ? STEPS.length : STEPS.findIndex(([key]) => key === stage);
+        STEPS.forEach(([, label], index) => {
+            const entry = el('li', '', label);
+            entry.dataset.state = index < now ? 'done' : index === now ? 'now' : 'next';
+            if (index === now) entry.setAttribute('aria-current', 'step');
+            track.append(entry);
+        });
+        track.setAttribute('aria-label', stage === 'beendet' ? 'Alle Schritte erledigt' : `Schritt ${now + 1} von 3: ${STEPS[now][1]}`);
+        return track;
+    }
+
     // Nur am Tag des Auftrags (und danach, falls noch nicht beendet) – nicht bei Absage.
     function jobProgress(item) {
         if (jobStorno(item)) return stornoBox(item);
+        if (jobDeclined(item)) return declinedBox(item);
         if (item.response === 'abgesagt' || item.date > TerminCloud.todayIso()) return null;
         const box = el('div', 'job-progress');
         const finished = jobFinished(item);
@@ -911,8 +940,18 @@ if (!window.TerminContact) {
             return box;
         }
         if (started) box.append(el('span', 'job-progress-text', item.started_at ? `Unterwegs seit ${clock(item.started_at)} Uhr` : 'Unterwegs'));
-        const button = el('button', `job-progress-button ${started ? 'is-finish' : 'is-start'}`, started ? 'Fertig – Auftrag beenden' : 'Losfahren');
+        const running = started ? null : runningJobBeside(item);
+        const button = el('button', `job-progress-button ${started ? 'is-finish' : 'is-start'}`, started ? 'Fertig – Auftrag beenden' : 'Jetzt losfahren');
         button.type = 'button';
+        if (running) {
+            // Nicht ausgegraut-stumm: Ein Tipp erklärt, was zuerst zu tun ist, und führt zum laufenden Auftrag.
+            box.dataset.state = 'gesperrt';
+            button.classList.add('is-locked');
+            button.setAttribute('aria-disabled', 'true');
+            button.addEventListener('click', () => lockedToast(running));
+            box.append(button, el('span', 'job-progress-text job-locked-text', `Erst den laufenden Auftrag beenden: ${jobShort(running)}`));
+            return box;
+        }
         button.addEventListener('click', () => setJobProgress(item, started ? 'finish' : 'start', button));
         box.append(button);
         return box;
@@ -973,13 +1012,13 @@ if (!window.TerminContact) {
     }
 
     // ---------- „Termin fällt aus“: Stornierung durch den Dolmetscher, mit Grund ----------
-    const STORNO_REASONS = ['Patient ist nicht erschienen', 'Patient hat abgesagt', 'Praxis hat den Termin abgesagt', 'Termin wurde verschoben', 'Patient ist im Krankenhaus'];
+    const STORNO_REASONS = ['Patient geht alleine', 'Patient ist nicht erschienen', 'Patient hat abgesagt', 'Praxis hat den Termin abgesagt', 'Termin wurde verschoben', 'Patient ist im Krankenhaus'];
     const stornoError = error => /tt_assignment_storno|schema cache|could not find/i.test(error?.message || '')
         ? 'Das ist in der Datenbank noch nicht eingerichtet (Update 20). Bitte sag der Einsatzleitung Bescheid.'
         : TerminCloud.germanError(error);
     async function stornoJob(item, button) {
         const reason = await askReason({
-            title: 'Termin fällt aus',
+            title: 'Termin fällt aus oder Patient geht alleine',
             hint: jobStarted(item)
                 ? 'Warum findet der Termin nicht statt? Der Auftrag wird damit abgeschlossen – die Einsatzleitung sieht den Grund und weiß, dass du wieder frei bist.'
                 : 'Warum findet der Termin nicht statt? Die Einsatzleitung sieht den Grund sofort, der Termin steht bei ihr auf „Storniert“.',
@@ -992,6 +1031,7 @@ if (!window.TerminContact) {
         if (error) { toast(stornoError(error), 'error'); return; }
         TerminCloud.callFunction?.({ action: 'progress', assignmentId: item.id, kind: 'storno' })?.catch?.(() => null);
         toast(jobStarted(item) ? 'Stornierung gemeldet. Der Auftrag ist abgeschlossen – du bist wieder frei.' : 'Stornierung gemeldet. Die Einsatzleitung weiß Bescheid.', 'success');
+        if (jobOpenId === item.id) jobOpenId = undefined;
         await loadJobs();
         renderHome();
     }
@@ -1010,8 +1050,8 @@ if (!window.TerminContact) {
         box.dataset.state = 'storniert';
         const text = el('span', 'job-progress-text');
         if (item.storno_at) {
-            text.append(el('strong', '', `Termin fällt aus – gemeldet um ${clock(item.storno_at)} Uhr`), el('span', '', `Grund: ${item.storno_note || '–'}`), el('span', '', 'Auftrag abgeschlossen.'));
-            const undo = el('button', 'link-button job-storno-undo', 'Stornierung zurücknehmen');
+            text.append(el('strong', '', `${jobAlone(item) ? 'Patient geht alleine' : 'Termin fällt aus'} – gemeldet um ${clock(item.storno_at)} Uhr`), el('span', '', `Grund: ${item.storno_note || '–'}`), el('span', '', 'Auftrag abgeschlossen.'));
+            const undo = el('button', 'link-button job-storno-undo', jobAlone(item) ? 'Meldung zurücknehmen' : 'Stornierung zurücknehmen');
             undo.type = 'button';
             undo.addEventListener('click', () => undoStorno(item, undo));
             box.append(text, undo);
@@ -1021,13 +1061,56 @@ if (!window.TerminContact) {
         }
         return box;
     }
+    // Nach einer Absage ist der Auftrag für den Dolmetscher abgeschlossen. Korrigieren geht weiter über „Antwort ändern“ / „Antwort zurücknehmen“.
+    function declinedBox(item) {
+        const box = el('div', 'job-progress job-storno-box job-declined-box');
+        box.dataset.state = 'abgesagt';
+        const text = el('span', 'job-progress-text');
+        text.append(el('strong', '', `Abgesagt${item.responded_at ? ` um ${clock(item.responded_at)} Uhr` : ''}`),
+            el('span', '', `Grund: ${item.response_note || '–'}`),
+            el('span', '', 'Der Auftrag ist für dich abgeschlossen – die Einsatzleitung plant neu.'));
+        box.dataset.response = 'abgesagt';
+        box.append(text);
+        return box;
+    }
     // Knopf „Termin fällt aus …“: bei jedem Auftrag, der noch nicht beendet, abgesagt oder storniert ist – auch nach dem Losfahren.
     function stornoButton(item) {
         if (item.response === 'abgesagt' || jobFinished(item) || item.cancelled) return null;
-        const button = el('button', 'job-storno-button link-button', 'Termin fällt aus? Stornierung melden …');
+        const button = el('button', 'job-storno-button link-button', 'Termin fällt aus oder Patient geht alleine? Hier melden …');
         button.type = 'button';
         button.addEventListener('click', () => stornoJob(item, button));
         return button;
+    }
+
+    // ---------- Bemerkung der Einsatzleitung und Anhang (PDF) zum Auftrag ----------
+    const CLIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.500 12.500 19a5 5 0 0 1-7-7l8-8a3.300 3.300 0 0 1 4.700 4.700l-8 8a1.700 1.700 0 0 1-2.400-2.400l7.200-7.200"/></svg>';
+    // Der Tab entsteht sofort beim Tippen – nach dem Warten auf die Adresse würde ihn das Handy blockieren.
+    async function openJobAttachment(item, button) {
+        const tab = window.open('', '_blank');
+        button.disabled = true;
+        const { data, error } = await client.storage.from('dokumente').createSignedUrl(item.attachment_path, 600);
+        button.disabled = false;
+        if (error || !data?.signedUrl) {
+            tab?.close();
+            toast('Der Anhang konnte nicht geöffnet werden. Bitte sag der Einsatzleitung Bescheid.', 'error');
+            return;
+        }
+        if (tab && !tab.closed) { tab.opener = null; tab.location.replace(data.signedUrl); }
+        else toast('Der Browser hat das neue Fenster blockiert.', 'info', null, { label: 'Anhang öffnen', run: () => { window.location.href = data.signedUrl; } });
+    }
+    function jobOfficeNote(item) {
+        if (!item.office_note && !item.attachment_path) return null;
+        const box = el('div', 'job-office-note');
+        box.append(el('strong', '', 'Hinweis der Einsatzleitung'));
+        if (item.office_note) box.append(el('p', '', item.office_note));
+        if (item.attachment_path) {
+            const button = el('button', 'job-attachment');
+            button.type = 'button';
+            button.append(svgSpan('job-attachment-icon', CLIP_ICON), el('span', '', `Anhang öffnen${item.attachment_name ? `: ${item.attachment_name}` : ' (PDF)'}`));
+            button.addEventListener('click', () => openJobAttachment(item, button));
+            box.append(button);
+        }
+        return box;
     }
 
     // Ab zwei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
@@ -1079,11 +1162,14 @@ if (!window.TerminContact) {
         summary.addEventListener('click', () => window.setTimeout(() => rememberJobDetails(item.id, details.open), 0));
         details.append(summary, jobBody(item));
 
-        // 1. Antwort (und Hinweis an die Einsatzleitung) – 2. Losfahren / Fertig – 3. Unterlagen
+        // Aufbau der Karte: oben der Kopf, darunter IMMER der nächste Schritt als ein klarer Knopf
+        // (1 Zusage/Absage → 2 Jetzt losfahren → 3 Fertig), aufgeklappt dazu Angaben, Hinweis, Unterlagen.
         const answered = item.response !== 'offen';
+        const started = jobStarted(item);
+        const finished = jobFinished(item);
+        const declined = jobDeclined(item);
         const saved = item.response_note || '';
         const answer = el('div', 'job-answer');
-        answer.append(el('span', 'job-answer-title', answered ? 'Antwort ändern' : 'Deine Antwort'));
         const noteLabel = el('label', 'job-field-label job-note-label', 'Hinweis an die Einsatzleitung (freiwillig)');
         const noteRow = el('div', 'job-note-row');
         const note = document.createElement('input');
@@ -1116,7 +1202,7 @@ if (!window.TerminContact) {
             // Ohne Update 16 kennt die Datenbank weder „Hinweis ohne Antwort“ noch „Antwort zurücknehmen“.
             toast(/unbekannte antwort/i.test(rpcError.message || '')
                 ? (purpose === 'hinweis'
-                    ? 'Bitte wähle zuerst Zusage, Unter Vorbehalt oder Absage – dein Hinweis wird mitgeschickt.'
+                    ? 'Bitte wähle zuerst Zusage oder Absage – dein Hinweis wird mitgeschickt.'
                     : 'Zurücknehmen ist in der Datenbank noch nicht eingerichtet (Update 16). Wähle einfach die richtige Antwort.')
                 : TerminCloud.germanError(rpcError), 'error');
             return false;
@@ -1134,67 +1220,92 @@ if (!window.TerminContact) {
         send.addEventListener('click', sendNote);
         noteRow.append(note, send);
         showNoteState();
+        answer.append(noteLabel, noteRow, noteState);
 
-        const buttons = el('div', 'job-buttons');
-        RESPONSES.forEach(([value, text]) => {
-            const button = el('button', 'workday-button', text);
-            button.type = 'button';
-            button.dataset.response = value;
-            button.setAttribute('aria-pressed', String(item.response === value));
-            button.addEventListener('click', async () => {
-                let noteText = note.value.trim();
-                if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
-                // Eine Absage geht nur mit Grund – erst recht, wenn vorher zugesagt war. Steht schon ein Hinweis im Feld, zählt er als Grund.
-                if (value === 'abgesagt' && noteText.length < 3) {
-                    const reason = await askReason({
-                        title: item.response === 'zugesagt' ? 'Zusage zurückziehen und absagen' : 'Auftrag absagen',
-                        hint: 'Warum kannst du den Auftrag nicht übernehmen? Die Einsatzleitung sieht den Grund sofort und kann neu planen.',
-                        reasons: ABSAGE_REASONS, okLabel: 'Absage senden', value: noteText
-                    });
-                    if (reason == null) return;
-                    noteText = reason;
-                }
-                const before = { response: item.response, note: saved, draft: note.value.trim() !== saved ? note.value : null };
-                if (!(await respond(value, noteText))) return;
-                // Mitteilung „TERMIN · zugesagt / abgesagt …“ an die Einsatzleitung – getrennt von den Fahrzeug-Mitteilungen.
-                TerminCloud.callFunction?.({ action: 'response', assignmentId: item.id })?.catch?.(() => null);
-                // Wer gerade die Angaben liest, soll sie nach der Antwort weiter vor sich haben.
-                if (details.open) rememberJobDetails(item.id, true);
-                // Vertippt? „Rückgängig“ stellt den Stand von vorher wieder her (auch „noch keine Antwort“).
-                toast(`${text} gesendet`, 'success', null, { label: 'Rückgängig', run: async () => {
-                    if (!(await respond(before.response, before.note, 'zurueck'))) return;
-                    // Ein Hinweis, der mit der Antwort verschickt wurde, steht danach wieder als Entwurf im Feld.
-                    if (before.draft != null) jobNoteDrafts[item.id] = before.draft;
-                    toast(before.response === 'offen' ? 'Zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.' : `Zurückgenommen. Es gilt wieder „${RESPONSE_LABEL[before.response]}“.`, 'success');
-                    await loadJobs();
-                } });
+        // Eine Antwort senden (Zusage, Unter Vorbehalt, Absage) – mit „Rückgängig“.
+        const answerWith = async (value, text) => {
+            let noteText = note.value.trim();
+            if (item.response === value && noteText === saved) { toast(`„${text}“ ist schon deine Antwort.`, 'info'); return; }
+            // Eine Absage geht nur mit Grund – erst recht, wenn vorher zugesagt war. Steht schon ein Hinweis im Feld, zählt er als Grund.
+            if (value === 'abgesagt' && noteText.length < 3) {
+                const reason = await askReason({
+                    title: item.response === 'zugesagt' ? 'Zusage zurückziehen und absagen' : 'Auftrag absagen',
+                    hint: 'Warum kannst du den Auftrag nicht übernehmen? Die Einsatzleitung sieht den Grund sofort und kann neu planen.',
+                    reasons: ABSAGE_REASONS, okLabel: 'Absage senden', value: noteText
+                });
+                if (reason == null) return;
+                noteText = reason;
+            }
+            const before = { response: item.response, note: saved, draft: note.value.trim() !== saved ? note.value : null };
+            if (!(await respond(value, noteText))) return;
+            // Abgesagt = abgeschlossen: Die Karte klappt zu, der nächste Auftrag klappt von selbst auf.
+            if (value === 'abgesagt' && jobOpenId === item.id) jobOpenId = undefined;
+            // Mitteilung „TERMIN · zugesagt / abgesagt …“ an die Einsatzleitung – getrennt von den Fahrzeug-Mitteilungen.
+            TerminCloud.callFunction?.({ action: 'response', assignmentId: item.id })?.catch?.(() => null);
+            // Wer gerade die Angaben liest, soll sie nach der Antwort weiter vor sich haben.
+            if (details.open) rememberJobDetails(item.id, true);
+            // Vertippt? „Rückgängig“ stellt den Stand von vorher wieder her (auch „noch keine Antwort“).
+            toast(`${text} gesendet`, 'success', null, { label: 'Rückgängig', run: async () => {
+                if (!(await respond(before.response, before.note, 'zurueck'))) return;
+                // Ein Hinweis, der mit der Antwort verschickt wurde, steht danach wieder als Entwurf im Feld.
+                if (before.draft != null) jobNoteDrafts[item.id] = before.draft;
+                toast(before.response === 'offen' ? 'Zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.' : `Zurückgenommen. Es gilt wieder „${RESPONSE_LABEL[before.response]}“.`, 'success');
                 await loadJobs();
+            } });
+            await loadJobs();
+        };
+        const responseButtons = () => {
+            const buttons = el('div', 'job-buttons');
+            RESPONSES.forEach(([value, text]) => {
+                const button = el('button', 'workday-button', text);
+                button.type = 'button';
+                button.dataset.response = value;
+                button.setAttribute('aria-pressed', String(item.response === value));
+                button.addEventListener('click', async () => {
+                    if (button.disabled) return;
+                    button.disabled = true;
+                    try { await answerWith(value, text); } finally { button.disabled = false; }
+                });
+                buttons.append(button);
             });
-            buttons.append(button);
-        });
-        answer.append(noteLabel, noteRow, noteState, buttons);
-        // Antwort ganz zurücknehmen – solange der Auftrag noch nicht läuft.
-        if (answered && !jobStarted(item) && !jobFinished(item)) {
-            const undo = el('button', 'link-button job-answer-undo', 'Antwort zurücknehmen');
-            undo.type = 'button';
-            undo.addEventListener('click', async () => {
-                if (!(await respond('offen', '', 'zurueck'))) return;
-                toast('Antwort zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.', 'success');
-                await loadJobs();
-            });
-            answer.append(undo);
+            return buttons;
+        };
+
+        // ---------- Der nächste Schritt: immer genau ein klarer Knopf – auch auf der zugeklappten Karte ----------
+        const stage = declined || jobStorno(item) ? 'zu' : finished ? 'beendet' : started ? 'fertig' : answered ? 'los' : 'antwort';
+        const step = el('div', 'job-step');
+        step.dataset.stage = stage;
+        if (stage !== 'zu') step.append(stepTrack(stage));
+        if (stage === 'antwort') {
+            step.append(el('span', 'job-step-title', 'Kannst du den Auftrag übernehmen?'), responseButtons());
+        } else {
+            const progress = jobProgress(item);
+            if (progress) step.append(progress);
+            else {
+                // Zugesagt, aber der Termin ist erst an einem anderen Tag: „Jetzt losfahren“ kommt von selbst.
+                const wait = el('div', 'job-progress job-step-wait');
+                wait.dataset.state = 'warten';
+                wait.append(el('span', 'job-progress-text', `${RESPONSE_LABEL[item.response]} gespeichert. „Jetzt losfahren“ erscheint hier am ${date.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })}.`));
+                step.append(wait);
+            }
         }
+
         const rest = el('div', 'job-rest');
+        // Bemerkung der Einsatzleitung („CD mitnehmen“ …) und Anhang stehen ganz oben – das soll niemand übersehen.
+        const officeNote = jobOfficeNote(item);
+        if (officeNote) rest.append(officeNote);
         rest.append(details, answer);
-        card.append(top, rest);
-        const progress = jobProgress(item);
-        if (progress) rest.append(progress);
+        card.append(top, step, rest);
+        if (declined) card.classList.add('is-closed');
         if (foldable) {
             card.classList.add('is-foldable');
             const patientName = parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || '';
             if (patientName) main.append(el('span', 'job-mini-patient', patientName));
-            if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', 'Fällt aus'));
-            else if (jobStarted(item) && !jobFinished(item)) main.append(el('span', 'job-mini-state', 'Unterwegs'));
+            if (item.office_note || item.attachment_path) main.append(el('span', 'job-mini-note', [item.office_note ? 'Hinweis der Einsatzleitung' : '', item.attachment_path ? 'Anhang' : ''].filter(Boolean).join(' · ')));
+            if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', jobAlone(item) ? 'Patient geht alleine' : 'Fällt aus'));
+            else if (declined) main.append(el('span', 'job-mini-state job-mini-storno', 'Abgeschlossen'));
+            else if (finished) main.append(el('span', 'job-mini-state', item.finished_at ? `Beendet ${clock(item.finished_at)}` : 'Beendet'));
+            else if (started) main.append(el('span', 'job-mini-state', 'Unterwegs'));
             top.append(svgSpan('job-fold-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'));
             top.setAttribute('role', 'button');
             top.tabIndex = 0;
@@ -1217,6 +1328,26 @@ if (!window.TerminContact) {
             docs.append(svgSpan('job-docs-icon', JOB_ICONS.camera), el('span', '', 'Unterlagen scannen'));
             docs.addEventListener('click', () => window.PortalDocs?.startFor(item));
             rest.append(docs);
+        }
+        // Selten gebraucht, deshalb ganz unten und klein: Antwort ändern / zurücknehmen – solange der Auftrag noch nicht läuft.
+        if (answered && !started && !finished) {
+            const change = el('div', 'job-change');
+            const toggleChange = el('button', 'link-button job-change-toggle', declined ? 'Doch übernehmen? Antwort ändern …' : 'Antwort ändern …');
+            toggleChange.type = 'button';
+            toggleChange.setAttribute('aria-expanded', 'false');
+            const panel = el('div', 'job-change-panel');
+            panel.hidden = true;
+            const undo = el('button', 'link-button job-answer-undo', 'Antwort zurücknehmen');
+            undo.type = 'button';
+            undo.addEventListener('click', async () => {
+                if (!(await respond('offen', '', 'zurueck'))) return;
+                toast('Antwort zurückgenommen. Der Auftrag wartet wieder auf deine Antwort.', 'success');
+                await loadJobs();
+            });
+            panel.append(el('span', 'job-answer-title', `Deine Antwort bisher: ${RESPONSE_LABEL[item.response]}`), responseButtons(), undo);
+            toggleChange.addEventListener('click', () => { panel.hidden = !panel.hidden; toggleChange.setAttribute('aria-expanded', String(!panel.hidden)); });
+            change.append(toggleChange, panel);
+            rest.append(change);
         }
         // Ganz unten, weil selten gebraucht: „Termin fällt aus“.
         const storno = stornoButton(item);
@@ -1456,6 +1587,43 @@ if (!window.TerminContact) {
         // Unterseiten für Schaden, Meldung und Rückgabe gibt es nur mit Fahrzeug.
         if (NEEDS_VEHICLE.includes(currentView) && !myHandover) goTo('vehicle');
     }
+
+    // ---------- Mein Fahrzeug antippen: Standort und Details – auch nach der Übernahme ----------
+    async function openCarDetails() {
+        if (!myHandover) return;
+        const vehicle = vehicleById(myHandover.vehicle_id);
+        const dialog = $('carDialog');
+        $('carDialogTitle').textContent = vehicle?.plate || 'Fahrzeug';
+        $('carDialogModel').textContent = vehicle ? [vehicle.brand, vehicle.body, vehicle.type, vehicle.label].filter(Boolean).join(' · ') : '';
+        $('carDialogPlace').textContent = vehicle?.parking || 'nicht eingetragen';
+        $('carDialogPlaceNote').textContent = vehicle?.parking
+            ? 'Dort stand das Auto, als du es übernommen hast. Bei der Rückgabe trägst du ein, wo du es abstellst.'
+            : 'Der letzte Fahrer hat keinen Parkort eingetragen. Bei der Rückgabe trägst du ein, wo du es abstellst.';
+        const sinceDay = myHandover.date === TerminCloud.todayIso() ? 'heute' : new Date(`${myHandover.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        fillStateList($('carDialogList'), [
+            ['Übernommen', `${sinceDay} um ${String(myHandover.start_time).slice(0, 5)} Uhr`],
+            ['Kilometer bei Übernahme', formatKm(myHandover.start_mileage)],
+            ['Tank bei Übernahme', vehicle?.fuel == null ? 'unbekannt' : FUEL[vehicle.fuel]],
+            ['Letzter Fahrer', myHandover.previous_driver_name || 'unbekannt'],
+            ['Innen', cleanText(vehicle?.clean_inside)],
+            ['Außen', cleanText(vehicle?.clean_outside)],
+            ['Rückgabe', myHandover.emergency ? 'Notdienst – bleibt bei dir bis zur Rückgabe' : keepsOvernight(myHandover) ? 'bleibt über Nacht bei dir' : 'heute, wenn du fertig bist']
+        ]);
+        $('carDialogDamages').textContent = 'Bekannte Schäden werden geladen …';
+        if (!dialog.open) dialog.showModal();
+        try {
+            const current = await currentDamages(myHandover.vehicle_id);
+            $('carDialogDamages').textContent = current.length
+                ? `${current.length} ${current.length === 1 ? 'Schaden ist' : 'Schäden sind'} für dieses Auto eingetragen.`
+                : 'Für dieses Auto ist kein Schaden eingetragen.';
+        } catch (error) {
+            $('carDialogDamages').textContent = '';
+        }
+    }
+    $('heroCard')?.addEventListener('click', openCarDetails);
+    $('carDialogClose')?.addEventListener('click', () => $('carDialog').close());
+    $('carDialogDamage')?.addEventListener('click', () => { $('carDialog').close(); goTo('damage'); });
+    $('carDialog')?.addEventListener('click', event => { if (event.target === $('carDialog')) $('carDialog').close(); });
 
     // ---------- Auto über Nacht behalten ----------
     // Früher Termin (alle): nur diese Nacht – am nächsten Tag gilt es noch bis 16 Uhr, danach erinnert das Portal wieder.
@@ -2377,46 +2545,155 @@ if (!window.TerminContact) {
         }
     });
 
-    // ---------- Nachrichten der Einsatzleitung ----------
+    // ---------- Nachrichten: Chat mit der Einsatzleitung ----------
+    // Rundnachrichten (tt_messages) und das eigene Gespräch (tt_chat) stehen in einem Verlauf – wie in einem Messenger,
+    // die neueste unten. Der Dolmetscher kann antworten; „gelesen“ wird in beide Richtungen angezeigt.
+    let chatData = [];           // eigenes Gespräch, älteste zuerst
+    let chatReady = true;        // false: die Tabelle fehlt noch (Update 21)
+    let messagesShown = '';      // Stand der Anzeige – nur bei Änderungen wird neu gezeichnet
+    const unreadMessages = () => messageData.filter(item => !readIds.has(item.id)).length + chatData.filter(item => item.from_staff && !item.read_at).length;
     async function loadMessages() {
-        const [messages, reads] = await Promise.all([
+        const [messages, reads, chat] = await Promise.all([
             client.from('tt_messages').select('*').order('created_at', { ascending: false }).limit(50),
-            client.from('tt_message_reads').select('message_id').eq('profile_id', profile.id)
+            client.from('tt_message_reads').select('message_id').eq('profile_id', profile.id),
+            client.from('tt_chat').select('*').eq('thread_id', profile.id).order('created_at', { ascending: false }).limit(200)
         ]);
-        if (messages.error) { messageData = []; return; }
-        // Nachrichten aus der Zeit vor dem eigenen Konto sind nicht mehr wichtig.
-        messageData = messages.data.filter(item => !profile.created_at || item.created_at >= profile.created_at);
-        const knownUnread = messageData.filter(item => !readIds.has(item.id)).length;
-        readIds = new Set(reads.error ? [] : reads.data.map(item => item.message_id));
-        const unread = messageData.filter(item => !readIds.has(item.id)).length;
-        if (loadMessages.loaded && unread > knownUnread) toast('Neue Nachricht von der Einsatzleitung.', 'success');
+        const before = loadMessages.loaded ? unreadMessages() : 0;
+        if (messages.error) messageData = [];
+        else {
+            // Nachrichten aus der Zeit vor dem eigenen Konto sind nicht mehr wichtig.
+            messageData = messages.data.filter(item => !profile.created_at || item.created_at >= profile.created_at);
+            readIds = new Set(reads.error ? [] : reads.data.map(item => item.message_id));
+        }
+        chatReady = !chat.error;
+        chatData = chat.error ? [] : [...chat.data].reverse();
+        const unread = unreadMessages();
+        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast('Neue Nachricht von der Einsatzleitung.', 'success', null, { label: 'Lesen', run: () => goTo('messages') });
         loadMessages.loaded = true;
-        if (currentView === 'messages') renderMessages();
+        if (currentView === 'messages') { renderMessages(); markMessagesRead(); }
     }
 
-    function renderMessages() {
+    const AUDIENCE_NOTE = { alle: 'an alle', fest: 'an alle Festangestellten', 'temporär': 'an alle Temporären' };
+    function chatDay(iso) {
+        const date = new Date(iso);
+        const start = value => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+        const days = Math.round((start(new Date()) - start(date)) / 86400000);
+        return days === 0 ? 'Heute' : days === 1 ? 'Gestern' : date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    function renderMessages(force = false) {
         const list = $('messageList');
-        list.replaceChildren();
-        $('messagesSummary').textContent = messageData.length ? 'Von der Einsatzleitung. Die neueste steht oben.' : 'Noch keine Nachrichten.';
-        messageData.forEach(item => {
-            const entry = el('li', `message-card${readIds.has(item.id) ? '' : ' is-new'}`);
-            const head = el('div', 'message-head');
-            head.append(el('strong', '', item.sender_name || 'Einsatzleitung'), el('span', '', new Date(item.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })));
-            entry.append(head, el('p', '', item.body));
-            if (!readIds.has(item.id)) entry.append(el('em', 'chip chip-brand', 'Neu'));
-            list.append(entry);
+        const items = [
+            ...messageData.map(item => ({ id: `r-${item.id}`, at: item.created_at, mine: false, name: item.sender_name || 'Einsatzleitung', body: item.body, note: AUDIENCE_NOTE[item.audience] || '', fresh: !readIds.has(item.id) })),
+            ...chatData.map(item => ({ id: item.id, at: item.created_at, mine: !item.from_staff, name: item.sender_name || 'Einsatzleitung', body: item.body, read: item.read_at, edited: Boolean(item.edited_at), fresh: item.from_staff && !item.read_at, row: item }))
+        ].sort((left, right) => new Date(left.at) - new Date(right.at));
+        const shown = JSON.stringify(items.map(item => [item.id, item.body, item.read || '', item.fresh, item.edited]));
+        $('chatForm').hidden = !chatReady;
+        $('chatMissing').hidden = chatReady;
+        if (!force && shown === messagesShown) return;
+        // Wer gerade unten mitliest, bleibt unten; wer nach oben geblättert hat, wird nicht gestört.
+        const atBottom = !messagesShown || window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
+        messagesShown = shown;
+        $('messagesSummary').textContent = items.length ? 'Schreib der Einsatzleitung direkt. Unter deinen Nachrichten steht, ob sie gelesen wurden.' : 'Noch keine Nachrichten. Schreib der Einsatzleitung einfach hier.';
+        const clock = iso => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        let lastDay = '';
+        const nodes = [];
+        items.forEach(item => {
+            const day = chatDay(item.at);
+            if (day !== lastDay) { nodes.push(el('li', 'chat-day', day)); lastDay = day; }
+            const row = el('li', `chat-row ${item.mine ? 'is-me' : 'is-them'}${item.fresh ? ' is-new' : ''}`);
+            row.dataset.id = item.id;
+            const bubble = el('div', 'chat-bubble');
+            if (!item.mine) bubble.append(el('span', 'chat-name', [item.name, item.note].filter(Boolean).join(' · ')));
+            bubble.append(el('p', '', item.body));
+            const meta = el('span', 'chat-meta', `${clock(item.at)}${item.edited ? ' · bearbeitet' : ''}`);
+            if (item.mine) {
+                const tick = el('span', `chat-tick${item.read ? ' is-read' : ''}`, item.read ? `✓✓ gelesen ${clock(item.read)}` : '✓ gesendet');
+                tick.title = item.read ? 'Die Einsatzleitung hat die Nachricht gesehen' : 'Gesendet – noch nicht gelesen';
+                meta.append(tick);
+            }
+            bubble.append(meta);
+            row.append(bubble);
+            if (item.mine) {
+                // Eigene Nachricht antippen: „Löschen“ erscheint.
+                const remove = el('button', 'link-button chat-delete', 'Nachricht löschen');
+                remove.type = 'button';
+                remove.hidden = true;
+                bubble.tabIndex = 0;
+                bubble.setAttribute('role', 'button');
+                bubble.setAttribute('aria-label', 'Eigene Nachricht – antippen zum Löschen');
+                const toggle = () => { remove.hidden = !remove.hidden; };
+                bubble.addEventListener('click', toggle);
+                bubble.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
+                remove.addEventListener('click', async () => {
+                    remove.disabled = true;
+                    const { error } = await client.from('tt_chat').delete().eq('id', item.row.id);
+                    if (error) { remove.disabled = false; toast(TerminCloud.germanError(error), 'error'); return; }
+                    toast('Nachricht gelöscht.', 'success');
+                    await loadMessages();
+                });
+                row.append(remove);
+            }
+            nodes.push(row);
         });
+        list.replaceChildren(...nodes);
+        if (atBottom) window.requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
     }
 
-    async function openMessages() {
-        renderMessages();
+    // Gelesen melden – nur, wenn der Chat wirklich offen und sichtbar ist.
+    async function markMessagesRead() {
+        if (document.hidden || currentView !== 'messages') return;
         const unread = messageData.filter(item => !readIds.has(item.id));
-        if (!unread.length) return;
-        const { error } = await client.from('tt_message_reads').upsert(unread.map(item => ({ message_id: item.id, profile_id: profile.id })), { onConflict: 'message_id,profile_id' });
-        if (error) return;
-        unread.forEach(item => readIds.add(item.id));
-        $('messagesBadge').hidden = true;
+        const unreadChat = chatData.some(item => item.from_staff && !item.read_at);
+        if (!unread.length && !unreadChat) return;
+        const [reads, chat] = await Promise.all([
+            unread.length ? client.from('tt_message_reads').upsert(unread.map(item => ({ message_id: item.id, profile_id: profile.id })), { onConflict: 'message_id,profile_id' }) : { error: null },
+            unreadChat ? client.rpc('tt_chat_read', { p_thread: null }) : { error: null }
+        ]);
+        if (!reads.error) unread.forEach(item => readIds.add(item.id));
+        if (!chat.error && unreadChat) { const now = new Date().toISOString(); chatData.forEach(item => { if (item.from_staff && !item.read_at) item.read_at = now; }); }
+        const left = unreadMessages();
+        $('messagesBadge').hidden = !left;
+        $('messagesBadge').textContent = left ? String(left) : '';
     }
+    async function openMessages() {
+        messagesShown = '';
+        renderMessages(true);
+        await markMessagesRead();
+    }
+
+    function growChatText() {
+        const box = $('chatText');
+        box.style.height = 'auto';
+        box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
+    }
+    $('chatText').addEventListener('input', growChatText);
+    $('chatForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const box = $('chatText');
+        const text = box.value.trim();
+        if (!text) { box.focus(); return; }
+        const button = $('chatSend');
+        button.disabled = true;
+        const { data, error } = await client.from('tt_chat').insert({ thread_id: profile.id, sender_id: profile.id, sender_name: profile.full_name || '', from_staff: false, body: text.slice(0, 2000) }).select('id').single();
+        button.disabled = false;
+        if (error) {
+            toast(/tt_chat|schema cache|does not exist|could not find/i.test(error.message || '')
+                ? 'Der Chat ist in der Datenbank noch nicht eingerichtet (Update 21). Bitte sag der Einsatzleitung Bescheid.'
+                : `Nicht gesendet: ${TerminCloud.germanError(error)}`, 'error');
+            return;
+        }
+        box.value = '';
+        growChatText();
+        // Mitteilung aufs Handy der Einsatzleitung.
+        if (data?.id) TerminCloud.callFunction?.({ action: 'chat', chatId: data.id })?.catch?.(() => null);
+        messagesShown = '';
+        await loadMessages();
+        window.scrollTo({ top: document.documentElement.scrollHeight });
+        box.focus({ preventScroll: true });
+    });
+    // Solange der Chat offen ist, kommen neue Nachrichten und „gelesen“ alle paar Sekunden von selbst.
+    window.setInterval(() => { if (currentView === 'messages' && !document.hidden && profile?.active && !profile.must_change_password) loadMessages(); }, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && currentView === 'messages' && profile?.active) loadMessages(); });
 
     // ---------- Mein Konto: Mitteilungen, Passwort, Installation ----------
     async function renderAccount() {

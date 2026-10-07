@@ -4,7 +4,7 @@
 (function () {
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     const SEEN_KEY = 'terminTool.cloudInbox.seen.v1';
-    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten', 'termine'];
+    const BADGES = ['fahrzeugakte', 'team', 'abrechnung', 'fest', 'patienten', 'termine', 'nachrichten'];
 
     function setBadge(page, count) {
         // Seitenleiste und – auf dem Handy – die untere Leiste bekommen dasselbe Zählerschild.
@@ -93,6 +93,7 @@
         setBadge('fest', counts.fest);
         setBadge('patienten', counts.documents || 0);
         setBadge('termine', counts.appointments || 0);
+        setBadge('nachrichten', counts.chat || 0);
         refreshUsage(false);
 
         let seen = null;
@@ -108,6 +109,8 @@
             if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage oder neuer Bericht eines Dolmetschers');
             if ((counts.requests || 0) > (seen.requests || 0)) messages.push('Ein angefordertes Foto ist da (Fuhrpark)');
             if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push('Ein Dolmetscher hat einen neuen Termin gemeldet (Seite „Neue Termine“)');
+            // Auf der Seite „Nachrichten“ meldet der Chat neue Nachrichten selbst (mit Namen).
+            if ((counts.chat || 0) > (seen.chat || 0) && document.body.dataset.page !== 'nachrichten') messages.push('Neue Nachricht eines Dolmetschers (Seite „Nachrichten“)');
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
         messages.forEach(message => {

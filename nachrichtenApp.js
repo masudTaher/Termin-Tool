@@ -69,24 +69,15 @@
         if (messageResult.error) { $('messageApp').hidden = true; setStatus(`${TerminCloud.germanError(messageResult.error)} Bitte supabase/update-8.sql im SQL Editor ausführen.`, 'error'); return; }
         people = peopleResult.data || [];
         $('messageApp').hidden = false;
-        // Direkter Sprung aus der Dolmetscher-Übersicht: nachrichten.html?an=<Konto> wählt die Person schon aus.
-        const wanted = new URLSearchParams(location.search).get('an');
-        if (wanted) {
-            history.replaceState(null, '', location.pathname);
-            if (people.some(person => person.id === wanted && person.active && person.id !== profile.id)) {
-                picked.clear();
-                picked.add(wanted);
-                document.querySelector('input[name="audience"][value="einzeln"]').checked = true;
-                window.setTimeout(() => $('messageBody').focus(), 60);
-            }
-        }
+        // Der direkte Sprung nachrichten.html?an=<Konto> öffnet das Gespräch mit der Person (chatApp.js).
         renderRecipients();
         renderAudience();
-        renderSent(messageResult.data, readResult.error ? [] : readResult.data);
+        // Nachrichten an Einzelne stehen im Chat der Person – hier bleiben die Rundnachrichten.
+        renderSent(messageResult.data.filter(message => message.audience !== 'einzeln'), readResult.error ? [] : readResult.data);
     }
 
     function renderSent(messages, reads) {
-        $('sentSummary').textContent = messages.length ? `${messages.length} ${messages.length === 1 ? 'Nachricht' : 'Nachrichten'} · „gelesen“ zeigt, wer sie im Portal geöffnet hat` : 'Noch keine Nachricht gesendet.';
+        $('sentSummary').textContent = messages.length ? `${messages.length} ${messages.length === 1 ? 'Rundnachricht' : 'Rundnachrichten'} · „gelesen“ zeigt, wer sie im Portal geöffnet hat` : 'Noch keine Rundnachricht gesendet.';
         const list = $('sentList');
         list.replaceChildren();
         messages.forEach(message => {
@@ -170,6 +161,24 @@
         const button = event.target.querySelector('button[type="submit"]');
         button.disabled = true;
         try {
+            // An einzelne Personen: Die Nachricht geht in den Chat jeder Person – dort kann sie antworten.
+            if (audience === 'einzeln' && window.ChatOffice) {
+                let sent = 0; let pushed = 0; let problem = null;
+                for (const person of recipients) {
+                    const result = await ChatOffice.send(person.id, body);
+                    if (result.ok) { sent += 1; if (result.pushed) pushed += 1; } else problem = result;
+                }
+                if (!sent && problem && !problem.missing) throw new Error(problem.message);
+                if (sent) {
+                    showToast(`Nachricht an ${sent} ${sent === 1 ? 'Person' : 'Personen'} gesendet – sie steht im Chat, dort ${sent === 1 ? 'kann die Person' : 'können sie'} antworten.${pushed ? ` Mitteilung auf ${pushed} ${pushed === 1 ? 'Handy' : 'Handys'}.` : ''}${problem ? ' Nicht alle konnten erreicht werden.' : ''}`, 'success', { duration: 9000 });
+                    event.target.reset();
+                    picked.clear();
+                    $('messageCount').textContent = '0 von 1000 Zeichen';
+                    await Promise.all([refresh(), ChatOffice.refresh()]);
+                    return;
+                }
+                // Ohne Update 21 geht es wie früher als Nachricht weiter.
+            }
             const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience, recipient_ids: ids, body });
             if (error) throw error;
             // Zusätzlich als Mitteilung aufs Handy – klappt nur, wenn die Server-Funktion eingerichtet ist.

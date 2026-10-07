@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
       if (kind === 'storno' || kind === 'stornoUndo') {
         if ((kind === 'storno') !== Boolean(job.storno_at)) return json({ sent: 0, devices: 0 });
         const result = await sendTo((staff ?? []).map((item) => item.id), {
-          title: kind === 'storno' ? 'TERMIN · FÄLLT AUS (storniert)' : 'TERMIN · Stornierung zurückgenommen',
+          title: kind === 'storno' ? (/geht\s+allein/i.test(String(job.storno_note ?? '')) ? 'TERMIN · Patient geht alleine' : 'TERMIN · FÄLLT AUS (storniert)') : 'TERMIN · Stornierung zurückgenommen',
           body: kind === 'storno'
             ? `${job.interpreter_name}: ${job.title}${job.storno_note ? ` – ${String(job.storno_note).slice(0, 160)}` : ''}`
             : `${job.interpreter_name}: ${job.title} findet doch statt`,
@@ -311,6 +311,26 @@ Deno.serve(async (req) => {
         title: back ? 'FAHRZEUG · zurückgegeben' : 'FAHRZEUG · übernommen',
         body: `${trip.driver_name} · ${vehicle?.plate ?? 'Fahrzeug'}${vehicle?.brand ? ` (${vehicle.brand})` : ''}${clock ? ` · ${clock} Uhr` : ''}${back && trip.end_mileage ? ` · ${trip.end_mileage} km` : ''}`,
         url: 'fahrzeuge.html', tag: `fahrzeug-${trip.id}-${back ? 'zurueck' : 'start'}`,
+      });
+      return json(result);
+    }
+
+    if (action === 'chat') {
+      // Neue Chat-Nachricht: an den Dolmetscher (von der Einsatzleitung) oder an Einsatzleitung und Sekretariat (vom Dolmetscher).
+      const { data: row } = await admin.from('tt_chat').select('*').eq('id', String(input.chatId ?? '')).maybeSingle();
+      if (!row || row.sender_id !== profile.id) return json({ error: 'Nachricht nicht gefunden.' }, 404);
+      const text = String(row.body ?? '').replace(/\s+/g, ' ').slice(0, 200);
+      if (row.from_staff) {
+        const result = await sendTo([row.thread_id], {
+          title: `Nachricht von ${row.sender_name || 'der Einsatzleitung'}`, body: text,
+          url: 'portal.html?seite=nachrichten', tag: 'nachricht',
+        });
+        return json(result);
+      }
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const result = await sendTo((staff ?? []).map((item) => item.id), {
+        title: `NACHRICHT · ${row.sender_name || 'Dolmetscher'}`, body: text,
+        url: `nachrichten.html?an=${row.thread_id}`, tag: `chat-${row.thread_id}`,
       });
       return json(result);
     }

@@ -212,9 +212,10 @@
             info.textContent = 'Für dieses Konto gibt es hier nichts zu erledigen.';
             return;
         }
-        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0) + (countsOnline.requests || 0) + (countsOnline.appointments || 0);
+        const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0) + (countsOnline.requests || 0) + (countsOnline.appointments || 0) + (countsOnline.chat || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
+            ...(countsOnline.chat ? [todoItem('Neue Nachrichten der Dolmetscher', countsOnline.chat, 'nachrichten.html')] : []),
             ...(countsOnline.appointments ? [todoItem('Neue Termine der Dolmetscher eintragen', countsOnline.appointments, 'neueTermine.html')] : []),
             todoItem('Neue Unterlagen und Berichte der Dolmetscher', countsOnline.documents || 0, 'patienten.html'),
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),

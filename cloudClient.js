@@ -127,6 +127,8 @@ const TerminCloud = (() => {
         const absences = waitingAbsences.error ? 0 : waitingAbsences.data.length;
         // Neue Termine, die Dolmetscher gemeldet haben (Seite „Neue Termine“). Fehlt die Tabelle noch, zählt es als 0.
         const newAppointments = await client.from('tt_new_appointments').select('id').eq('status', 'neu');
+        // Ungelesene Chat-Nachrichten der Dolmetscher (Seite „Nachrichten“). Fehlt die Tabelle noch, zählt es als 0.
+        const unreadChat = await client.from('tt_chat').select('id').eq('from_staff', false).is('read_at', null);
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
         const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
         return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length,
@@ -134,7 +136,8 @@ const TerminCloud = (() => {
             accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
             fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences,
-            appointments: newAppointments.error ? 0 : newAppointments.data.length };
+            appointments: newAppointments.error ? 0 : newAppointments.data.length,
+            chat: unreadChat.error ? 0 : unreadChat.data.length };
     }
 
     // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------
@@ -365,6 +368,23 @@ const TerminCloud = (() => {
         return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length, problems: vehicleProblems };
     }
 
+    // Chat: Die Einsatzleitung schreibt in das Gespräch einer Person (dort kann sie antworten). Mit options.title geht die
+    // Mitteilung aufs Handy mit diesem Titel hinaus (z. B. „Erinnerung …“), sonst als „Nachricht von …“.
+    // Ergebnis: { ok, id, pushed } oder { ok: false, missing, message } – missing: die Tabelle fehlt noch (Update 21).
+    async function sendChat(threadId, body, options = {}) {
+        const profile = await getProfile().catch(() => null);
+        if (!isStaff(profile)) return { ok: false, message: 'Bitte zuerst als Einsatzleitung anmelden.' };
+        const { data, error } = await client.from('tt_chat').insert({ thread_id: threadId, sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', from_staff: true, body: String(body).slice(0, 2000) }).select('id').single();
+        if (error) {
+            const missing = /tt_chat|schema cache|does not exist|could not find/i.test(error.message || '');
+            return { ok: false, missing, message: missing ? 'Der Chat ist in der Datenbank noch nicht eingerichtet. Bitte supabase/update-21.sql im SQL Editor ausführen.' : germanError(error) };
+        }
+        const push = await (options.title
+            ? callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [threadId], title: options.title, body: String(options.pushBody || body).slice(0, 300) })
+            : callFunction({ action: 'chat', chatId: data.id })).catch(() => ({ ok: false }));
+        return { ok: true, id: data.id, pushed: Boolean(push?.ok && push.data?.sent) };
+    }
+
     // „Auto über Nacht behalten – früher Termin“: gilt bis zum Tag keep_until, an dem Tag selbst noch bis 16 Uhr.
     // (Notdienst steht getrennt in handover.emergency und gilt bis zur Rückgabe.)
     const keepsOvernight = handover => {
@@ -373,6 +393,6 @@ const TerminCloud = (() => {
         return today < handover.keep_until || (today === handover.keep_until && new Date().getHours() < 16);
     };
 
-    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey, keepsOvernight,
+    return { client, available: Boolean(client), isStaff, isAdmin, germanError, getSession, getProfile, signIn, signUp, signOut, syncFleet, uploadPhoto, photoUrl, inboxCounts, todayIso, plateKey, keepsOvernight, sendChat,
         callFunction, pushSupported, pushState, enablePush, disablePush, usage };
 })();

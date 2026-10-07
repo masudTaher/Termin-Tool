@@ -138,12 +138,13 @@
 
                <!-- Mit Fahrzeug -->
                <div id="hasVehicle" class="portal-page" hidden>
-                  <section class="vehicle-hero" aria-label="Dein Fahrzeug">
+                  <button type="button" id="heroCard" class="vehicle-hero" aria-haspopup="dialog">
                      <span class="vehicle-hero-label">Dein Fahrzeug</span>
                      <strong id="heroPlate" class="vehicle-hero-plate">–</strong>
                      <span id="heroModel" class="vehicle-hero-model"></span>
                      <span id="heroSince" class="vehicle-hero-since"></span>
-                  </section>
+                     <span class="vehicle-hero-more">Standort und Details ansehen ›</span>
+                  </button>
                   <p id="returnReminder" class="reminder-banner" hidden></p>
                   <div id="keepState" class="keep-state" role="status" hidden>
                      <span id="keepStateText"></span>
@@ -706,7 +707,12 @@
                <button type="button" class="back-button" id="messagesBack">← Zurück</button>
                <h2 id="messagesTitle" class="wizard-title">Nachrichten</h2>
                <p class="wizard-hint" id="messagesSummary">Von der Einsatzleitung.</p>
-               <ul id="messageList" class="message-list"></ul>
+               <ul id="messageList" class="chat-list" aria-live="polite"></ul>
+               <p id="chatMissing" class="field-hint" hidden>Antworten ist in der Datenbank noch nicht eingerichtet (Update 21). Bitte sag der Einsatzleitung Bescheid.</p>
+               <form id="chatForm" class="chat-compose" novalidate>
+                  <textarea id="chatText" rows="1" maxlength="2000" placeholder="Nachricht schreiben" aria-label="Nachricht an die Einsatzleitung"></textarea>
+                  <button type="submit" class="button-primary chat-send" id="chatSend">Senden</button>
+               </form>
             </section>
 
             <!-- ===== Mein Konto ===== -->
@@ -760,6 +766,24 @@
          <p id="keepDialogHint" class="field-hint"></p>
          <div id="keepChoices" class="choice-list"></div>
          <div class="modal-buttons"><button type="button" class="button-secondary" id="keepCancel">Abbrechen</button></div>
+      </dialog>
+
+      <!-- Mein Fahrzeug: Standort und Details – jederzeit, solange das Auto übernommen ist -->
+      <dialog id="carDialog" class="confirm-dialog car-dialog" aria-labelledby="carDialogTitle">
+         <span class="car-dialog-label">Dein Fahrzeug</span>
+         <h2 id="carDialogTitle">–</h2>
+         <span id="carDialogModel" class="car-dialog-model"></span>
+         <div class="car-place">
+            <span class="car-place-label">Standort (Parkort bei der Übernahme)</span>
+            <strong id="carDialogPlace">–</strong>
+            <small id="carDialogPlaceNote"></small>
+         </div>
+         <dl id="carDialogList" class="vehicle-state"></dl>
+         <span id="carDialogDamages" class="car-dialog-damages"></span>
+         <div class="modal-buttons car-dialog-buttons">
+            <button type="button" id="carDialogDamage" class="button-secondary">Schäden und Skizze</button>
+            <button type="button" id="carDialogClose" class="button-primary">Schließen</button>
+         </div>
       </dialog>
 
       <dialog id="genderDialog" class="confirm-dialog gender-dialog" aria-labelledby="genderDialogTitle">

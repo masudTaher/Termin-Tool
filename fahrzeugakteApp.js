@@ -173,7 +173,7 @@
                <label for="feedbackDialogMessage">Deine Nachricht</label>
                <textarea id="feedbackDialogMessage" rows="3" maxlength="600"></textarea>
                <p class="workflow-status" data-part="problem" data-kind="error" role="alert" hidden></p>
-               <p class="field-hint">Die Person sieht die Nachricht im Portal unter der Glocke und bekommt eine Mitteilung aufs Handy. Korrigieren oder löschen kannst du sie danach auf der Seite „Nachrichten“.</p>
+               <p class="field-hint">Die Person sieht die Nachricht im Portal unter der Glocke, bekommt eine Mitteilung aufs Handy und kann antworten. Korrigieren oder löschen kannst du sie danach auf der Seite „Nachrichten“ im Chat.</p>
                <div class="modal-buttons"><button type="button" class="button-secondary" data-part="cancel">Abbrechen</button><button type="submit" class="button-primary" data-part="submit">Senden</button></div>
             </form>`;
         document.body.append(feedbackDialog);
@@ -218,17 +218,23 @@
             if (!text) { part('problem').textContent = 'Bitte schreib eine kurze Rückmeldung oder tippe einen Vorschlag an.'; part('problem').hidden = false; message.focus(); return; }
             submit.disabled = true;
             const body = `Rückmeldung zu deiner ${kind === 'schaden' ? 'Schadenmeldung' : 'Meldung'} (${what.replace(/^(Schaden|Meldung) · /, '')}, ${formatDate(item.created_at)}): ${text}`;
-            const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [reporter.id], body });
-            if (error) { submit.disabled = false; part('problem').textContent = TerminCloud.germanError(error); part('problem').hidden = false; return; }
+            // Die Rückmeldung geht in den Chat der Person – dort kann sie antworten. Ohne Update 21 wie früher als Nachricht.
+            const pushTitle = `Rückmeldung von ${profile.full_name || 'der Einsatzleitung'}`;
+            let sent = await TerminCloud.sendChat(reporter.id, body, { title: pushTitle });
+            if (!sent.ok && sent.missing) {
+                const { error } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: [reporter.id], body });
+                if (!error) { const old = await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [reporter.id], title: pushTitle, body: body.slice(0, 300) }); sent = { ok: true, pushed: Boolean(old.ok && old.data?.sent) }; }
+                else sent = { ok: false, message: TerminCloud.germanError(error) };
+            }
+            if (!sent.ok) { submit.disabled = false; part('problem').textContent = sent.message; part('problem').hidden = false; return; }
             feedbackDialog.close('sent');
             // Vermerk am Eintrag (Spalten aus Update 18; ohne das Update fehlt nur das Schildchen).
             const noted = { feedback_at: new Date().toISOString(), feedback_text: text.slice(0, 600), feedback_by: profile.full_name || '' };
             const mark = await client.from(kind === 'schaden' ? 'tt_damages' : 'tt_alerts').update(noted).eq('id', item.id);
             if (!mark.error) Object.assign(item, noted);
-            const push = await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [reporter.id], title: `Rückmeldung von ${profile.full_name || 'der Einsatzleitung'}`, body: body.slice(0, 300) });
-            showToast(push.ok && push.data?.sent
-                ? `Rückmeldung an ${name} gesendet – mit Mitteilung aufs Handy.`
-                : `Rückmeldung an ${name} gesendet. Sie steht im Portal unter der Glocke (Mitteilungen aufs Handy sind dort nicht eingeschaltet).`, 'success', { duration: 8000 });
+            showToast(sent.pushed
+                ? `Rückmeldung an ${name} gesendet – mit Mitteilung aufs Handy. Antworten erscheinen unter „Nachrichten“.`
+                : `Rückmeldung an ${name} gesendet. Sie steht im Portal unter der Glocke (Mitteilungen aufs Handy sind dort nicht eingeschaltet). Antworten erscheinen unter „Nachrichten“.`, 'success', { duration: 9000 });
             await refresh();
         };
         feedbackDialog.showModal();
