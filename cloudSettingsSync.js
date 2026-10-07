@@ -8,7 +8,8 @@
     const META_KEY = 'terminTool.settingsSync.v1';
     const ITEMS = [
         { key: 'interpreterDirectory', storage: 'terminTool.interpreterDirectory.v1', label: 'Dolmetscherliste' },
-        { key: 'filterRules', storage: 'terminTool.filterRules.v1', label: 'Filterregeln' }
+        { key: 'filterRules', storage: 'terminTool.filterRules.v1', label: 'Filterregeln' },
+        { key: 'doctorDirectory', storage: 'terminTool.doctorDirectory.v1', label: 'Ärzteverzeichnis' }
     ];
     let busy = false;
     let staff = null;
@@ -25,6 +26,7 @@
                 if (typeof renderInterpreterDirectory === 'function' && document.getElementById('interpreterDirectoryList')) renderInterpreterDirectory();
                 if (typeof refreshInterpreterSuggestions === 'function') refreshInterpreterSuggestions();
             }
+            if (item.key === 'doctorDirectory' && typeof window.renderDoctorDirectory === 'function') window.renderDoctorDirectory();
             if (item.key === 'filterRules' && typeof readFilterRules === 'function' && typeof renderFilterRules === 'function') {
                 filterRules = readFilterRules();
                 renderFilterRules();
@@ -67,7 +69,8 @@
                 let push = false;
                 if (remote && remoteChanged && localChanged) {
                     // Beide Seiten haben geändert: Namen werden zusammengeführt, bei Regeln gilt die eigene Änderung.
-                    next = item.key === 'interpreterDirectory' ? mergeNames(local, remote.value?.data) : local;
+                    next = item.key === 'interpreterDirectory' ? mergeNames(local, remote.value?.data)
+                        : item.key === 'doctorDirectory' && typeof ArztVerzeichnis !== 'undefined' ? ArztVerzeichnis.merge(local, remote.value?.data) : local;
                     push = stable(next) !== stable(remote.value?.data);
                 } else if (remote && remoteChanged) {
                     next = remote.value?.data ?? null;

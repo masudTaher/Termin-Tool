@@ -338,6 +338,7 @@
             wrap.append(...warnings.map(warningPill));
             meta.append(wrap);
         }
+        if (doc.edited_at) meta.append(el('small', 'doc-edited', `Vom Dolmetscher geändert am ${formatStamp(doc.edited_at)}`));
         if (doc.checked_at) meta.append(el('small', null, `Geprüft am ${formatStamp(doc.checked_at)}${clean(doc.checked_by) ? ` von ${clean(doc.checked_by)}` : ''}`));
         if (doc.forwarded_at) meta.append(el('small', null, `Weitergeleitet am ${formatStamp(doc.forwarded_at)}${clean(doc.forwarded_to) ? ` an ${clean(doc.forwarded_to)}` : ''}${clean(doc.forwarded_by) ? ` (${clean(doc.forwarded_by)})` : ''}`));
 

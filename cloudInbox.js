@@ -79,6 +79,19 @@
         }
     }
 
+    // ---------- Abrechnung: laufender Stand von selbst im Portal ----------
+    // Auf jeder Büro-Seite, höchstens alle 15 Minuten (die Seite „Abrechnung“ macht es selbst).
+    let autoLoading = null;
+    const loadScript = src => new Promise((resolve, reject) => { const node = document.createElement('script'); node.src = src; node.onload = resolve; node.onerror = reject; document.head.append(node); });
+    function autoStatements() {
+        if (window.__noAutoStatements || document.body.dataset.page === 'abrechnung') return;
+        if (!autoLoading) autoLoading = (async () => {
+            if (typeof Abrechnung === 'undefined') await loadScript('abrechnungLogic.js');
+            if (typeof AbrechnungAuto === 'undefined') await loadScript('abrechnungAuto.js');
+        })().catch(() => { autoLoading = null; });
+        Promise.resolve(autoLoading).then(() => { if (typeof AbrechnungAuto !== 'undefined') AbrechnungAuto.background(TerminCloud.client); });
+    }
+
     // ---------- Zähler und Hinweise ----------
     async function refreshCloudInbox() {
         let profile = null;
@@ -97,6 +110,7 @@
         setBadge('termine', counts.appointments || 0);
         setBadge('nachrichten', counts.chat || 0);
         refreshUsage(false);
+        if (TerminCloud.isStaff(profile)) autoStatements();
 
         let seen = null;
         try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); } catch (error) { /* erster Aufruf */ }

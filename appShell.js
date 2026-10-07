@@ -45,6 +45,7 @@
 
     const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
     const ICONS = {
+        pin: icon('<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
         filter: icon('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
         tracking: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
         people: icon('<circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6"/><path d="M17.5 14.3c2 .7 3.5 2.6 3.5 5.2"/>'),
@@ -86,6 +87,7 @@
         ] },
         { group: 'Dolmetscher', items: [
             { page: 'dolmetscher', href: 'dolmetscher.html', label: 'Dolmetscher', icon: ICONS.people },
+            { page: 'aerzte', href: 'aerzte.html', label: 'Ärzte & Standorte', icon: ICONS.pin },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
             { page: 'fest', href: 'festangestellte.html', label: 'Festangestellte', icon: ICONS.clock },
             { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }

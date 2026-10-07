@@ -1208,7 +1208,10 @@ function createWhatsAppAppointmentMessage(termin, includeNote) {
             title: 'ARZT / PRAXIS',
             fields: [
                 ['Name', doctorName],
+                // Aus dem Ärzteverzeichnis: Fachrichtung, Gebäude / genauer Standort, Hinweis zum Weg, Karte
+                ...(typeof ArztVerzeichnis !== 'undefined' ? ArztVerzeichnis.messageFields(termin['Arzt Nr::Name'] || doctorName, termin['Arzt Nr::Ort'] || termin['Arzt Nr::Stadt'] || '') : []).slice(0, 1),
                 ['Adresse', doctorAddress],
+                ...(typeof ArztVerzeichnis !== 'undefined' ? ArztVerzeichnis.messageFields(termin['Arzt Nr::Name'] || doctorName, termin['Arzt Nr::Ort'] || termin['Arzt Nr::Stadt'] || '') : []).slice(1),
                 ...phoneFields('Telefon', doctorPhones)
             ]
         },

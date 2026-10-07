@@ -16,7 +16,12 @@
     let profiles = [];
     let autoWorkdays = new Map();
     let result = null;
-    const HIDDEN = 'ausgeblendet';
+    const HIDDEN = Abrechnung.HIDDEN;
+    let dayJobs = new Map();
+    let openPerson = '';
+    let personQuery = '';
+    let pendingWrites = [];
+    let autoTimer = null;
     let hiddenPeople = [];
     let autoNames = new Set();
     let tab = 'list';
@@ -79,6 +84,7 @@
         autoWorkdays = Abrechnung.countWorkdays(dayResult.error ? [] : dayResult.data);
         dayDates = Abrechnung.workdayDates(dayResult.error ? [] : dayResult.data);
         trackingSpecial = Abrechnung.specialFromDays(dayResult.error ? [] : dayResult.data, specialDays);
+        dayJobs = Abrechnung.dayJobs(dayResult.error ? [] : dayResult.data);
         $('payrollRate').value = rate;
         $('payrollCheckDate').value = checkDate;
         $('payrollApp').hidden = false;
@@ -86,29 +92,14 @@
     }
 
     function render() {
-        // Zeilen der Endliste können mit einem Portal-Konto verknüpft sein (Name auf dem Tagesblatt ↔ Konto).
-        // Belege aus dem Portal zählen dann zu dieser Zeile, auch wenn der Name anders geschrieben ist.
-        const linkedName = new Map(payroll.filter(item => item.profile_id).map(item => [item.profile_id, item.person_name]));
-        const receiptsAll = receipts.map(item => linkedName.has(item.profile_id) ? { ...item, person_name: linkedName.get(item.profile_id) } : item);
-        // Für diesen Monat aus der Endliste genommene Personen (Mülleimer in der Zeile) – sie lassen sich unter der Liste wieder einblenden.
-        hiddenPeople = payroll.filter(item => item.status === HIDDEN);
-        const hiddenKeys = new Set(hiddenPeople.map(item => Abrechnung.key(item.person_name)));
-        hiddenPeople.forEach(item => { const account = profiles.find(person => person.id === item.profile_id); if (account) hiddenKeys.add(Abrechnung.key(account.full_name)); });
-        const shown = item => !hiddenKeys.has(Abrechnung.key(item.person_name));
-        const receiptsByRow = receiptsAll.filter(shown);
-        // Temporäre Dolmetscher mit Portal-Konto stehen automatisch in der Liste (erst ab dem Monat, in dem das Konto angelegt wurde).
-        const temporary = profiles.filter(item => item.active && item.role === 'dolmetscher' && item.employment !== 'fest' && item.full_name
-            && !linkedName.has(item.id) && (!item.created_at || String(item.created_at).slice(0, 7) <= month)).map(item => item.full_name).filter(name => !hiddenKeys.has(Abrechnung.key(name)));
-        const autoShown = new Map([...autoWorkdays].filter(([id]) => !hiddenKeys.has(id)));
-        autoNames = new Set([...temporary, ...receiptsByRow.map(item => item.person_name), ...[...specialDays, ...trackingSpecial].map(item => item.person_name)].map(name => Abrechnung.key(name)));
-        autoShown.forEach((count, id) => autoNames.add(id));
-        result = Abrechnung.compute({ rate, receipts: receiptsByRow, specialDays: [...specialDays, ...trackingSpecial].filter(shown), payroll: payroll.filter(item => item.status !== HIDDEN), autoWorkdays: autoShown, extraNames: temporary });
-        result.rows.forEach(row => {
-            const entry = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
-            row.profileId = entry?.profile_id || profiles.find(item => Abrechnung.key(item.full_name) === Abrechnung.key(row.name))?.id || null;
-            row.statement = statements.find(item => item.profile_id === row.profileId) || null;
-            row.receipts = receiptsByRow.filter(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name) && item.status !== 'abgelehnt');
-        });
+        const built = Abrechnung.buildRows({ month, rate, receipts, specialDays, trackingSpecial, payroll, profiles, autoWorkdays, statements });
+        result = built.result;
+        hiddenPeople = built.hiddenPeople;
+        autoNames = built.autoNames;
+        // Der laufende Stand steht von selbst im Portal (nur laufender Monat und der Monat davor).
+        const writes = Abrechnung.planSync(result.rows, { month, rate, dayDates });
+        pendingWrites = AbrechnungAuto.enabled() && Abrechnung.autoMonth(month) ? writes : [];
+        queueAuto();
         const objections = result.rows.filter(row => row.statement?.response === 'einwand');
         if (objections.length) result.checks.unshift(`Einwand von: ${objections.map(row => row.name).join(', ')}`);
         const range = Abrechnung.monthRange(month);
@@ -141,6 +132,24 @@
         if (tab === 'archive' && archive == null) loadArchive();
     }
 
+    // ---------- Laufender Stand von selbst im Portal ----------
+    function queueAuto() {
+        clearTimeout(autoTimer);
+        if (!pendingWrites.length) return;
+        autoTimer = setTimeout(async () => {
+            const writes = pendingWrites;
+            pendingWrites = [];
+            const forMonth = month;
+            const done = await AbrechnungAuto.write(client, forMonth, writes);
+            if (done <= 0 || forMonth !== month) return;
+            const { data, error } = await client.from('tt_statements').select('*').eq('month', month);
+            if (error) return;
+            statements = data;
+            archive = null;
+            render();
+        }, 500);
+    }
+
     // ---------- Endliste ----------
     async function savePayroll(name, changes) {
         const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(name));
@@ -164,119 +173,261 @@
         await refresh();
     }
 
-    function renderList() {
-        const body = $('payrollBody');
-        body.replaceChildren();
-        result.rows.forEach(row => {
-            const tr = el('tr', row.specialText ? 'payroll-special' : '');
-            const nameCell = el('td');
-            nameCell.append(el('strong', null, row.name));
-            if (row.fullName) nameCell.append(el('small', 'payroll-sub', row.fullName));
-            const daysCell = el('td');
-            const days = el('input');
-            days.type = 'number';
-            days.min = '0';
-            days.step = '1';
-            days.className = 'payroll-days';
-            days.value = row.workdaysManual ?? '';
-            days.placeholder = row.workdaysAuto != null ? `${row.workdaysAuto} (online)` : '–';
-            days.setAttribute('aria-label', `Arbeitstage für ${row.name}`);
-            days.addEventListener('change', () => savePayroll(row.name, { workdays: days.value === '' ? null : Math.max(0, Math.round(Number(days.value))) }));
-            daysCell.append(days);
-            const remarkCell = el('td');
-            const remark = el('input');
-            remark.type = 'text';
-            remark.maxLength = 200;
-            remark.value = row.remark;
-            remark.setAttribute('aria-label', `Bemerkung für ${row.name}`);
-            remark.addEventListener('change', () => savePayroll(row.name, { remark: remark.value.trim() }));
-            remarkCell.append(remark);
-            const portalCell = el('td', 'payroll-portal');
-            const account = el('select');
-            account.setAttribute('aria-label', `Portal-Konto für ${row.name}`);
-            account.append(...[{ id: '', full_name: 'kein Konto' }, ...profiles.filter(item => item.active && item.role === 'dolmetscher')].map(item => {
-                const option = el('option', null, item.full_name || '(ohne Namen)');
-                option.value = item.id;
-                return option;
-            }));
-            account.value = row.profileId || '';
-            account.addEventListener('change', () => savePayroll(row.name, { profile_id: account.value || null }));
-            const state = el('span', 'status-pill', !row.statement ? 'nicht freigegeben' : { offen: 'freigegeben', 'bestätigt': 'bestätigt', einwand: 'Einwand' }[row.statement.response]);
-            state.dataset.status = !row.statement ? 'bekannt' : { offen: 'in Arbeit', 'bestätigt': 'erledigt', einwand: 'offen' }[row.statement.response];
-            if (row.statement?.response_note) state.title = row.statement.response_note;
-            portalCell.append(account, state);
-            if (row.statement?.response === 'einwand') portalCell.append(el('small', 'payroll-sub payroll-objection', `„${row.statement.response_note}“`));
-            // Zwei Zeilen statt vier: oben die beiden Hauptknöpfe nebeneinander, darunter klein die Korrekturen.
-            const actionCell = el('td', 'payroll-actions');
-            const mainActions = el('div', 'payroll-actions-main');
-            const moreActions = el('div', 'payroll-actions-more');
-            actionCell.append(mainActions, moreActions);
-            const release = el('button', 'button-primary fleet-end-button', row.statement ? 'Neu freigeben' : 'Freigeben');
-            release.type = 'button';
-            release.title = 'Abrechnung für diese Person im Portal sichtbar machen';
-            release.disabled = !row.profileId || row.salary == null;
-            release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} freigegeben – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
-            mainActions.append(release);
-            // Warum sich (noch) nicht freigeben lässt, steht direkt unter den Knöpfen.
-            const why = !row.profileId ? 'Freigeben geht erst mit Portal-Konto (Spalte „Portal“).' : row.salary == null ? 'Freigeben geht erst mit Arbeitstagen.' : '';
-            if (why) release.title = why;
-            // Drucken und Entfernen mit Symbol und Wort – jede Zeile hat beide Knöpfe.
-            const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
-            print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span>Drucken</span>';
-            print.type = 'button';
-            print.title = 'Abrechnung der Belege für diese Person drucken';
-            print.setAttribute('aria-label', `Abrechnung für ${row.name} drucken`);
-            print.addEventListener('click', () => printPerson(row));
-            mainActions.append(print);
-            // Jede Person lässt sich für diesen Monat aus der Endliste nehmen. Steht sie von selbst in der Liste (Konto, Beleg,
-            // Sondertag oder Arbeitstag im Archiv), wird sie ausgeblendet und kann unter der Liste wieder eingeblendet werden.
-            const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name));
-            const comesBack = autoNames.has(Abrechnung.key(row.name));
-            const remove = el('button', 'button-secondary fleet-end-button payroll-icon-button payroll-remove');
-            remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg><span>Entfernen</span>';
-            remove.type = 'button';
-            remove.title = 'Diese Person für diesen Monat aus der Endliste nehmen';
-            remove.setAttribute('aria-label', `${row.name} aus der Endliste nehmen`);
-            remove.addEventListener('click', async () => {
-                const label = Abrechnung.monthRange(month).label;
-                const has = [row.workdays ? `${row.workdays} ${row.workdays === 1 ? 'Arbeitstag' : 'Arbeitstage'}` : '', row.receiptCount ? `${row.receiptCount} ${row.receiptCount === 1 ? 'Beleg' : 'Belege'}` : '', row.specialCount ? `${row.specialCount} ${row.specialCount === 1 ? 'Sondertag' : 'Sondertage'}` : ''].filter(Boolean).join(', ');
-                const released = row.statement ? `\n\nDie Abrechnung ist schon im Portal freigegeben – die Freigabe wird dabei zurückgezogen.` : '';
-                const text = comesBack
-                    ? `${row.name} für ${label} aus der Endliste nehmen?${has ? `\n\nFür diesen Monat steht bei dieser Person: ${has}. Das zählt dann nicht mehr in der Endliste mit.` : ''}${released}\n\nNichts wird gelöscht: Unter der Liste kannst du die Person jederzeit wieder einblenden.`
-                    : `${row.name} für ${label} aus der Endliste löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${released}`;
-                if (!await confirmDialog(text, 'Entfernen')) return;
-                if (row.statement) {
-                    const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
-                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                }
-                const { error } = comesBack
-                    ? await client.from('tt_payroll').upsert({ month, person_name: existing?.person_name || row.name, full_name: existing?.full_name || '', workdays: existing?.workdays ?? null, remark: existing?.remark || '', profile_id: existing?.profile_id ?? null, status: HIDDEN }, { onConflict: 'month,person_name' })
-                    : await client.from('tt_payroll').delete().eq('month', month).eq('person_name', existing.person_name);
+    // Stand im Portal: [Text, Farbe des Schilds]
+    function portalState(row) {
+        const statement = row.statement;
+        if (!row.profileId) return ['kein Portal-Konto', 'bekannt'];
+        if (!statement) return ['noch nicht im Portal', 'bekannt'];
+        if (statement.data?.paused) return ['im Portal ausgeblendet', 'bekannt'];
+        if (statement.response === 'einwand') return ['Einwand', 'offen'];
+        if (statement.data?.running) return ['läuft von selbst', 'in Arbeit'];
+        return statement.response === 'bestätigt' ? ['bestätigt', 'erledigt'] : ['wartet auf Bestätigung', 'in Arbeit'];
+    }
+    const isClosed = row => Boolean(row.statement) && !row.statement.data?.running && !row.statement.data?.paused;
+    const weekday = iso => new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    const todayIso = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
+
+    function statementLine(term, value, total) {
+        const line = el('div', `statement-line${total ? ' is-total' : ''}`);
+        line.append(el('span', null, term), el('span', null, value));
+        return line;
+    }
+
+    function payBox(title, ...nodes) {
+        const box = el('section', 'pay-box');
+        box.append(el('h3', null, title), ...nodes);
+        return box;
+    }
+
+    function tabLink(text, target) {
+        const button = el('button', 'button-quiet pay-link', text);
+        button.type = 'button';
+        button.addEventListener('click', () => { tab = target; render(); });
+        return button;
+    }
+
+    // Alles zu einer Person: Rechnung, die einzelnen Tage mit ihren Terminen, Belege, Einstellungen und Aktionen.
+    function personDetail(row) {
+        const id = Abrechnung.key(row.name);
+        const detail = el('div', 'pay-detail');
+        const grid = el('div', 'pay-detail-grid');
+
+        // 1 · Rechnung
+        const normal = row.workdays == null ? null : row.workdays - row.specialCount;
+        const bill = payBox('Rechnung',
+            statementLine(`Normale Tage × ${euro(rate)}`, normal == null ? '–' : `${normal} ${normal === 1 ? 'Tag' : 'Tage'} = ${euro(normal * rate)}`),
+            ...row.special.filter(item => item.counts !== 'Nein').map(item => statementLine(`Sondertag ${Abrechnung.shortDate(item.date)}${item.job ? ` · ${item.job}` : ''}`, `${euro(item.amount)}${item.counts === 'prüfen' ? ' (prüfen)' : ''}`)),
+            statementLine('Salary', row.salary == null ? '–' : euro(row.salary)),
+            statementLine(`Belege (${row.receiptCount})`, euro(row.receiptSum)),
+            statementLine('Gesamt', row.total == null ? '–' : euro(row.total), true));
+
+        // 2 · Arbeitstage mit den Terminen des Tages
+        const days = dayJobs.get(id) || [];
+        const specialByDate = new Map(row.special.filter(item => item.counts !== 'Nein').map(item => [item.date, item]));
+        const dates = [...new Set([...days.map(day => day.date), ...specialByDate.keys()])].sort();
+        const dayList = el('ul', 'pay-days');
+        const today = todayIso();
+        dates.forEach(date => {
+            const day = days.find(item => item.date === date) || { done: [], open: [] };
+            const special = specialByDate.get(date);
+            const counts = day.done.length > 0;
+            const item = el('li', counts ? 'pay-day' : special ? 'pay-day is-special-only' : 'pay-day is-open');
+            item.append(el('span', 'pay-day-date', weekday(date)));
+            const what = el('span', 'pay-day-jobs', (counts ? day.done : day.open.length ? day.open : [special?.job || 'Sondertag']).join('  ·  '));
+            item.append(what);
+            if (special) item.append(el('span', 'pay-chip is-special', `Sondertag ${euro(special.amount)}`));
+            if (!counts && day.open.length) item.append(el('span', 'pay-chip', date > today ? 'geplant' : 'nicht beendet – zählt noch nicht'));
+            dayList.append(item);
+        });
+        if (!dates.length) dayList.append(el('li', 'directory-empty', 'In diesem Monat gibt es noch keinen Termin für diese Person.'));
+        const counted = row.workdaysAuto ?? 0;
+        const dayNote = el('p', 'pay-hint', row.workdaysManual != null
+            ? `Von Hand eingetragen: ${row.workdaysManual} ${row.workdaysManual === 1 ? 'Tag' : 'Tage'} – das gilt. Aus den beendeten Terminen wären es ${counted}.`
+            : `Jeder Tag mit einem beendeten Termin zählt von selbst: ${counted} ${counted === 1 ? 'Tag' : 'Tage'}.`);
+        const dayBox = payBox(`Arbeitstage (${row.workdays ?? '–'})`, dayNote, dayList, tabLink('Sondertag eintragen oder ändern', 'special'));
+
+        // 3 · Belege
+        const receiptList = el('ul', 'pay-days');
+        row.receipts.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(item => {
+            const line = el('li', 'pay-day');
+            line.append(el('span', 'pay-day-date', weekday(item.date)), el('span', 'pay-day-jobs', [item.place || item.kind, item.status === 'eingereicht' ? 'noch nicht geprüft' : ''].filter(Boolean).join(' · ')), el('span', 'pay-day-amount', euro(item.amount)));
+            receiptList.append(line);
+        });
+        if (!row.receipts.length) receiptList.append(el('li', 'directory-empty', 'Keine Belege in diesem Monat.'));
+        const receiptBox = payBox(`Belege (${row.receiptCount})`, receiptList, tabLink('Belege prüfen oder ändern', 'receipts'));
+
+        // 4 · Einstellungen: Arbeitstage von Hand, Bemerkung, Portal-Konto
+        const daysField = el('label', 'pay-field');
+        const daysInput = el('input');
+        daysInput.type = 'number';
+        daysInput.min = '0';
+        daysInput.step = '1';
+        daysInput.className = 'payroll-days';
+        daysInput.value = row.workdaysManual ?? '';
+        daysInput.placeholder = row.workdaysAuto != null ? `${row.workdaysAuto} (von selbst)` : '–';
+        daysInput.setAttribute('aria-label', `Arbeitstage für ${row.name}`);
+        daysInput.addEventListener('change', () => savePayroll(row.name, { workdays: daysInput.value === '' ? null : Math.max(0, Math.round(Number(daysInput.value))) }));
+        daysField.append(el('span', null, 'Arbeitstage von Hand (leer = von selbst zählen)'), daysInput);
+        const remarkField = el('label', 'pay-field');
+        const remark = el('input');
+        remark.type = 'text';
+        remark.maxLength = 200;
+        remark.value = row.remark;
+        remark.setAttribute('aria-label', `Bemerkung für ${row.name}`);
+        remark.addEventListener('change', () => savePayroll(row.name, { remark: remark.value.trim() }));
+        remarkField.append(el('span', null, 'Bemerkung'), remark);
+        const portalField = el('div', 'pay-field payroll-portal');
+        const account = el('select');
+        account.setAttribute('aria-label', `Portal-Konto für ${row.name}`);
+        account.append(...[{ id: '', full_name: 'kein Konto' }, ...profiles.filter(item => item.active && item.role === 'dolmetscher')].map(item => {
+            const option = el('option', null, item.full_name || '(ohne Namen)');
+            option.value = item.id;
+            return option;
+        }));
+        account.value = row.profileId || '';
+        account.addEventListener('change', () => savePayroll(row.name, { profile_id: account.value || null }));
+        const [stateText, stateKind] = portalState(row);
+        const state = el('span', 'status-pill', stateText);
+        state.dataset.status = stateKind;
+        if (row.statement?.response_note) state.title = row.statement.response_note;
+        portalField.append(el('span', null, 'Portal-Konto'), account, state);
+        if (row.statement?.response === 'einwand') portalField.append(el('small', 'payroll-sub payroll-objection', `„${row.statement.response_note}“`));
+        if (row.changedSince) portalField.append(el('small', 'payroll-sub payroll-changed', 'Seit dem Abschluss haben sich die Zahlen geändert – mit „Neu senden“ bekommt die Person den neuen Stand.'));
+        const settings = payBox('Einstellungen', daysField, remarkField, portalField);
+
+        grid.append(bill, dayBox, receiptBox, settings);
+
+        // Aktionen
+        const actionCell = el('div', 'payroll-actions');
+        const mainActions = el('div', 'payroll-actions-main');
+        const moreActions = el('div', 'payroll-actions-more');
+        actionCell.append(mainActions, moreActions);
+        const closed = isClosed(row);
+        const release = el('button', 'button-primary fleet-end-button', closed ? 'Neu senden' : 'Zum Bestätigen senden');
+        release.type = 'button';
+        release.title = 'Abrechnung abschließen: Die Person prüft sie im Portal und bestätigt sie';
+        release.disabled = !row.profileId || row.salary == null;
+        release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} zum Bestätigen gesendet – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
+        mainActions.append(release);
+        const why = !row.profileId ? 'Im Portal zeigen geht erst mit Portal-Konto (unter „Einstellungen“).' : row.salary == null ? 'Im Portal zeigen geht erst mit Arbeitstagen.' : '';
+        if (why) release.title = why;
+        const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
+        print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span>Drucken</span>';
+        print.type = 'button';
+        print.title = 'Abrechnung der Belege für diese Person drucken';
+        print.setAttribute('aria-label', `Abrechnung für ${row.name} drucken`);
+        print.addEventListener('click', () => printPerson(row));
+        mainActions.append(print);
+        // Jede Person lässt sich für diesen Monat aus der Liste nehmen. Steht sie von selbst in der Liste (Konto, Beleg,
+        // Sondertag oder Arbeitstag im Archiv), wird sie ausgeblendet und kann unter der Liste wieder eingeblendet werden.
+        const existing = payroll.find(item => Abrechnung.key(item.person_name) === id);
+        const comesBack = autoNames.has(id);
+        const remove = el('button', 'button-secondary fleet-end-button payroll-icon-button payroll-remove');
+        remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/></svg><span>Entfernen</span>';
+        remove.type = 'button';
+        remove.title = 'Diese Person für diesen Monat aus der Liste nehmen';
+        remove.setAttribute('aria-label', `${row.name} aus der Endliste nehmen`);
+        remove.addEventListener('click', async () => {
+            const label = Abrechnung.monthRange(month).label;
+            const has = [row.workdays ? `${row.workdays} ${row.workdays === 1 ? 'Arbeitstag' : 'Arbeitstage'}` : '', row.receiptCount ? `${row.receiptCount} ${row.receiptCount === 1 ? 'Beleg' : 'Belege'}` : '', row.specialCount ? `${row.specialCount} ${row.specialCount === 1 ? 'Sondertag' : 'Sondertage'}` : ''].filter(Boolean).join(', ');
+            const released = row.statement && !row.statement.data?.paused ? `\n\nDie Abrechnung steht schon im Portal – sie wird dabei dort herausgenommen.` : '';
+            const text = comesBack
+                ? `${row.name} für ${label} aus der Endliste nehmen?${has ? `\n\nFür diesen Monat steht bei dieser Person: ${has}. Das zählt dann nicht mehr in der Endliste mit.` : ''}${released}\n\nNichts wird gelöscht: Unter der Liste kannst du die Person jederzeit wieder einblenden.`
+                : `${row.name} für ${label} aus der Endliste löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${released}`;
+            if (!await confirmDialog(text, 'Entfernen')) return;
+            if (row.statement) {
+                const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
                 if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                showToast(comesBack ? `${row.name} steht für ${label} nicht mehr in der Endliste.` : `${row.name}: Einträge für diesen Monat gelöscht.`, 'success', comesBack ? { actionLabel: 'Rückgängig', onAction: () => showAgain(existing?.person_name || row.name) } : undefined);
+            }
+            const { error } = comesBack
+                ? await client.from('tt_payroll').upsert({ month, person_name: existing?.person_name || row.name, full_name: existing?.full_name || '', workdays: existing?.workdays ?? null, remark: existing?.remark || '', profile_id: existing?.profile_id ?? null, status: HIDDEN }, { onConflict: 'month,person_name' })
+                : await client.from('tt_payroll').delete().eq('month', month).eq('person_name', existing.person_name);
+            if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+            showToast(comesBack ? `${row.name} steht für ${label} nicht mehr in der Endliste.` : `${row.name}: Einträge für diesen Monat gelöscht.`, 'success', comesBack ? { actionLabel: 'Rückgängig', onAction: () => showAgain(existing?.person_name || row.name) } : undefined);
+            await refresh();
+            window.refreshCloudInbox?.();
+        });
+        if (existing || comesBack) mainActions.append(remove);
+        if (why) moreActions.append(el('small', 'payroll-sub payroll-why', why));
+        const dropStatement = async () => {
+            const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
+            if (error) { showToast(TerminCloud.germanError(error), 'error'); return false; }
+            return true;
+        };
+        // Ein Abschluss lässt sich zurückziehen (zu früh oder falsch gesendet) – danach läuft der Stand wieder von selbst.
+        if (closed) {
+            const withdraw = el('button', 'button-quiet-danger', 'Abschluss zurückziehen');
+            withdraw.type = 'button';
+            withdraw.addEventListener('click', async () => {
+                const answered = row.statement.response !== 'offen' ? ` ${row.name} hat sie bereits ${row.statement.response === 'bestätigt' ? 'bestätigt' : 'mit einem Einwand beantwortet'} – auch diese Antwort wird gelöscht.` : '';
+                if (!await confirmDialog(`Den Abschluss ${Abrechnung.monthRange(month).label} für ${row.name} zurückziehen?${answered}\n\nDie Zahlen hier bleiben erhalten; du kannst jederzeit neu senden.`, 'Abschluss zurückziehen')) return;
+                if (!await dropStatement()) return;
+                showToast(`Abschluss für ${row.name} zurückgezogen.`, 'success');
                 await refresh();
                 window.refreshCloudInbox?.();
             });
-            if (existing || comesBack) mainActions.append(remove);
-            if (why) moreActions.append(el('small', 'payroll-sub payroll-why', why));
-            // Eine freigegebene Abrechnung lässt sich wieder aus dem Portal nehmen (z. B. wenn sie zu früh oder falsch freigegeben wurde).
-            if (row.statement) {
-                const withdraw = el('button', 'button-quiet-danger', 'Freigabe zurückziehen');
-                withdraw.type = 'button';
-                withdraw.addEventListener('click', async () => {
-                    const answered = row.statement.response !== 'offen' ? ` ${row.name} hat sie bereits ${row.statement.response === 'bestätigt' ? 'bestätigt' : 'mit einem Einwand beantwortet'} – auch diese Antwort wird gelöscht.` : '';
-                    if (!await confirmDialog(`Die Abrechnung ${Abrechnung.monthRange(month).label} für ${row.name} wieder aus dem Portal nehmen?${answered}\n\nDie Zahlen hier bleiben erhalten; du kannst jederzeit neu freigeben.`, 'Freigabe zurückziehen')) return;
-                    const { error } = await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.statement.profile_id);
-                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                    showToast(`Freigabe für ${row.name} zurückgezogen.`, 'success');
-                    await refresh();
-                    window.refreshCloudInbox?.();
-                });
-                moreActions.append(withdraw);
-            }
-            tr.append(nameCell, daysCell, el('td', null, row.specialText || '–'), el('td', 'payroll-number', row.receiptCount ? `${euro(row.receiptSum)} (${row.receiptCount})` : '–'),
-                el('td', 'payroll-number', row.salary == null ? '–' : euro(row.salary)), el('td', 'payroll-number payroll-total', row.total == null ? '–' : euro(row.total)), remarkCell, portalCell, actionCell);
-            body.append(tr);
+            moreActions.append(withdraw);
+        }
+        // Der laufende Stand lässt sich für eine Person im Portal ausblenden – und wieder zeigen.
+        if (row.profileId && row.statement?.data?.paused) {
+            const show = el('button', 'button-quiet pay-portal-show', 'Im Portal wieder zeigen');
+            show.type = 'button';
+            show.addEventListener('click', async () => { if (!await dropStatement()) return; showToast(`${row.name} sieht die Abrechnung wieder im Portal.`, 'success'); await refresh(); });
+            moreActions.append(show);
+        } else if (row.profileId && row.salary != null && !closed && AbrechnungAuto.enabled()) {
+            const hide = el('button', 'button-quiet-danger pay-portal-hide', 'Im Portal ausblenden');
+            hide.type = 'button';
+            hide.title = 'Diese Person sieht den laufenden Stand dieses Monats dann nicht im Portal';
+            hide.addEventListener('click', async () => {
+                const { error } = await client.from('tt_statements').upsert({ month, profile_id: row.profileId, person_name: row.name, data: { paused: true, label: Abrechnung.monthRange(month).label },
+                    released_at: new Date().toISOString(), released_by: profile.full_name || '', response: 'offen', response_note: '', responded_at: null }, { onConflict: 'month,profile_id' });
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                showToast(`${row.name} sieht die Abrechnung für diesen Monat nicht mehr im Portal.`, 'success', { actionLabel: 'Rückgängig', onAction: async () => { await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.profileId); await refresh(); } });
+                await refresh();
+            });
+            moreActions.append(hide);
+        }
+        detail.append(grid, actionCell);
+        return detail;
+    }
+
+    function renderList() {
+        const body = $('payrollBody');
+        body.replaceChildren();
+        const fold = text => String(text || '').toLocaleLowerCase('de');
+        const rows = result.rows.filter(row => !personQuery || fold(`${row.name} ${row.fullName}`).includes(fold(personQuery)));
+        $('personSummary').textContent = `${result.rows.length} ${result.rows.length === 1 ? 'Person' : 'Personen'}${personQuery ? ` · ${rows.length} gefunden` : ''}`;
+        if (!rows.length) body.append(el('p', 'directory-empty', result.rows.length ? 'Kein Name passt zur Suche.' : 'Für diesen Monat steht noch niemand in der Liste.'));
+        rows.forEach(row => {
+            const id = Abrechnung.key(row.name);
+            const open = openPerson === id;
+            const card = el('article', `pay-person${open ? ' is-open' : ''}${row.specialText ? ' payroll-special' : ''}`);
+            card.dataset.person = id;
+            const head = el('button', 'pay-head');
+            head.type = 'button';
+            head.setAttribute('aria-expanded', String(open));
+            head.title = open ? 'Einzelheiten schließen' : 'Alle Einzelheiten zu dieser Person zeigen';
+            const who = el('span', 'pay-who');
+            who.append(el('strong', 'pay-name', row.name));
+            if (row.fullName) who.append(el('small', 'payroll-sub', row.fullName));
+            const cell = (label, text, extra) => { const node = el('span', `pay-cell${extra ? ` ${extra}` : ''}`, text); node.dataset.label = label; return node; };
+            const [stateText, stateKind] = portalState(row);
+            const state = el('span', 'status-pill', stateText);
+            state.dataset.status = stateKind;
+            const stateCell = el('span', 'pay-cell pay-state');
+            stateCell.append(state);
+            if (row.changedSince) stateCell.append(el('small', 'payroll-sub payroll-changed', 'geändert seit Abschluss'));
+            head.append(el('span', 'pay-chevron'), who,
+                cell('Arbeitstage', row.workdays == null ? '–' : String(row.workdays), 'pay-days-count'),
+                cell('Sondertage', row.specialText || '–', 'pay-special'),
+                cell('Belege', row.receiptCount ? `${euro(row.receiptSum)} (${row.receiptCount})` : '–', 'payroll-number'),
+                cell('Salary', row.salary == null ? '–' : euro(row.salary), 'payroll-number'),
+                cell('Gesamt', row.total == null ? '–' : euro(row.total), 'payroll-number payroll-total'),
+                stateCell);
+            head.addEventListener('click', () => { openPerson = open ? '' : id; renderList(); if (!open) document.querySelector(`.pay-person[data-person="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); });
+            card.append(head);
+            if (open) card.append(personDetail(row));
+            body.append(card);
         });
         const hiddenBox = $('payrollHidden');
         hiddenBox.hidden = !hiddenPeople.length;
@@ -286,13 +437,17 @@
             button.addEventListener('click', () => showAgain(item.person_name));
             return button;
         }));
-        const foot = $('payrollFoot');
         const sumDays = result.rows.reduce((sum, row) => sum + (row.workdays || 0), 0);
         const sumSpecial = result.rows.reduce((sum, row) => sum + row.specialCount, 0);
-        const footRow = el('tr');
-        footRow.append(el('td', null, 'Summe'), el('td', null, String(sumDays)), el('td', null, `${sumSpecial} Sondertage`), el('td', 'payroll-number', euro(result.totals.receipts)), el('td', 'payroll-number', euro(result.totals.salary)), el('td', 'payroll-number payroll-total', euro(result.totals.total)), el('td'), el('td'), el('td'));
-        foot.replaceChildren(footRow);
+        const foot = el('div', 'pay-head pay-foot-row');
+        const footCell = (label, text, extra) => { const node = el('span', `pay-cell${extra ? ` ${extra}` : ''}`, text); node.dataset.label = label; return node; };
+        const footWho = el('span', 'pay-who');
+        footWho.append(el('strong', null, 'Summe'));
+        foot.append(el('span', 'pay-chevron is-empty'), footWho, footCell('Arbeitstage', String(sumDays)), footCell('Sondertage', `${sumSpecial} Sondertage`), footCell('Belege', euro(result.totals.receipts), 'payroll-number'),
+            footCell('Salary', euro(result.totals.salary), 'payroll-number'), footCell('Gesamt', euro(result.totals.total), 'payroll-number payroll-total'), el('span', 'pay-cell pay-state'));
+        $('payrollFoot').replaceChildren(foot);
     }
+    $('personSearch').addEventListener('input', () => { personQuery = $('personSearch').value.trim(); renderList(); });
 
     // Namen der Endliste in die Dolmetscherliste dieses Geräts übernehmen (Vorschläge beim Zuweisen).
     function copyNamesToDirectory(names, quiet) {
@@ -306,19 +461,10 @@
     }
     $('copyNames').addEventListener('click', () => copyNamesToDirectory(result.rows.map(row => row.name), false));
 
-    // Fester Stand der Abrechnung für das Portal: genau das, was die Person sehen und bestätigen soll.
+    // Abschluss: fester Stand der Abrechnung, den die Person im Portal prüft und bestätigt.
     async function releaseStatement(row) {
         if (!row.profileId || row.salary == null) return false;
-        const range = Abrechnung.monthRange(month);
-        const own = [...specialDays, ...trackingSpecial].filter(item => Abrechnung.key(item.person_name) === Abrechnung.key(row.name) && item.counts !== 'Nein');
-        const data = {
-            label: range.label, period: range.period, rate,
-            workdays: row.workdays, dates: dayDates.get(Abrechnung.key(row.name)) || [],
-            specialDays: own.map(item => ({ date: item.date, job: item.job, amount: Number(item.amount), counts: item.counts })),
-            specialCount: row.specialCount, specialSum: row.specialSum,
-            receipts: row.receipts.map(item => ({ date: item.date, place: item.place, amount: Number(item.amount), kind: item.kind })),
-            receiptSum: row.receiptSum, salary: row.salary, total: row.total, remark: row.remark
-        };
+        const data = Abrechnung.statementData(row, { month, rate, dayDates, running: false });
         const { error } = await client.from('tt_statements').upsert({
             month, profile_id: row.profileId, person_name: row.name, data,
             released_at: new Date().toISOString(), released_by: profile.full_name || '',
@@ -329,20 +475,21 @@
     }
 
     $('releaseAll').addEventListener('click', async () => {
-        const ready = result.rows.filter(row => row.profileId && row.salary != null && row.statement?.response !== 'bestätigt');
-        if (!ready.length) { showToast('Es gibt nichts freizugeben: Verknüpfe zuerst Personen mit ihrem Portal-Konto und trage Arbeitstage ein.', 'info'); return; }
-        const confirmed = await confirmDialog(`${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} für ${Abrechnung.monthRange(month).label} im Portal freigeben? Bereits bestätigte bleiben unverändert.`, 'Freigeben');
+        const closed = row => row.statement && !row.statement.data?.running && !row.statement.data?.paused;
+        const ready = result.rows.filter(row => row.profileId && row.salary != null && !row.statement?.data?.paused && !(closed(row) && row.statement.response === 'bestätigt' && !row.changedSince) && !(closed(row) && row.statement.response === 'offen' && !row.changedSince));
+        if (!ready.length) { showToast('Es gibt nichts zu senden: Entweder ist schon alles gesendet, oder es fehlen Portal-Konto und Arbeitstage.', 'info'); return; }
+        const confirmed = await confirmDialog(`${Abrechnung.monthRange(month).label} abschließen und ${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} zum Bestätigen an die Dolmetscher senden?\n\nSchon bestätigte, unveränderte Abrechnungen bleiben, wie sie sind. Du kannst jeden Abschluss wieder zurückziehen.`, 'Abschließen und senden');
         if (!confirmed) return;
         let done = 0;
         for (const row of ready) { if (await releaseStatement(row)) done += 1; else break; }
-        showToast(`${done} ${done === 1 ? 'Abrechnung' : 'Abrechnungen'} freigegeben – zu finden im Archiv, je Dolmetscher unter seinem Namen`, 'success');
+        showToast(`${done} ${done === 1 ? 'Abrechnung' : 'Abrechnungen'} zum Bestätigen gesendet – zu finden im Archiv, je Dolmetscher unter seinem Namen`, 'success');
         await refresh();
     });
 
     $('addPersonForm').addEventListener('submit', async event => {
         event.preventDefault();
         const name = $('addPersonName').value.trim().replace(/\s+/g, ' ');
-        if (name && await savePayroll(name, { status: '' })) $('addPersonName').value = '';
+        if (name && await savePayroll(name, { status: '' })) { $('addPersonName').value = ''; $('personSearch').value = ''; personQuery = ''; renderList(); }
     });
 
     // ---------- Sondertage ----------
@@ -573,14 +720,17 @@
     const statementName = item => profiles.find(person => person.id === item.profile_id)?.full_name || item.person_name || 'Ohne Namen';
     const own = data => Array.isArray(data?.receipts) ? data.receipts.length : 0;
 
+    const releasedText = item => item.data?.running ? `Im Portal seit ${stamp(item.released_at)} · wird von selbst aktualisiert` : `Im Portal freigegeben am ${stamp(item.released_at)}${item.released_by ? ` von ${item.released_by}` : ''}`;
+
     async function loadArchive() {
         const { data, error } = await client.from('tt_statements').select('*').order('month', { ascending: false });
-        archive = error ? [] : data;
+        archive = error ? [] : data.filter(item => !item.data?.paused);
         renderArchive();
         if (error) $('archiveSummary').textContent = TerminCloud.germanError(error);
     }
 
     function statementState(item) {
+        if (item.data?.running && item.response !== 'einwand') return 'laufender Stand – wird von selbst aktualisiert';
         if (item.response === 'bestätigt') return `bestätigt am ${stamp(item.responded_at)}`;
         if (item.response === 'einwand') return `Einwand${item.response_note ? `: „${item.response_note}“` : ''}`;
         return 'freigegeben – wartet auf die Bestätigung';
@@ -609,7 +759,7 @@
         printSheet([
             el('h1', null, `Abrechnung ${statementLabel(item)}`),
             el('p', null, 'Temporäre Dolmetscher/innen · Arbeitstage, Sondertage und Belege'),
-            el('p', 'print-meta', `Dolmetscher/in: ${statementName(item)}   ·   Im Portal freigegeben am ${stamp(item.released_at)}${item.released_by ? ` von ${item.released_by}` : ''}   ·   Stand: ${statementState(item)}`),
+            el('p', 'print-meta', `Dolmetscher/in: ${statementName(item)}   ·   ${releasedText(item)}   ·   Stand: ${statementState(item)}`),
             printTable(['Position', 'Angabe / Betrag'], statementLines(item), ['Gesamtbetrag', euro(data.total || 0)])
         ]);
     }
@@ -618,7 +768,7 @@
     function showStatement(item) {
         shownStatement = item;
         $('statementDialogTitle').textContent = `${statementName(item)} · ${statementLabel(item)}`;
-        $('statementDialogMeta').textContent = `Im Portal freigegeben am ${stamp(item.released_at)}${item.released_by ? ` von ${item.released_by}` : ''} · ${statementState(item)}`;
+        $('statementDialogMeta').textContent = `${releasedText(item)} · ${statementState(item)}`;
         const body = $('statementDialogBody');
         body.replaceChildren(...statementLines(item).map(([term, value]) => { const row = el('div', 'statement-line'); row.append(el('span', null, term), el('span', null, value)); return row; }));
         const total = el('div', 'statement-line is-total');
@@ -657,7 +807,7 @@
             box.open = archiveOpen.has(person.key) || Boolean(archiveQuery) || shown.length === 1;
             box.addEventListener('toggle', () => { if (box.open) archiveOpen.add(person.key); else archiveOpen.delete(person.key); });
             const summary = el('summary');
-            const waiting = items.filter(item => item.response === 'offen').length;
+            const waiting = items.filter(item => item.response === 'offen' && !item.data?.running).length;
             const objections = items.filter(item => item.response === 'einwand').length;
             const sum = items.reduce((total, item) => total + Number(item.data?.total || 0), 0);
             const info = el('span', 'archive-person-info', `${items.length} ${items.length === 1 ? 'Abrechnung' : 'Abrechnungen'} · zuletzt ${statementLabel(items[0])} · zusammen ${euro(sum)}`);
@@ -675,8 +825,9 @@
                 const data = item.data || {};
                 const tr = el('tr');
                 tr.dataset.month = item.month;
-                const state = el('span', 'status-pill', STATEMENT_STATE[item.response] || item.response);
-                state.dataset.status = STATEMENT_PILL[item.response] || 'bekannt';
+                const live = item.data?.running && item.response !== 'einwand';
+                const state = el('span', 'status-pill', live ? 'laufend' : STATEMENT_STATE[item.response] || item.response);
+                state.dataset.status = live ? 'bekannt' : STATEMENT_PILL[item.response] || 'bekannt';
                 const stateCell = el('td');
                 stateCell.append(state);
                 if (item.response === 'bestätigt') stateCell.append(el('small', 'payroll-sub', `am ${stamp(item.responded_at)}`));

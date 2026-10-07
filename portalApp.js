@@ -355,7 +355,7 @@ if (!window.TerminContact) {
         if (unread) notices.push([`${unread} neue ${unread === 1 ? 'Nachricht' : 'Nachrichten'} von der Einsatzleitung`, () => goTo('messages')]);
         // Aufträge stehen jetzt im Abschnitt „Heute“ (nächster Auftrag groß, weitere als Zeilen) – nicht mehr als Textzeile.
         renderHomeJobs(today, open);
-        const waiting = statementData.find(item => item.response === 'offen');
+        const waiting = statementData.find(item => item.response === 'offen' && !item.data?.running);
         if (waiting && !isFest()) notices.push([`Deine Abrechnung für ${monthLabel(waiting.month)} wartet auf deine Bestätigung`, () => goTo('statement')]);
         $('startNotices').replaceChildren(...notices.map(([text, action]) => {
             const item = document.createElement('li');
@@ -518,7 +518,8 @@ if (!window.TerminContact) {
     // ---------- Abrechnung ----------
     async function loadStatements() {
         const { data, error } = await client.from('tt_statements').select('*').eq('profile_id', profile.id).order('month', { ascending: false }).limit(24);
-        statementData = error ? [] : data;
+        // Ausgeblendete Abrechnungen gibt es für das Portal nicht. „Laufend“ = der Stand, der sich von selbst aktualisiert.
+        statementData = error ? [] : data.filter(item => !item.data?.paused);
         const select = $('statementMonth');
         const previous = select.value;
         const now = new Date();
@@ -528,10 +529,10 @@ if (!window.TerminContact) {
             const option = document.createElement('option');
             option.value = month;
             const statement = statementData.find(item => item.month === month);
-            option.textContent = monthLabel(month) + (statement ? { offen: ' · bitte prüfen', 'bestätigt': ' · bestätigt', einwand: ' · Einwand gemeldet' }[statement.response] : '');
+            option.textContent = monthLabel(month) + (statement ? (statement.data?.running && statement.response === 'offen' ? ' · laufend' : { offen: ' · bitte prüfen', 'bestätigt': ' · bestätigt', einwand: ' · Einwand gemeldet' }[statement.response]) : '');
             return option;
         }));
-        select.value = months.includes(previous) ? previous : (statementData.find(item => item.response === 'offen')?.month || months[0]);
+        select.value = months.includes(previous) ? previous : (statementData.find(item => item.response === 'offen' && !item.data?.running)?.month || months[0]);
         await renderStatement();
     }
     $('statementMonth').addEventListener('change', () => renderStatement());
@@ -576,7 +577,10 @@ if (!window.TerminContact) {
             const state = document.createElement('p');
             state.className = 'statement-state';
             state.dataset.response = statement.response;
-            state.textContent = { offen: 'Bitte prüfe die Abrechnung und bestätige sie.', 'bestätigt': `Von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Einwand gemeldet: „${statement.response_note}“ – die Einsatzleitung meldet sich.` }[statement.response];
+            const running = Boolean(data.running);
+            const stand = new Date(statement.released_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+            if (running && statement.response === 'offen') state.dataset.response = 'laufend';
+            state.textContent = running && statement.response === 'offen' ? `Laufender Stand vom ${stand} – er aktualisiert sich von selbst. Am Monatsende bekommst du die Abrechnung zum Bestätigen.` : { offen: 'Bitte prüfe die Abrechnung und bestätige sie.', 'bestätigt': `Von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Einwand gemeldet: „${statement.response_note}“ – die Einsatzleitung meldet sich.` }[statement.response];
             body.append(state);
             if (statement.response !== 'bestätigt') {
                 const note = document.createElement('textarea');
@@ -602,9 +606,9 @@ if (!window.TerminContact) {
                 const wrong = document.createElement('button');
                 wrong.type = 'button';
                 wrong.className = 'button-secondary';
-                wrong.textContent = 'Stimmt nicht';
+                wrong.textContent = running ? 'Stimmt nicht – melden' : 'Stimmt nicht';
                 wrong.addEventListener('click', () => respond('einwand'));
-                buttons.append(ok, wrong);
+                buttons.append(...(running ? [] : [ok]), wrong);          // bestätigt wird erst die abgeschlossene Abrechnung
                 body.append(note, buttons);
             }
         }
@@ -1198,6 +1202,18 @@ if (!window.TerminContact) {
             if (!docs.length) { body.replaceChildren(el('p', 'job-prior-empty', 'Zu diesem Patienten gibt es noch keine früheren Unterlagen im Archiv.')); return; }
             const last = docs[0].date || String(docs[0].created_at || '').slice(0, 10);
             const nodes = [el('p', 'job-prior-intro', `Zur Vorbereitung: ${docs.length} ${docs.length === 1 ? 'Unterlage' : 'Unterlagen'} aus dem Archiv${last ? ` – die neueste vom ${new Date(`${last}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}. Bitte vertraulich behandeln.`)];
+            // Ganz oben: der letzte Bericht eines Dolmetschers – wann, bei welchem Arzt / welcher Fachrichtung, von wem.
+            const lastReport = docs.find(doc => doc.kind === 'Dolmetscherbericht' && String(doc.body || '').trim());
+            if (lastReport) {
+                const day = lastReport.date || String(lastReport.created_at || '').slice(0, 10);
+                const card = el('div', 'job-prior-last');
+                card.append(el('span', 'job-prior-last-kicker', 'Letzter Bericht'),
+                    el('strong', '', [day ? new Date(`${day}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '', lastReport.mine ? 'von dir' : lastReport.uploader_name ? `von ${lastReport.uploader_name}` : ''].filter(Boolean).join(' · ')),
+                    el('span', 'job-prior-last-where', `Arzt / Fachrichtung: ${lastReport.doctor || 'nicht angegeben'}`),
+                    el('p', 'job-prior-body', String(lastReport.body).trim()));
+                if (lastReport.note) card.append(el('span', 'job-prior-note', lastReport.note));
+                nodes.push(card, el('h4', 'job-prior-title job-prior-all', `Ganze Akte (${docs.length})`));
+            }
             const rest = [...docs];
             PRIOR_GROUPS.forEach(([title, test]) => {
                 const group = rest.filter(doc => test(doc.kind || ''));

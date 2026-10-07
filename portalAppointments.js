@@ -58,6 +58,20 @@ window.PortalAppointments = (function () {
         edit.title = entered ? 'Der Termin ist schon eingetragen – deine Änderung geht als Korrektur ans Büro' : 'Angaben ändern';
         edit.addEventListener('click', () => open(item));
         side.append(edit);
+        if (item.file_path) {
+            // Den gesendeten Terminzettel ansehen
+            const view = el('button', 'button-quiet appt-slip-view', 'Zettel ansehen');
+            view.type = 'button';
+            view.addEventListener('click', async () => {
+                const tab = window.open('', '_blank');
+                view.disabled = true;
+                const { data, error } = await client.storage.from('dokumente').createSignedUrl(item.file_path, 300);
+                view.disabled = false;
+                if (error || !data?.signedUrl) { tab?.close(); toast('Der Terminzettel konnte nicht geöffnet werden.', 'error'); return; }
+                if (tab && !tab.closed) { tab.opener = null; tab.location.replace(data.signedUrl); } else window.location.href = data.signedUrl;
+            });
+            side.append(view);
+        }
         if (!item.file_path) {
             const slipLater = el('button', 'button-quiet appt-slip-later', 'Zettel nachreichen');
             slipLater.type = 'button';

@@ -91,11 +91,20 @@ window.PortalDocs = (function () {
                 view.type = 'button';
                 view.addEventListener('click', () => viewFile(item));
                 side.append(view);
-            } else if (isReport && item.status === 'neu' && item.assignment_id) {
-                const edit = el('button', 'button-quiet', 'Ändern');
-                edit.type = 'button';
-                edit.addEventListener('click', () => { reportJobId = item.assignment_id; core.goTo('docReport'); });
-                side.append(edit);
+            }
+            if (isReport && item.body) {
+                // Eigener Bericht: als PDF öffnen (drucken oder speichern) und – mit Auftrag – jederzeit bearbeiten.
+                const pdf = el('button', 'button-quiet doc-report-pdf', 'Ansehen · Drucken');
+                pdf.title = 'Als PDF öffnen – ansehen, drucken oder speichern';
+                pdf.type = 'button';
+                pdf.addEventListener('click', () => openReportPdf(item, pdf));
+                side.append(pdf);
+                if (item.assignment_id) {
+                    const edit = el('button', 'button-quiet doc-report-edit', 'Bearbeiten');
+                    edit.type = 'button';
+                    edit.addEventListener('click', () => { reportJobId = item.assignment_id; core.goTo('docReport'); });
+                    side.append(edit);
+                }
             }
             if (item.status === 'neu') {
                 const remove = el('button', 'button-quiet-danger', 'Löschen');
@@ -106,6 +115,38 @@ window.PortalDocs = (function () {
             entry.append(text, side);
             return entry;
         }));
+    }
+
+    // Bericht als PDF (gleiches Blatt wie im Büro): öffnet in einem neuen Fenster – dort drucken oder speichern.
+    // Kann der Browser das Fenster nicht öffnen, wird die Datei gespeichert.
+    async function openReportPdf(item, button) {
+        const tab = window.open('', '_blank');
+        if (button) button.disabled = true;
+        try {
+            const next = String(item.note || '').startsWith('Nächster Termin: ') ? String(item.note).slice('Nächster Termin: '.length) : '';
+            const written = String(item.created_at || '').slice(0, 10);
+            const { blob } = await DocPdf.report({
+                organisation: 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher',
+                title: 'Bericht über Termin',
+                meta: [['Patient/in', item.patient_name || ''], ['Patientennummer', item.patient_nr || ''], ['Geburtsdatum', item.patient_birth || ''], ['Arzt / Praxis', item.doctor || ''],
+                    ['Termin am', dayText(item.date)], ['Bericht vom', dayText(written)], ['Dolmetscher/in', core.profile()?.full_name || ''], ['Nächster Termin', next || 'keiner angegeben']],
+                sections: [{ heading: 'Bericht', text: [String(item.body || '').trim(), next ? `Nächster Termin: ${next}` : ''].filter(Boolean).join('\n\n') }, { heading: 'Hinweis', text: next ? '' : (item.note || '') },
+                    { heading: 'Unterschrift', text: `${core.profile()?.full_name || ''}\n${dayText(written)}` }],
+                footer: 'Medical Office Bonn · Transport und Dolmetscher', author: core.profile()?.full_name || '', subject: 'Bericht über Termin'
+            });
+            const url = URL.createObjectURL(blob);
+            const name = DocPdf.fileName({ patientNr: item.patient_nr || '', patientName: item.patient_name || '', kind: REPORT_KIND, date: item.date || written });
+            if (tab && !tab.closed) { tab.location.replace(url); toast('Der Bericht ist als PDF geöffnet – dort kannst du drucken oder speichern.', 'success'); }
+            else { const link = document.createElement('a'); link.href = url; link.download = name; link.click(); toast('Der Bericht wurde als PDF gespeichert.', 'success'); }
+            window.setTimeout(() => URL.revokeObjectURL(url), 300000);
+            return true;
+        } catch (error) {
+            tab?.close();
+            toast(`Das PDF konnte nicht erstellt werden: ${error?.message || error}`, 'error');
+            return false;
+        } finally {
+            if (button) button.disabled = false;
+        }
     }
 
     async function viewFile(item) {
@@ -694,7 +735,9 @@ window.PortalDocs = (function () {
         const profile = core.profile();
         reportSource = sourceOf(job);
         reportExisting = reportOf(job.id);
-        const locked = Boolean(reportExisting && reportExisting.status !== 'neu');
+        // Bearbeiten geht immer. War der Bericht schon geprüft, bekommt ihn das Büro danach noch einmal als „neu“.
+        const checked = Boolean(reportExisting && reportExisting.status !== 'neu');
+        const locked = false;
         $('reportPick').hidden = true;
         $('reportForm').hidden = false;
         const facts = [['Patient/in', reportSource.patientName], ['Patientennummer', reportSource.patientNr], ['Arzt / Praxis', reportSource.doctor],
@@ -711,7 +754,8 @@ window.PortalDocs = (function () {
         $('reportSubmit').hidden = locked;
         $('reportSubmit').textContent = reportExisting ? 'Bericht aktualisieren' : 'Bericht senden';
         $('reportSign').replaceChildren(el('span', '', 'Unterschrift'), el('strong', '', profile.full_name || profile.email || ''), el('small', '', dayText(today())));
-        $('reportState').textContent = locked ? 'Dieser Bericht wurde vom Büro schon geprüft und lässt sich nicht mehr ändern.'
+        if ($('reportPrint')) $('reportPrint').hidden = !reportExisting;
+        $('reportState').textContent = checked ? 'Das Büro hat diesen Bericht schon geprüft. Du kannst ihn trotzdem ändern – das Büro bekommt ihn dann noch einmal als „neu“.'
             : reportExisting ? 'Zu diesem Termin hast du schon einen Bericht gesendet – du kannst ihn hier ändern.'
             : jobDone(job) ? '' : 'Dieser Termin läuft noch. Du kannst den Bericht schon schreiben und nach dem Termin senden.';
         if (!locked) $('reportBody').focus({ preventScroll: true });
@@ -728,6 +772,7 @@ window.PortalDocs = (function () {
         if (open.length === 1 && reportJobs().length === 1) openReportFor(open[0]);
     }
     $('reportOther').addEventListener('click', renderReportPick);
+    $('reportPrint')?.addEventListener('click', () => { if (reportExisting) openReportPdf({ ...reportExisting, body: $('reportBody').value.trim() || reportExisting.body }, $('reportPrint')); });
     ['reportBody', 'reportNextDate', 'reportNextTime'].forEach(id => $(id).addEventListener('input', writeDraft));
 
     $('reportForm').addEventListener('submit', async event => {
@@ -743,8 +788,16 @@ window.PortalDocs = (function () {
         button.disabled = true;
         try {
             const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, patient_birth: source.patientBirth || '', doctor: source.doctor, date: source.date };
+            // Ändern: Der Bericht steht danach wieder auf „neu“ (das Büro sieht „geändert“). Ohne Update 25 geht das nur vor dem Prüfen.
+            const again = { ...fields, status: 'neu', checked_at: null, checked_by: '' };
+            let changed = null;
+            if (reportExisting) {
+                changed = await client.from('tt_documents').update({ ...again, edited_at: new Date().toISOString() }).eq('id', reportExisting.id).select('id');
+                if (changed.error && /edited_at/i.test(changed.error.message || '')) changed = await client.from('tt_documents').update(reportExisting.status === 'neu' ? fields : again).eq('id', reportExisting.id).select('id');
+                if (!changed.error && !(changed.data || []).length) throw new Error('Das Büro hat diesen Bericht schon geprüft. Ändern ist in der Datenbank dafür noch nicht freigeschaltet (Update 25) – bitte sag der Einsatzleitung Bescheid.');
+            }
             const result = reportExisting
-                ? await client.from('tt_documents').update(fields).eq('id', reportExisting.id)
+                ? changed
                 : await client.from('tt_documents').insert({ ...fields, kind: REPORT_KIND, pages: 0, assignment_id: source.assignmentId || null, appointment_id: source.appointmentId || null,
                     uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu' });
             if (result.error) throw result.error;

@@ -2389,3 +2389,85 @@ button.vehicle-hero:focus-visible { outline: 3px solid #fff; outline-offset: -5p
 .doc-type-tabs button b:empty { display: none; }
 .doc-subkinds { margin: 0 0 12px; }
 .doc-subkinds[hidden] { display: none; }
+
+/* 64  Auftragskarte: letzter Bericht zum Patienten ganz oben */
+.job-prior-last { display: flex; flex-direction: column; gap: 3px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--line)); border-left-width: 4px; border-radius: 11px; background: var(--surface); }
+.job-prior-last-kicker { color: var(--brand); font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.job-prior-last-where { color: var(--ink-soft); font-size: .9rem; font-weight: 650; }
+.job-prior-all { margin-top: 10px; color: var(--ink); }
+
+/* 65  Abrechnung: Dolmetscher untereinander, ein Tipp öffnet alle Einzelheiten */
+.pay-list { display: flex; flex-direction: column; gap: 6px; }
+.pay-person { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.pay-person.payroll-special { border-left: 4px solid #2f9e5f; }
+.pay-person.is-open { border-color: var(--brand); box-shadow: 0 6px 22px rgba(15, 23, 42, .10); }
+.pay-head { display: grid; grid-template-columns: 18px minmax(150px, 1.6fr) 104px minmax(110px, 1.5fr) minmax(90px, .9fr) minmax(80px, .8fr) minmax(90px, .8fr) minmax(150px, 1.1fr); align-items: center; gap: 4px 12px; width: 100%; min-height: 52px; padding: 8px 14px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; }
+button.pay-head { cursor: pointer; }
+:root[data-theme="dark"] button.pay-head { color: var(--ink); }
+button.pay-head:hover, :root[data-theme="dark"] button.pay-head:hover, :root[data-theme="dark"] button.pay-head:focus-visible { background: var(--surface-hover); color: var(--ink); }
+button.pay-head:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.pay-person.is-open > .pay-head { border-bottom: 1px solid var(--line); background: var(--brand-soft); }
+.pay-list-head { min-height: 0; padding: 2px 15px 6px; color: var(--muted); font-size: .74rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.pay-list-head .pay-cell, .pay-list-head .pay-who { font-size: inherit; }
+.pay-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s ease; }
+.pay-chevron.is-empty { border: 0; }
+.pay-person.is-open .pay-chevron { transform: rotate(45deg); border-color: var(--brand); }
+.pay-who { min-width: 0; }
+.pay-name { display: block; font-size: 1rem; overflow-wrap: anywhere; }
+.pay-cell { min-width: 0; font-size: .9rem; overflow-wrap: anywhere; }
+.pay-days-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pay-special { color: var(--ink-soft); font-size: .8rem; }
+.pay-state .status-pill { white-space: nowrap; }
+.payroll-changed { color: var(--warn); font-weight: 650; }
+.pay-foot { margin-top: 6px; border-top: 2px solid var(--line-strong); border-radius: 0 0 12px 12px; background: var(--surface-soft); font-weight: 700; }
+.pay-detail { padding: 14px; background: var(--surface-soft); }
+.pay-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; align-items: start; }
+.pay-box { padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.pay-box h3 { margin: 0 0 8px; color: var(--brand); font-size: .76rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.pay-hint { margin: 0 0 8px; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+.pay-days { display: flex; flex-direction: column; margin: 0 0 6px; padding: 0; list-style: none; }
+.pay-day { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+.pay-day:last-child { border-bottom: 0; }
+.pay-day-date { flex: 0 0 86px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pay-day-jobs { flex: 1 1 180px; min-width: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
+.pay-day-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pay-day.is-open .pay-day-date, .pay-day.is-open .pay-day-jobs { color: var(--muted); font-weight: 500; }
+.pay-chip { padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.pay-chip.is-special { background: color-mix(in srgb, #2f9e5f 16%, var(--surface)); color: #1f7a45; }
+:root[data-theme="dark"] .pay-chip.is-special { color: #7fd6a3; }
+.pay-link { min-height: 30px; padding: 2px 0; font-size: .82rem; }
+.pay-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--ink-soft); font-size: .8rem; font-weight: 650; }
+.pay-field input, .pay-field select { min-height: 36px; padding: 4px 8px; font-size: .9rem; }
+.pay-field .payroll-days { width: 150px; }
+.pay-field .status-pill { align-self: flex-start; }
+.pay-detail > .payroll-actions { margin-top: 12px; }
+.pay-detail .payroll-actions-main { flex-wrap: wrap; }
+.pay-detail .payroll-actions-more { align-items: center; margin-top: 6px; gap: 2px 14px; }
+@media (max-width: 1100px) {
+   .pay-list-head { display: none; }
+   .pay-head { grid-template-columns: 18px minmax(0, 1fr) auto; }
+   .pay-head .pay-cell { grid-column: 2 / -1; display: flex; gap: 8px; font-size: .84rem; }
+   .pay-head .pay-cell::before { content: attr(data-label); flex: 0 0 96px; color: var(--muted); font-weight: 600; }
+   .pay-head .pay-cell.pay-state::before { content: none; }
+   .pay-detail-grid { grid-template-columns: 1fr; }
+}
+.statement-state[data-response="laufend"] { background: var(--brand-soft); color: var(--ink); }
+
+/* 66  Ärzte & Standorte: Verzeichnis mit Fachrichtung und Gebäude */
+.doctor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin-bottom: 6px; }
+.doctor-head h2 { margin: 0; font-size: 1.05rem; }
+.doctor-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.doctor-count { display: inline-block; min-width: 24px; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--surface-soft); color: var(--ink-soft); font-size: .8rem; text-align: center; }
+.doctor-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.doctor-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.doctor-row.is-missing { border-left: 4px solid var(--warn); }
+.doctor-main { display: flex; flex: 1 1 320px; flex-direction: column; gap: 3px; min-width: 0; }
+.doctor-name { font-size: 1rem; overflow-wrap: anywhere; }
+.doctor-sub { color: var(--muted); font-size: .84rem; }
+.doctor-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.doctor-chip { padding: 2px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: .82rem; font-weight: 700; }
+.doctor-fact { color: var(--ink); font-size: .9rem; font-weight: 600; }
+.doctor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.doctor-actions a { text-decoration: none; }
+.doctor-dialog { width: min(620px, calc(100vw - 24px)); }
+.doctor-dialog textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: .84rem; }

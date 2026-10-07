@@ -189,7 +189,101 @@ const Abrechnung = (() => {
         return { month, rate: Number.isFinite(rate) && rate > 0 ? rate : 80, checkDate: serialToIso(findRight(overview, 'Prüfdatum')), receipts, specialDays, payroll };
     }
 
-    return { MONTHS, key, round, euro, shortDate, longDate, monthRange, countWorkdays, workdayDates, specialFromDays, compute, parseWorkbook };
+    // ---------- Einzelheiten je Person ----------
+    // Je Person und Tag die Termine aus dem Tagesarchiv: beendete (zählen) und noch nicht beendete (zählen noch nicht).
+    function dayJobs(days) {
+        const perPerson = new Map();
+        (days || []).forEach(day => {
+            (Array.isArray(day.records) ? day.records : []).forEach(record => {
+                const id = key(record.Übersetzer);
+                const status = String(record.Status || '').toLocaleLowerCase('de');
+                if (!id || status === 'storniert') return;
+                if (!perPerson.has(id)) perPerson.set(id, new Map());
+                const dates = perPerson.get(id);
+                if (!dates.has(day.date)) dates.set(day.date, { date: day.date, done: [], open: [] });
+                const text = [String(record.Termin_Uhrzeit || '').slice(0, 5), record['Arzt Nr::Name'], record['Arzt Nr::Ort'] || record.Ort].filter(Boolean).join(' · ') || 'Termin';
+                dates.get(day.date)[status === 'beendet' ? 'done' : 'open'].push(text);
+            });
+        });
+        perPerson.forEach((dates, id) => perPerson.set(id, [...dates.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))));
+        return perPerson;
+    }
+
+    // Die Zeilen der Liste: wer steht drin, mit welchem Konto, welcher Abrechnung im Portal und welchen Belegen.
+    const HIDDEN = 'ausgeblendet';
+    function buildRows({ month, rate, receipts, specialDays, trackingSpecial, payroll, profiles, autoWorkdays, statements }) {
+        // Zeilen können mit einem Portal-Konto verknüpft sein (Name auf dem Tagesblatt ↔ Konto).
+        // Belege aus dem Portal zählen dann zu dieser Zeile, auch wenn der Name anders geschrieben ist.
+        const linkedName = new Map((payroll || []).filter(item => item.profile_id).map(item => [item.profile_id, item.person_name]));
+        const receiptsAll = (receipts || []).map(item => linkedName.has(item.profile_id) ? { ...item, person_name: linkedName.get(item.profile_id) } : item);
+        const hiddenPeople = (payroll || []).filter(item => item.status === HIDDEN);
+        const hiddenKeys = new Set(hiddenPeople.map(item => key(item.person_name)));
+        hiddenPeople.forEach(item => { const account = (profiles || []).find(person => person.id === item.profile_id); if (account) hiddenKeys.add(key(account.full_name)); });
+        const shown = item => !hiddenKeys.has(key(item.person_name));
+        const receiptsByRow = receiptsAll.filter(shown);
+        // Temporäre Dolmetscher mit Portal-Konto stehen automatisch in der Liste (erst ab dem Monat, in dem das Konto angelegt wurde).
+        const temporary = (profiles || []).filter(item => item.active && item.role === 'dolmetscher' && item.employment !== 'fest' && item.full_name
+            && !linkedName.has(item.id) && (!item.created_at || String(item.created_at).slice(0, 7) <= month)).map(item => item.full_name).filter(name => !hiddenKeys.has(key(name)));
+        const autoShown = new Map([...(autoWorkdays || new Map())].filter(([id]) => !hiddenKeys.has(id)));
+        const allSpecial = [...(specialDays || []), ...(trackingSpecial || [])];
+        const autoNames = new Set([...temporary, ...receiptsByRow.map(item => item.person_name), ...allSpecial.map(item => item.person_name)].map(name => key(name)));
+        autoShown.forEach((count, id) => autoNames.add(id));
+        const result = compute({ rate, receipts: receiptsByRow, specialDays: allSpecial.filter(shown), payroll: (payroll || []).filter(item => item.status !== HIDDEN), autoWorkdays: autoShown, extraNames: temporary });
+        result.rows.forEach(row => {
+            const entry = (payroll || []).find(item => key(item.person_name) === key(row.name));
+            row.profileId = entry?.profile_id || (profiles || []).find(item => key(item.full_name) === key(row.name))?.id || null;
+            row.statement = (statements || []).find(item => item.profile_id === row.profileId) || null;
+            row.receipts = receiptsByRow.filter(item => key(item.person_name) === key(row.name) && item.status !== 'abgelehnt');
+            row.special = allSpecial.filter(item => key(item.person_name) === key(row.name)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        });
+        return { result, hiddenPeople, autoNames };
+    }
+
+    // Fester Stand einer Abrechnung für das Portal: genau das, was die Person sieht.
+    function statementData(row, { month, rate, dayDates, running }) {
+        const range = monthRange(month);
+        const data = {
+            label: range.label, period: range.period, rate,
+            workdays: row.workdays, dates: dayDates?.get(key(row.name)) || [],
+            specialDays: (row.special || []).filter(item => item.counts !== 'Nein').map(item => ({ date: item.date, job: item.job, amount: Number(item.amount), counts: item.counts })),
+            specialCount: row.specialCount, specialSum: row.specialSum,
+            receipts: (row.receipts || []).map(item => ({ date: item.date, place: item.place, amount: Number(item.amount), kind: item.kind })),
+            receiptSum: row.receiptSum, salary: row.salary, total: row.total, remark: row.remark
+        };
+        if (running) data.running = true;
+        return data;
+    }
+
+    // Vergleich zweier Stände – ohne die Merkmale „laufend“ und „ausgeblendet“.
+    const deep = value => JSON.stringify(value, (name, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(id => [id, item[id]])) : item);
+    const sameStatement = (left, right) => { const strip = data => { const { running, paused, ...rest } = data || {}; return deep(rest); }; return strip(left) === strip(right); };
+
+    // Der laufende Stand steht von selbst im Portal. Welche Zeilen müssen dafür geschrieben werden?
+    //   • noch nichts im Portal            → laufenden Stand anlegen
+    //   • laufender Stand, Zahlen geändert → aktualisieren
+    //   • abgeschlossen (zum Bestätigen gesendet) oder ausgeblendet → nie anfassen
+    function planSync(rows, context) {
+        const writes = [];
+        (rows || []).forEach(row => {
+            row.changedSince = false;
+            if (!row.profileId || row.salary == null) return;
+            const data = statementData(row, { ...context, running: true });
+            const current = row.statement;
+            if (current?.data?.paused) return;
+            if (!current) { if (row.workdays || row.receiptCount || row.specialCount) writes.push({ row, data }); return; }
+            if (sameStatement(current.data, data)) return;
+            if (current.data?.running) writes.push({ row, data }); else row.changedSince = true;
+        });
+        return writes;
+    }
+
+    const currentMonth = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const previousMonth = (now = new Date()) => currentMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    // Von selbst aktualisiert werden nur der laufende Monat und der Monat davor.
+    const autoMonth = (month, now = new Date()) => month === currentMonth(now) || month === previousMonth(now);
+
+    return { MONTHS, HIDDEN, key, round, euro, shortDate, longDate, monthRange, countWorkdays, workdayDates, specialFromDays, compute, parseWorkbook,
+        dayJobs, buildRows, statementData, sameStatement, planSync, currentMonth, previousMonth, autoMonth };
 })();
 
 if (typeof module !== 'undefined') module.exports = Abrechnung;

@@ -16,7 +16,7 @@
                <input id="payrollImportFile" class="visually-hidden" type="file" accept=".xlsx,.xls">
                <button type="button" id="payrollExport" class="button-secondary">Excel exportieren</button>
                <button type="button" id="payrollPrint" class="button-secondary">Übersicht drucken</button>
-               <button type="button" id="releaseAll" class="button-primary" title="Abrechnungen für die Dolmetscher im Portal sichtbar machen">Im Portal freigeben</button>
+               <button type="button" id="releaseAll" class="button-primary" title="Monat abschließen: Alle Abrechnungen dieses Monats gehen zum Bestätigen an die Dolmetscher">Monat abschließen</button>
             </div>
          </div>
          <p id="payrollStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
@@ -37,12 +37,18 @@
 
             <section class="directory-card">
                <div class="fleet-log-heading">
-                  <div class="portal-tabs payroll-tabs"><button type="button" data-payroll-tab="list" class="is-active">Endliste</button><button type="button" data-payroll-tab="special">Sondertage</button><button type="button" data-payroll-tab="receipts">Belege</button><button type="button" data-payroll-tab="archive">Archiv</button></div>
+                  <div class="portal-tabs payroll-tabs"><button type="button" data-payroll-tab="list" class="is-active">Dolmetscher</button><button type="button" data-payroll-tab="special">Sondertage</button><button type="button" data-payroll-tab="receipts">Belege</button><button type="button" data-payroll-tab="archive">Archiv</button></div>
                </div>
 
                <div data-payroll-panel="list">
-                  <p class="fleet-footnote payroll-note">Salary = (Arbeitstage − Sondertage) × Tagessatz + Beträge der Sondertage. Arbeitstage werden aus dem Tagesarchiv gezählt (Tage mit beendetem Termin); eine eingetragene Zahl hat Vorrang. Ein „Sonder €“-Betrag im Live-Tracking wird automatisch zum Sondertag. Grün = Person mit Sondertagen.</p>
-                  <div class="fleet-table-wrap"><table class="fleet-table payroll-table"><thead><tr><th>Name</th><th>Arbeitstage</th><th>Sondertage</th><th>Belege</th><th>Salary</th><th>Total</th><th>Bemerkung</th><th>Portal</th><th>Aktion</th></tr></thead><tbody id="payrollBody"></tbody><tfoot id="payrollFoot"></tfoot></table></div>
+                  <p class="fleet-footnote payroll-note">Ein Tipp auf einen Namen zeigt alles zu dieser Person: Rechnung, jeden Arbeitstag mit seinen Terminen, Sondertage und Belege. Die Arbeitstage zählen von selbst (jeder Tag mit einem beendeten Termin), und der laufende Stand steht ohne Freigabe im Portal. Erst am Monatsende: „Monat abschließen“ – dann bestätigen die Dolmetscher.</p>
+                  <div class="archive-tools">
+                     <label class="board-search archive-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="personSearch" type="search" autocomplete="off" placeholder="Name suchen" aria-label="In der Liste nach Namen suchen"></label>
+                     <span id="personSummary" class="archive-summary" role="status"></span>
+                  </div>
+                  <div class="pay-head pay-list-head" aria-hidden="true"><span class="pay-chevron is-empty"></span><span class="pay-who">Name</span><span class="pay-cell">Arbeitstage</span><span class="pay-cell">Sondertage</span><span class="pay-cell">Belege</span><span class="pay-cell">Salary</span><span class="pay-cell">Gesamt</span><span class="pay-cell pay-state">Im Portal</span></div>
+                  <div id="payrollBody" class="pay-list"></div>
+                  <div id="payrollFoot" class="pay-foot"></div>
                   <p id="payrollHidden" class="payroll-hidden" hidden></p>
                   <form id="addPersonForm" class="directory-input-row payroll-add"><input id="addPersonName" type="text" list="payrollNames" maxlength="100" placeholder="Person hinzufügen (Name wie auf dem Tagesblatt)" required><button type="submit" class="button-secondary">Hinzufügen</button><button type="button" id="copyNames" class="button-secondary" title="Alle Namen dieser Liste als Vorschläge für das Zuweisen im Live-Tracking speichern">Namen in Dolmetscherliste übernehmen</button></form>
                </div>
@@ -76,7 +82,7 @@
 
                <!-- Archiv: alles, was im Portal freigegeben wurde – je Dolmetscher unter seinem Namen (alle Monate) -->
                <div data-payroll-panel="archive" hidden>
-                  <p class="fleet-footnote payroll-note">Alles, was du im Portal freigegeben hast – geordnet nach Dolmetscher, über alle Monate. Eine neue Freigabe steht sofort hier. Ein Tipp auf den Namen zeigt die Abrechnungen dieser Person.</p>
+                  <p class="fleet-footnote payroll-note">Alles, was im Portal steht oder stand – geordnet nach Dolmetscher, über alle Monate. Ein Tipp auf den Namen zeigt die Abrechnungen dieser Person.</p>
                   <div class="archive-tools">
                      <label class="board-search archive-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="archiveSearch" type="search" autocomplete="off" placeholder="Name suchen" aria-label="Im Archiv nach Namen suchen"></label>
                      <span id="archiveSummary" class="archive-summary" role="status"></span>
@@ -107,6 +113,7 @@
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
       <script src="abrechnungLogic.js"></script>
+      <script src="abrechnungAuto.js"></script>
       <script src="abrechnungApp.js"></script>
    </body>
 </html>

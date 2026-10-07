@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Ärzte &amp; Standorte · Medical Office Bonn</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="aerzte">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · DOLMETSCHER</p><h1>Ärzte &amp; Standorte</h1><p>Fachrichtung, Gebäude und genauer Standort zu jedem Arzt. Was hier steht, kommt von selbst in jeden Auftrag – so weiß der Dolmetscher, wohin er muss.</p></div>
+            <div class="fleet-heading-actions">
+               <button type="button" id="doctorAdd" class="button-primary">Arzt eintragen</button>
+            </div>
+         </div>
+         <p id="doctorStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <section class="directory-card" aria-labelledby="doctorMissingTitle">
+            <div class="doctor-head">
+               <h2 id="doctorMissingTitle">Hier fehlt noch etwas <b id="doctorMissingCount" class="doctor-count">0</b></h2>
+               <div class="doctor-head-actions">
+                  <button type="button" id="doctorCopy" class="button-secondary" title="Die Liste dieser Ärzte kopieren – ohne Patienten, ohne Termine – und in den Chat mit der KI einfügen">1 · Liste für die KI kopieren</button>
+                  <button type="button" id="doctorPaste" class="button-secondary" title="Das Ergebnis der KI hier einfügen – es wird ins Verzeichnis übernommen">2 · Ergebnis der KI einfügen</button>
+               </div>
+            </div>
+            <p class="field-hint">Ärzte aus den Terminlisten der letzten 14 und der nächsten 30 Tage, zu denen die Fachrichtung noch fehlt. Die häufigsten stehen oben.</p>
+            <ul id="doctorMissing" class="doctor-list"></ul>
+         </section>
+
+         <section class="directory-card" aria-labelledby="doctorListTitle">
+            <div class="doctor-head">
+               <h2 id="doctorListTitle">Verzeichnis <b id="doctorListCount" class="doctor-count">0</b></h2>
+               <label class="board-search archive-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="doctorSearch" type="search" autocomplete="off" placeholder="Arzt, Ort oder Fachrichtung suchen" aria-label="Im Verzeichnis suchen"></label>
+            </div>
+            <ul id="doctorList" class="doctor-list"></ul>
+         </section>
+      </main>
+
+      <dialog id="doctorDialog" class="confirm-dialog doctor-dialog" aria-labelledby="doctorDialogTitle">
+         <h2 id="doctorDialogTitle">Arzt eintragen</h2>
+         <form id="doctorForm" class="fleet-form" novalidate>
+            <div class="appt-edit-grid">
+               <label for="doctorName">Arzt / Praxis (wie in der Terminliste)<input id="doctorName" type="text" maxlength="120" autocomplete="off" required></label>
+               <label for="doctorCity">Ort<input id="doctorCity" type="text" maxlength="80" autocomplete="off" placeholder="z. B. Bonn"></label>
+            </div>
+            <label for="doctorSpecialty">Fachrichtung</label>
+            <input id="doctorSpecialty" type="text" maxlength="160" autocomplete="off" placeholder="z. B. Kardiologie">
+            <label for="doctorBuilding">Gebäude / genauer Standort</label>
+            <input id="doctorBuilding" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Uniklinik Bonn, Gebäude 26, Herzzentrum">
+            <label for="doctorHint">Hinweis zum Weg <span class="optional-label">optional</span></label>
+            <input id="doctorHint" type="text" maxlength="300" autocomplete="off" placeholder="z. B. Eingang B, 2. Etage, Anmeldung links · Parkhaus Nord">
+            <label for="doctorMap">Karten-Link <span class="optional-label">optional</span></label>
+            <input id="doctorMap" type="url" maxlength="400" autocomplete="off" placeholder="https://maps.app.goo.gl/…">
+            <p class="field-hint"><a id="doctorSearchLink" href="#" target="_blank" rel="noopener">Im Internet nachsehen</a></p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="doctorCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <dialog id="doctorImportDialog" class="confirm-dialog doctor-dialog" aria-labelledby="doctorImportTitle">
+         <h2 id="doctorImportTitle">Ergebnis der KI einfügen</h2>
+         <p class="field-hint">Eine Zeile je Arzt: <b>Name | Ort | Fachrichtung | Gebäude / Standort | Hinweis zum Weg | Karten-Link</b></p>
+         <textarea id="doctorImportText" rows="10" spellcheck="false" aria-label="Ergebnis der Recherche"></textarea>
+         <p id="doctorImportInfo" class="field-hint" role="status"></p>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="doctorImportCancel">Abbrechen</button><button type="button" class="button-primary" id="doctorImportSave">Übernehmen</button></div>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="arztVerzeichnis.js"></script>
+      <script src="cloudSettingsSync.js"></script>
+      <script src="aerzteApp.js"></script>
+   </body>
+</html>
