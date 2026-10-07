@@ -31,6 +31,16 @@
                      <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="docTitle">Unterlagen</h2><p id="docSummary">Wird geladen …</p></div></div>
                      <div class="fleet-log-controls"><button type="button" id="forwardSelected" class="button-primary fleet-end-button" data-forward-selected disabled>Auswahl weiterleiten (0)</button><button type="button" id="jumpSearch" class="button-quiet jump-search">Patient suchen ↓</button></div>
                   </div>
+                  <!-- Reiter nach Art der Unterlage: Dolmetscherberichte, Krankenhausberichte, Rezepte (mit Kategorien) … -->
+                  <div class="doc-type-tabs" id="docTypeTabs" role="tablist" aria-label="Unterlagen nach Art">
+                     <button type="button" role="tab" data-doc-type="" class="is-active" aria-selected="true">Eingang</button>
+                     <button type="button" role="tab" data-doc-type="berichte" aria-selected="false">Dolmetscherberichte <b></b></button>
+                     <button type="button" role="tab" data-doc-type="arzt" aria-selected="false">Krankenhausberichte <b></b></button>
+                     <button type="button" role="tab" data-doc-type="rezepte" aria-selected="false">Rezepte <b></b></button>
+                     <button type="button" role="tab" data-doc-type="ueberweisung" aria-selected="false">Überweisungen <b></b></button>
+                     <button type="button" role="tab" data-doc-type="sonstiges" aria-selected="false">Sonstiges <b></b></button>
+                  </div>
+                  <div class="recipient-list doc-subkinds" id="docSubKinds" role="group" aria-label="Kategorie" hidden></div>
                   <ul id="requestNotes" class="directory-list request-notes" aria-label="Neu fotografierte Unterlagen" hidden></ul>
                   <ul id="docList" class="directory-list file-list"></ul>
                   <div id="patientList" class="patient-grid" hidden></div>

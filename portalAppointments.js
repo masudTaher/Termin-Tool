@@ -30,46 +30,79 @@ window.PortalAppointments = (function () {
     async function load() {
         const profile = core.profile();
         if (!profile) return;
-        const { data, error } = await client.from('tt_new_appointments').select('*').eq('reporter_id', profile.id).order('created_at', { ascending: false }).limit(40);
+        const { data, error } = await client.from('tt_new_appointments').select('*').eq('reporter_id', profile.id).order('created_at', { ascending: false }).limit(300);
         mine = error ? [] : data;
         $('apptMissing').hidden = !error || !/does not exist|schema cache|could not find/i.test(error.message || '');
         renderList();
     }
 
+    // „Meine gemeldeten Termine“: oben, was beim Büro noch offen ist – darunter das Archiv der eingetragenen Termine.
+    // Ändern und Terminzettel nachreichen geht immer: Ist der Termin schon eingetragen, geht es als Korrektur ans Büro.
+    let listQuery = '';
+    const wasEntered = item => item.status === 'eingetragen' || Boolean(item.correction);
+    function entryOf(item) {
+        const entry = el('li', 'directory-entry damage-entry sent-doc appt-entry');
+        entry.dataset.id = item.id;
+        const text = el('span', 'directory-entry-name');
+        text.append(el('strong', '', [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ') || 'Patient'),
+            el('small', '', [dayText(item.date), item.time ? `${String(item.time).slice(0, 5)} Uhr` : '', item.place, item.city].filter(Boolean).join(' · ')),
+            el('small', '', [PAYER[item.payer] || '', item.file_path ? 'mit Terminzettel' : 'ohne Terminzettel'].filter(Boolean).join(' · ')));
+        if (item.status === 'neu' && item.correction) text.append(el('small', 'appt-entry-note', 'Korrektur gesendet – das Büro trägt sie noch ein.'));
+        const side = el('span', 'vehicle-entry-actions');
+        const entered = item.status === 'eingetragen';
+        const state = el('span', 'status-pill', entered ? 'eingetragen' : item.correction ? 'Korrektur gesendet' : 'gemeldet');
+        state.dataset.status = entered ? 'erledigt' : 'in Arbeit';
+        side.append(state);
+        const edit = el('button', 'button-quiet', entered ? 'Korrigieren' : 'Ändern');
+        edit.type = 'button';
+        edit.title = entered ? 'Der Termin ist schon eingetragen – deine Änderung geht als Korrektur ans Büro' : 'Angaben ändern';
+        edit.addEventListener('click', () => open(item));
+        side.append(edit);
+        if (!item.file_path) {
+            const slipLater = el('button', 'button-quiet appt-slip-later', 'Zettel nachreichen');
+            slipLater.type = 'button';
+            slipLater.addEventListener('click', () => open(item, true));
+            side.append(slipLater);
+        }
+        // Löschen geht nur, solange das Büro den Termin noch nie eingetragen hat.
+        if (item.status === 'neu' && !item.correction) {
+            const remove = el('button', 'button-quiet-danger', 'Löschen');
+            remove.type = 'button';
+            remove.addEventListener('click', async () => {
+                if (remove.dataset.armed !== 'yes') { remove.dataset.armed = 'yes'; remove.textContent = 'Wirklich löschen?'; window.setTimeout(() => { remove.dataset.armed = ''; remove.textContent = 'Löschen'; }, 4000); return; }
+                remove.disabled = true;
+                const { error } = await client.from('tt_new_appointments').delete().eq('id', item.id);
+                if (error) { toast(TerminCloud.germanError(error), 'error'); remove.disabled = false; return; }
+                if (item.file_path) await client.storage.from('dokumente').remove([item.file_path]).catch(() => null);
+                toast('Meldung gelöscht.', 'success');
+                await load();
+            });
+            side.append(remove);
+        }
+        entry.append(text, side);
+        return entry;
+    }
     function renderList() {
         const list = $('apptList');
-        if (!mine.length) { list.replaceChildren(core.emptyItem('Du hast noch keinen neuen Termin gemeldet.')); return; }
-        list.replaceChildren(...mine.map(item => {
-            const entry = el('li', 'directory-entry damage-entry sent-doc');
-            const text = el('span', 'directory-entry-name');
-            text.append(el('strong', '', [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ') || 'Patient'),
-                el('small', '', [dayText(item.date), item.time ? `${String(item.time).slice(0, 5)} Uhr` : '', item.place, item.city].filter(Boolean).join(' · ')),
-                el('small', '', [PAYER[item.payer] || '', item.file_path ? 'mit Terminzettel' : 'ohne Terminzettel'].filter(Boolean).join(' · ')));
-            const side = el('span', 'vehicle-entry-actions');
-            const state = el('span', 'status-pill', item.status === 'eingetragen' ? 'eingetragen' : 'gemeldet');
-            state.dataset.status = item.status === 'eingetragen' ? 'erledigt' : 'in Arbeit';
-            side.append(state);
-            if (item.status === 'neu') {
-                const edit = el('button', 'button-quiet', 'Ändern');
-                edit.type = 'button';
-                edit.addEventListener('click', () => open(item));
-                const remove = el('button', 'button-quiet-danger', 'Löschen');
-                remove.type = 'button';
-                remove.addEventListener('click', async () => {
-                    if (remove.dataset.armed !== 'yes') { remove.dataset.armed = 'yes'; remove.textContent = 'Wirklich löschen?'; window.setTimeout(() => { remove.dataset.armed = ''; remove.textContent = 'Löschen'; }, 4000); return; }
-                    remove.disabled = true;
-                    const { error } = await client.from('tt_new_appointments').delete().eq('id', item.id);
-                    if (error) { toast(TerminCloud.germanError(error), 'error'); remove.disabled = false; return; }
-                    if (item.file_path) await client.storage.from('dokumente').remove([item.file_path]).catch(() => null);
-                    toast('Meldung gelöscht.', 'success');
-                    await load();
-                });
-                side.append(edit, remove);
-            }
-            entry.append(text, side);
-            return entry;
-        }));
+        const needle = fold(listQuery);
+        const hit = item => !needle || fold([item.patient_nr, item.patient_name, dayText(item.date), String(item.date || '').split('-').reverse().join('.'), item.place, item.city, item.doctor, item.description].join(' ')).includes(needle);
+        // Offen: der nächste Termin zuerst. Archiv: der jüngste Termin zuerst.
+        const byDate = (left, right) => `${left.date} ${left.time || ''}`.localeCompare(`${right.date} ${right.time || ''}`);
+        const open = mine.filter(item => item.status !== 'eingetragen' && hit(item)).sort(byDate);
+        const archive = mine.filter(item => item.status === 'eingetragen' && hit(item)).sort((left, right) => byDate(right, left));
+        const search = $('apptSearch');
+        if (search) search.hidden = mine.length < 6 && !listQuery;
+        list.replaceChildren(...(open.length ? open.map(entryOf)
+            : [core.emptyItem(!mine.length ? 'Du hast noch keinen neuen Termin gemeldet.' : needle ? 'Kein offener Termin passt zur Suche.' : 'Alles eingetragen – beim Büro ist nichts mehr offen.')]));
+        const box = $('apptArchive');
+        if (!box) return;
+        const total = mine.filter(item => item.status === 'eingetragen').length;
+        box.hidden = !total;
+        $('apptArchiveSummary').textContent = needle ? `Archiv: eingetragene Termine (${archive.length} von ${total})` : `Archiv: eingetragene Termine (${total})`;
+        if (needle && archive.length) box.open = true;
+        $('apptArchiveList').replaceChildren(...(archive.length ? archive.map(entryOf) : [core.emptyItem('Im Archiv passt nichts zur Suche.')]));
     }
+    $('apptSearch')?.addEventListener('input', () => { listQuery = $('apptSearch').value.trim(); renderList(); });
 
     // ---------- Vorschläge: das Portal lernt mit ----------
     // Krankenhäuser, Praxen, Orte, Ärzte: aus der Datenbank (alle Meldungen + Terminlisten), auf dem Handy zwischengespeichert.
@@ -253,7 +286,8 @@ window.PortalAppointments = (function () {
             if (value('apptPatientName').length < 2) return ['Bitte trag den Namen des Patienten ein.', '#apptPatientName'];
         } else if (step === 2) {
             if (!value('apptDate')) return ['Bitte trag das Datum des Termins ein.', '#apptDate'];
-            if (value('apptDate') < today()) return ['Der Termin liegt in der Vergangenheit. Bitte prüfe das Datum.', '#apptDate'];
+            // Beim Korrigieren eines älteren Termins darf das Datum bleiben, wie es war.
+            if (value('apptDate') < today() && !(editing && value('apptDate') === editing.date)) return ['Der Termin liegt in der Vergangenheit. Bitte prüfe das Datum.', '#apptDate'];
             if (!value('apptTime')) return ['Bitte trag die Uhrzeit ein.', '#apptTime'];
         } else if (step === 3) {
             if (!value('apptPlace')) return ['Bitte trag das Krankenhaus oder die Praxis ein.', '#apptPlace'];
@@ -330,16 +364,23 @@ window.PortalAppointments = (function () {
         $('apptSlipLabel').textContent = 'Terminzettel scannen';
     }
 
-    function open(item = null) {
-        editing = item && item.status === 'neu' ? item : null;
+    // item: eine eigene Meldung ändern (auch eine schon eingetragene – dann als Korrektur); slipFirst: gleich zum Terminzettel.
+    function open(item = null, slipFirst = false) {
+        editing = item || null;
+        const correcting = Boolean(editing) && wasEntered(editing);
         $('apptForm').reset();
         clearSlip();
         payer = '';
         cityAuto = '';
         patients = knownPatients();
-        $('apptDate').min = today();
+        $('apptDate').min = editing ? '' : today();
         $('apptEditing').hidden = !editing;
-        $('apptSubmit').textContent = editing ? 'Änderung senden' : 'Termin melden';
+        $('apptEditing').textContent = correcting
+            ? 'Dieser Termin ist im Büro schon eingetragen. Deine Änderung geht als Korrektur ans Büro – dort steht dann genau, was sich geändert hat.'
+            : 'Du änderst einen gemeldeten Termin. Tippe unten auf „ändern“, korrigiere und sende noch einmal.';
+        $('apptEditing').dataset.kind = correcting ? 'korrektur' : '';
+        $('apptSubmit').textContent = correcting ? 'Korrektur senden' : editing ? 'Änderung senden' : 'Termin melden';
+        if ($('apptChangeBox')) $('apptChangeBox').hidden = !correcting;
         if (editing) {
             $('apptPatientNr').value = editing.patient_nr || '';
             $('apptPatientName').value = editing.patient_name || '';
@@ -352,10 +393,13 @@ window.PortalAppointments = (function () {
             payer = editing.payer || '';
             $('apptNoSlip').checked = Boolean(editing.no_slip);
         }
+        // „Zettel nachreichen“: Das Häkchen „kein Terminzettel“ ist weg, der Scan-Knopf ist frei.
+        if (editing && slipFirst) $('apptNoSlip').checked = false;
         $('apptSlipKept').hidden = !(editing && editing.file_path);
         showSlipState();
         if (core.view() !== 'apptNew') core.goTo('apptNew');
         showStep(editing ? STEPS : 1);
+        if (editing && slipFirst) window.setTimeout(() => $('apptSlipBox')?.scrollIntoView({ block: 'center' }), 60);
         loadSuggestions().then(() => { if (core.view() === 'apptNew') Object.keys(SUGGEST).forEach(renderSuggest); });
     }
 
@@ -429,10 +473,22 @@ window.PortalAppointments = (function () {
                 place: value('apptPlace'), city: value('apptCity'), doctor: value('apptDoctor'), description: value('apptDescription'),
                 payer, file_path: filePath, no_slip: !filePath
             };
-            const result = editing
-                ? await client.from('tt_new_appointments').update(fields).eq('id', editing.id)
-                : await client.from('tt_new_appointments').insert({ ...fields, reporter_id: profile.id, reporter_name: profile.full_name || profile.email || '', status: 'neu' }).select('id').single();
-            if (result.error) throw result.error;
+            // Schon eingetragen (oder schon einmal korrigiert): als Korrektur über die Datenbank-Funktion – sie merkt sich die alten Werte.
+            const correcting = Boolean(editing) && wasEntered(editing);
+            if (correcting) {
+                const same = ['patient_nr', 'patient_name', 'date', 'place', 'city', 'doctor', 'description', 'payer'].every(key => String(editing[key] ?? '') === String(fields[key] ?? ''))
+                    && String(editing.time || '').slice(0, 5) === String(fields.time || '').slice(0, 5) && (editing.file_path || null) === (fields.file_path || null);
+                if (same && !value('apptChangeNote')) { toast('Du hast nichts geändert. Tippe auf „ändern“ neben der Angabe, die nicht stimmt – oder scanne den Terminzettel.', 'info'); return; }
+            }
+            const result = correcting
+                ? await client.rpc('tt_appointment_correct', { p_id: editing.id, p_fields: fields, p_note: value('apptChangeNote') })
+                : editing
+                    ? await client.from('tt_new_appointments').update(fields).eq('id', editing.id)
+                    : await client.from('tt_new_appointments').insert({ ...fields, reporter_id: profile.id, reporter_name: profile.full_name || profile.email || '', status: 'neu' }).select('id').single();
+            if (result.error) {
+                if (correcting && /tt_appointment_correct|schema cache|could not find/i.test(result.error.message || '')) throw new Error('Korrekturen an eingetragenen Terminen sind in der Datenbank noch nicht eingerichtet (Update 24). Bitte sag der Einsatzleitung Bescheid.');
+                throw result.error;
+            }
             // Mitteilung aufs Handy der Einsatzleitung und des Sekretariats (ohne Patientennamen).
             const reportedId = editing ? editing.id : result.data?.id;
             if (reportedId) TerminCloud.callFunction?.({ action: 'appointment', appointmentId: reportedId, changed: Boolean(editing) })?.catch?.(() => null);
@@ -443,8 +499,8 @@ window.PortalAppointments = (function () {
             editing = null;
             clearSlip();
             await load();
-            await core.showSuccess(changed ? 'Änderung gesendet' : 'Termin gemeldet', `${fields.patient_nr} · ${dayText(fields.date)} · ${fields.time} Uhr`);
-            toast('Das Büro sieht den Termin jetzt unter „Neue Termine“. Danke!', 'success');
+            await core.showSuccess(correcting ? 'Korrektur gesendet' : changed ? 'Änderung gesendet' : 'Termin gemeldet', `${fields.patient_nr} · ${dayText(fields.date)} · ${fields.time} Uhr`);
+            toast(correcting ? 'Das Büro sieht die Korrektur unter „Neue Termine“ – mit dem, was sich geändert hat. Danke!' : 'Das Büro sieht den Termin jetzt unter „Neue Termine“. Danke!', 'success');
             core.goTo('appts');
         } catch (error) {
             if (uploaded) await client.storage.from('dokumente').remove([uploaded]).catch(() => null);

@@ -409,10 +409,10 @@ if (!window.TerminContact) {
     function renderHomeJobs(today, open) {
         const box = $('homeNext');
         if (!box) return;
-        const active = jobsData.filter(item => !item.cancelled).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        const active = jobsData.filter(item => !item.cancelled).sort(jobOrder);
         const todays = active.filter(item => item.date === today);
         const running = active.find(item => jobStarted(item) && !jobFinished(item) && item.date <= today);
-        const nextToday = todays.find(item => !jobFinished(item) && item.response !== 'abgesagt');
+        const nextToday = todays.find(item => !jobFinished(item) && !jobClosed(item));
         const upcoming = active.find(item => item.date > today && item.response !== 'abgesagt');
         const main = running || nextToday || null;
         $('homeTodayTitle').textContent = todays.length ? `Heute · ${todays.length} ${todays.length === 1 ? 'Auftrag' : 'Aufträge'}` : 'Heute';
@@ -875,6 +875,13 @@ if (!window.TerminContact) {
     // „Patient geht alleine“: Der Termin findet statt, nur ohne Dolmetscher – das ist kein Ausfall.
     const jobAlone = item => Boolean(item.storno_at) && /geht\s+allein/i.test(item.storno_note || '');
     const jobDeclined = item => item.response === 'abgesagt' && !item.cancelled && !jobStorno(item);
+    // Abgeschlossen ohne Einsatz: abgesagt oder ausgefallen – die Karte ist rot und zeigt „Abgesagt“.
+    const jobClosed = item => jobDeclined(item) || jobStorno(item);
+    // Reihenfolge: Tag, Uhrzeit – bei gleicher Uhrzeit steht der gültige Auftrag vor einem abgesagten,
+    // und der zuletzt gesendete zuerst (der neueste ist der aktuelle).
+    const jobOrder = (a, b) => `${a.date} ${String(a.time || '').slice(0, 5)}`.localeCompare(`${b.date} ${String(b.time || '').slice(0, 5)}`)
+        || Number(jobClosed(a)) - Number(jobClosed(b))
+        || String(b.sent_at || '').localeCompare(String(a.sent_at || ''));
     const jobFinished = item => Boolean(item.finished_at) || ['beendet', 'alleine'].includes(item.work_status) || jobStorno(item);
 
     async function setJobProgress(item, action, button) {
@@ -1113,6 +1120,113 @@ if (!window.TerminContact) {
         return box;
     }
 
+    // ---------- Frühere Unterlagen zum Patienten: zur Vorbereitung, sobald der Auftrag zugesagt ist ----------
+    // Die Datenbank gibt sie nur dem Dolmetscher, dem der Auftrag gerade gehört – ab der Zusage, rund um den Termin,
+    // und hält jeden Abruf fest. Geladen wird erst, wenn die Karte wirklich offen ist.
+    const priorCache = new Map();    // Auftrag → { at, result } oder { pending }
+    const priorOpen = new Map();     // Auftrag → vom Dolmetscher auf- oder zugeklappt
+    const PRIOR_GROUPS = [
+        ['Berichte der Dolmetscher', kind => kind === 'Dolmetscherbericht'],
+        ['Arzt- und Krankenhausberichte', kind => kind === 'Arztbericht'],
+        ['Rezepte', kind => /^Rezept/.test(kind)],
+        ['Überweisungen', kind => /^Überweisung/.test(kind)],
+        ['Sonstiges', () => true]
+    ];
+    const foldText = text => String(text || '').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    const priorWanted = item => ['zugesagt', 'vorbehalt'].includes(item.response) && !item.cancelled && !jobClosed(item);
+    async function openStoredFile(path, button, failText) {
+        // Der Tab entsteht sofort beim Tippen – nach dem Warten auf die Adresse würde ihn das Handy blockieren.
+        const tab = window.open('', '_blank');
+        button.disabled = true;
+        const { data, error } = await client.storage.from('dokumente').createSignedUrl(path, 600);
+        button.disabled = false;
+        if (error || !data?.signedUrl) { tab?.close(); toast(failText, 'error'); return; }
+        if (tab && !tab.closed) { tab.opener = null; tab.location.replace(data.signedUrl); }
+        else toast('Der Browser hat das neue Fenster blockiert.', 'info', null, { label: 'Öffnen', run: () => { window.location.href = data.signedUrl; } });
+    }
+    function priorEntry(doc, jobDoctor) {
+        const entry = el('li', 'job-prior-entry');
+        entry.dataset.kind = doc.kind || 'Sonstiges';
+        const head = el('span', 'job-prior-head');
+        const day = doc.date || String(doc.created_at || '').slice(0, 10);
+        head.append(el('strong', '', doc.kind || 'Unterlage'), el('span', '', day ? new Date(`${day}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''));
+        const sameDoctor = jobDoctor && doc.doctor && (foldText(doc.doctor).includes(foldText(jobDoctor)) || foldText(jobDoctor).includes(foldText(doc.doctor)));
+        if (sameDoctor) head.append(el('em', 'chip chip-brand', 'gleiche Praxis'));
+        entry.append(head);
+        entry.append(el('small', '', [doc.doctor, doc.mine ? 'von dir' : doc.uploader_name ? `von ${doc.uploader_name}` : '', doc.pages ? `${doc.pages} ${doc.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
+        if (doc.note) entry.append(el('span', 'job-prior-note', doc.note));
+        if (doc.body) {
+            const full = String(doc.body).trim();
+            const short = full.length > 220 ? `${full.slice(0, 220).trimEnd()} …` : full;
+            const text = el('p', 'job-prior-body', short);
+            entry.append(text);
+            if (short !== full) {
+                const more = el('button', 'link-button job-prior-more', 'Ganzen Bericht lesen');
+                more.type = 'button';
+                more.addEventListener('click', () => { const open = text.textContent !== full; text.textContent = open ? full : short; more.textContent = open ? 'Kürzer anzeigen' : 'Ganzen Bericht lesen'; });
+                entry.append(more);
+            }
+        }
+        if (doc.file_path) {
+            const open = el('button', 'job-attachment job-prior-open');
+            open.type = 'button';
+            open.append(svgSpan('job-attachment-icon', CLIP_ICON), el('span', '', 'PDF öffnen'));
+            open.addEventListener('click', () => openStoredFile(doc.file_path, open, 'Die Unterlage konnte nicht geöffnet werden. Bitte sag der Einsatzleitung Bescheid.'));
+            entry.append(open);
+        }
+        return entry;
+    }
+    function priorBox(item, jobDoctor) {
+        if (!priorWanted(item)) return null;
+        const box = document.createElement('details');
+        box.className = 'job-prior';
+        box.hidden = true;                       // erscheint erst, wenn klar ist, dass es etwas zu zeigen gibt
+        const summary = el('summary', '', 'Frühere Unterlagen zum Patienten');
+        const count = el('b', 'count-badge job-prior-count');
+        count.hidden = true;
+        summary.append(count);
+        const body = el('div', 'job-prior-body-wrap');
+        box.append(summary, body);
+        box.addEventListener('toggle', () => priorOpen.set(item.id, box.open));
+        const show = result => {
+            const docs = result?.documents || [];
+            // Nicht erlaubt (z. B. Termin zu weit weg), keine Aktennummer, Funktion fehlt: einfach nichts anzeigen.
+            if (!result || !result.allowed || !result.patient_nr) { box.hidden = true; return; }
+            box.hidden = false;
+            count.hidden = !docs.length;
+            count.textContent = String(docs.length);
+            if (!docs.length) { body.replaceChildren(el('p', 'job-prior-empty', 'Zu diesem Patienten gibt es noch keine früheren Unterlagen im Archiv.')); return; }
+            const last = docs[0].date || String(docs[0].created_at || '').slice(0, 10);
+            const nodes = [el('p', 'job-prior-intro', `Zur Vorbereitung: ${docs.length} ${docs.length === 1 ? 'Unterlage' : 'Unterlagen'} aus dem Archiv${last ? ` – die neueste vom ${new Date(`${last}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}. Bitte vertraulich behandeln.`)];
+            const rest = [...docs];
+            PRIOR_GROUPS.forEach(([title, test]) => {
+                const group = rest.filter(doc => test(doc.kind || ''));
+                if (!group.length) return;
+                group.forEach(doc => rest.splice(rest.indexOf(doc), 1));
+                const list = el('ul', 'job-prior-list');
+                list.append(...group.map(doc => priorEntry(doc, jobDoctor)));
+                nodes.push(el('h4', 'job-prior-title', `${title} (${group.length})`), list);
+            });
+            body.replaceChildren(...nodes);
+            // Von selbst aufgeklappt, solange der Auftrag noch bevorsteht – außer der Dolmetscher hat es selbst zugeklappt.
+            box.open = priorOpen.has(item.id) ? priorOpen.get(item.id) : !jobStarted(item) && !jobFinished(item);
+        };
+        const ensure = async () => {
+            const cached = priorCache.get(item.id);
+            if (cached?.result && Date.now() - cached.at < 10 * 60 * 1000) { show(cached.result); return; }
+            if (cached?.pending) { show(await cached.pending); return; }
+            const pending = client.rpc('tt_patient_history', { p_assignment: item.id }).then(({ data, error }) => (error ? null : data)).catch(() => null);
+            priorCache.set(item.id, { pending });
+            const result = await pending;
+            // Fehlt die Funktion (Update 23) oder gab es einen Fehler: nicht dauernd neu fragen.
+            priorCache.set(item.id, { at: Date.now(), result: result || { allowed: false } });
+            show(result);
+        };
+        const cached = priorCache.get(item.id);
+        if (cached?.result) show(cached.result);
+        return { node: box, ensure };
+    }
+
     // Ab zwei Aufträgen ist immer nur einer aufgeklappt – die anderen sind eine kurze Zeile (Tag, Uhrzeit, Ort, Patient, Antwort).
     // jobOpenId: undefined = von selbst (der nächste anstehende Auftrag), '' = alle zu, sonst der vom Dolmetscher geöffnete.
     const JOB_FOLD_FROM = 2;
@@ -1150,8 +1264,10 @@ if (!window.TerminContact) {
         if (time) main.append(el('span', 'job-time', `${time} Uhr`));
         main.append(el('strong', 'job-place', place));
         if (city) { const cityLine = el('span', 'job-city'); cityLine.append(svgSpan('job-city-icon', JOB_ICONS.pin), el('span', '', city)); main.append(cityLine); }
-        const state = el('span', 'status-pill', RESPONSE_LABEL[item.response]);
-        state.dataset.status = { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
+        // Abgesagt (vom Dolmetscher) oder ausgefallen (Patient, Praxis, Einsatzleitung): deutlich rot „Abgesagt“.
+        const closedLabel = jobStorno(item) ? (jobAlone(item) ? 'Patient geht alleine' : 'Abgesagt') : item.response === 'abgesagt' ? 'Abgesagt' : '';
+        const state = el('span', 'status-pill', closedLabel || RESPONSE_LABEL[item.response]);
+        state.dataset.status = closedLabel ? 'offen' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
         top.append(day, main, state);
 
         // Offene Aufträge sind aufgeklappt. Hat der Dolmetscher selbst auf- oder zugeklappt, bleibt es dabei.
@@ -1295,21 +1411,24 @@ if (!window.TerminContact) {
         const officeNote = jobOfficeNote(item);
         if (officeNote) rest.append(officeNote);
         rest.append(details, answer);
+        // Zugesagt: frühere Unterlagen zum Patienten (Berichte der Kollegen, Arztberichte, Rezepte) – zur Vorbereitung.
+        const prior = priorBox(item, place);
+        if (prior) rest.insertBefore(prior.node, details);
         card.append(top, step, rest);
-        if (declined) card.classList.add('is-closed');
+        if (declined || jobStorno(item)) card.classList.add('is-closed');
         if (foldable) {
             card.classList.add('is-foldable');
             const patientName = parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || '';
             if (patientName) main.append(el('span', 'job-mini-patient', patientName));
             if (item.office_note || item.attachment_path) main.append(el('span', 'job-mini-note', [item.office_note ? 'Hinweis der Einsatzleitung' : '', item.attachment_path ? 'Anhang' : ''].filter(Boolean).join(' · ')));
-            if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', jobAlone(item) ? 'Patient geht alleine' : 'Fällt aus'));
+            if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', jobAlone(item) ? 'Abgeschlossen' : 'Fällt aus · abgeschlossen'));
             else if (declined) main.append(el('span', 'job-mini-state job-mini-storno', 'Abgeschlossen'));
             else if (finished) main.append(el('span', 'job-mini-state', item.finished_at ? `Beendet ${clock(item.finished_at)}` : 'Beendet'));
             else if (started) main.append(el('span', 'job-mini-state', 'Unterwegs'));
             top.append(svgSpan('job-fold-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'));
             top.setAttribute('role', 'button');
             top.tabIndex = 0;
-            const setOpen = open => { card.dataset.open = String(open); top.setAttribute('aria-expanded', String(open)); rest.hidden = !open; };
+            const setOpen = open => { card.dataset.open = String(open); top.setAttribute('aria-expanded', String(open)); rest.hidden = !open; if (open) prior?.ensure(); };
             setOpen((jobOpenId === undefined ? jobAutoOpenId : jobOpenId) === item.id);
             const toggle = () => {
                 const open = card.dataset.open !== 'true';
@@ -1321,6 +1440,7 @@ if (!window.TerminContact) {
             top.addEventListener('click', toggle);
             top.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
         }
+        if (!foldable) prior?.ensure();
         // Ab dem Tag des Termins: Arztbericht, Rezept oder Überweisung direkt zu diesem Auftrag fotografieren.
         if (item.date <= TerminCloud.todayIso() && item.response !== 'abgesagt') {
             const docs = el('button', 'job-docs-button');
@@ -1428,7 +1548,7 @@ if (!window.TerminContact) {
         const today = TerminCloud.todayIso();
         // Oben stehen kommende Aufträge – und ältere, die gestartet, aber noch nicht beendet wurden.
         const isCurrent = item => !item.cancelled && (item.date >= today || (jobStarted(item) && !jobFinished(item)));
-        const upcoming = data.filter(isCurrent).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        const upcoming = data.filter(isCurrent).sort(jobOrder);
         const open = upcoming.filter(item => item.response === 'offen').length;
         $('jobsSummary').textContent = upcoming.length
             ? `${upcoming.length} ${upcoming.length === 1 ? 'Auftrag' : 'Aufträge'}${open ? `, ${open} ${open === 1 ? 'wartet' : 'warten'} auf deine Antwort` : ''}`
@@ -1501,7 +1621,7 @@ if (!window.TerminContact) {
         const byDay = new Map();
         past.forEach(item => { if (!byDay.has(item.date)) byDay.set(item.date, []); byDay.get(item.date).push(item); });
         [...byDay.keys()].sort().reverse().forEach(day => {
-            const items = byDay.get(day).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+            const items = byDay.get(day).sort(jobOrder);
             const holder = document.createElement('li');
             holder.className = 'history-day';
             const fold = document.createElement('details');
@@ -2428,16 +2548,72 @@ if (!window.TerminContact) {
         const previous = select.value;
         const jobs = jobsData.filter(item => item.date === date && !item.cancelled).sort((left, right) => String(left.time).localeCompare(String(right.time)));
         const option = (value, text) => { const node = document.createElement('option'); node.value = value; node.textContent = text; return node; };
-        select.replaceChildren(option('', 'Bitte wählen'), ...jobs.map(item => option(item.id, item.title)), option('other', jobs.length ? 'Anderer Termin / anderer Grund' : 'Termin von Hand eintragen'));
+        // Am Termin steht gleich dabei, wann du laut App losgefahren und fertig geworden bist – so findest du den richtigen.
+        const jobLabel = item => {
+            const early = item.started_at && clock(item.started_at) < WORK_START;
+            const late = item.finished_at && !item.storno_at && clock(item.finished_at) > WORK_END;
+            return item.title + (early ? ` · früh losgefahren ${clock(item.started_at)}` : '') + (late ? ` · fertig ${clock(item.finished_at)}` : '');
+        };
+        select.replaceChildren(option('', 'Bitte wählen'), ...jobs.map(item => option(item.id, jobLabel(item))), option('other', jobs.length ? 'Anderer Termin / anderer Grund' : 'Termin von Hand eintragen'));
         select.value = previous && [...select.options].some(node => node.value === previous) ? previous : (jobs.length === 1 ? jobs[0].id : '');
         $('overtimeJobText').hidden = select.value !== 'other';
         $('overtimeJobText').required = select.value === 'other';
+        renderOvertimeDays();
+        suggestOvertimeTimes();
     }
+    // Schnellwahl für den Tag: heute und die letzten sechs Tage – nachträglich eintragen ist ausdrücklich möglich.
+    function renderOvertimeDays() {
+        const box = $('overtimeDays');
+        if (!box) return;
+        const chosen = $('overtimeDate').value;
+        const base = new Date(`${TerminCloud.todayIso()}T12:00:00`);
+        box.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map(back => {
+            const day = new Date(base); day.setDate(base.getDate() - back);
+            const iso = isoDate(day);
+            const jobsThatDay = jobsData.filter(item => item.date === iso && !item.cancelled).length;
+            const label = back === 0 ? 'Heute' : back === 1 ? 'Gestern' : day.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+            const chip = el('button', 'recipient-chip', jobsThatDay ? `${label} · ${jobsThatDay} ${jobsThatDay === 1 ? 'Termin' : 'Termine'}` : label);
+            chip.type = 'button';
+            chip.dataset.date = iso;
+            chip.setAttribute('aria-pressed', String(iso === chosen));
+            chip.addEventListener('click', () => { $('overtimeDate').value = iso; fillOvertimeJobs(); });
+            return chip;
+        }));
+    }
+    // Termin gewählt: Die Zeiten aus der App (Losfahren / Fertig) werden vorgeschlagen, wenn sie außerhalb der Arbeitszeit liegen.
+    // Selbst getippte Zeiten bleiben stehen.
+    let overtimeTyped = false;
+    function suggestOvertimeTimes() {
+        const hint = $('overtimeJobHint');
+        const job = jobsData.find(item => item.id === $('overtimeJob').value);
+        if (!hint) return;
+        if (!job) { hint.hidden = true; return; }
+        const started = job.started_at ? clock(job.started_at) : '';
+        const finished = job.finished_at && !job.storno_at ? clock(job.finished_at) : '';
+        const booked = overtimeData.find(item => item.status !== 'abgelehnt' && (item.assignment_id === job.id || (item.date === job.date && item.appointment === job.title)));
+        const parts = [];
+        if (booked) parts.push(`Für diesen Termin sind schon ${duration(Number(booked.minutes_before || 0) + Number(booked.minutes_after || 0))} Überstunden eingetragen – du findest sie unten in der Liste.`);
+        else {
+            if (started) parts.push(`Laut App losgefahren um ${started} Uhr${started < WORK_START ? ' – vor der Arbeitszeit' : ''}.`);
+            if (finished) parts.push(`Fertig um ${finished} Uhr${finished > WORK_END ? ' – nach der Arbeitszeit' : ''}.`);
+            if (!started && !finished) parts.push('Für diesen Termin gibt es keine Zeiten aus der App – trag sie bitte selbst ein.');
+            if (!overtimeTyped) {
+                $('overtimeStart').value = started && started < WORK_START ? started : '';
+                $('overtimeEnd').value = finished && finished > WORK_END ? finished : '';
+                if ($('overtimeStart').value || $('overtimeEnd').value) parts.push('Die Zeiten sind eingetragen – bitte prüfen.');
+                updateOvertimeResult();
+            }
+        }
+        hint.textContent = parts.join(' ');
+        hint.hidden = !parts.length;
+    }
+    ['overtimeStart', 'overtimeEnd'].forEach(id => $(id).addEventListener('input', () => { overtimeTyped = true; }));
     $('overtimeDate').addEventListener('change', fillOvertimeJobs);
     $('overtimeJob').addEventListener('change', () => {
         $('overtimeJobText').hidden = $('overtimeJob').value !== 'other';
         $('overtimeJobText').required = $('overtimeJob').value === 'other';
         if ($('overtimeJob').value === 'other') $('overtimeJobText').focus();
+        suggestOvertimeTimes();
     });
 
     function prepareOvertimeForm() {
@@ -2533,6 +2709,7 @@ if (!window.TerminContact) {
             });
             if (error) throw error;
             event.target.reset();
+            overtimeTyped = false;
             $('overtimeDate').value = TerminCloud.todayIso();
             fillOvertimeJobs();
             updateOvertimeResult();

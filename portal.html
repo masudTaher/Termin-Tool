@@ -460,8 +460,14 @@
                   <p id="apptMissing" class="field-hint" hidden>Neue Termine sind in der Datenbank noch nicht eingerichtet (Update 18). Bitte sag der Einsatzleitung Bescheid.</p>
                </section>
                <section class="directory-card" aria-labelledby="apptListTitle">
-                  <h2 id="apptListTitle" class="card-title">Von mir gemeldet</h2>
+                  <h2 id="apptListTitle" class="card-title">Meine gemeldeten Termine</h2>
+                  <p class="wizard-hint">Ändern oder den Terminzettel nachreichen geht immer – auch wenn das Büro den Termin schon eingetragen hat.</p>
+                  <input id="apptSearch" type="search" class="appt-search" placeholder="Suchen: Patient, Nummer, Datum, Praxis" aria-label="Gemeldete Termine durchsuchen" autocomplete="off" hidden>
                   <ul id="apptList" class="directory-list portal-list doc-list"></ul>
+                  <details id="apptArchive" class="job-history appt-archive" hidden>
+                     <summary id="apptArchiveSummary">Archiv: eingetragene Termine</summary>
+                     <ul id="apptArchiveList" class="directory-list portal-list doc-list"></ul>
+                  </details>
                </section>
             </div>
             <section class="directory-card wizard" data-panel="apptNew" aria-labelledby="apptTitle" hidden>
@@ -534,6 +540,10 @@
                      <p id="apptSlipKept" class="field-hint" hidden>Der schon gesendete Terminzettel bleibt erhalten. Scanne nur neu, wenn er falsch war.</p>
                      <div id="apptSlipPreview" class="receipt-preview" hidden><img id="apptSlipImage" alt="Gescannter Terminzettel"><span id="apptSlipInfo"></span></div>
                      <label class="check-row"><input id="apptNoSlip" type="checkbox"> <span>Es gibt keinen Terminzettel (z. B. telefonisch vereinbart)</span></label>
+                     <div id="apptChangeBox" class="appt-change-box" hidden>
+                        <label for="apptChangeNote">Was hat sich geändert? <span class="optional-label">freiwillig</span></label>
+                        <input id="apptChangeNote" type="text" maxlength="300" placeholder="z. B. Praxis hat den Termin verschoben">
+                     </div>
                      <h3 class="card-title appt-summary-title">Stimmt alles?</h3>
                      <dl id="apptSummary" class="appt-summary"></dl>
                      <button type="submit" class="button-primary big-button" id="apptSubmit">Termin melden</button>
@@ -595,14 +605,16 @@
                </div>
                <div data-zeiten="overtime">
                <section class="directory-card" aria-labelledby="overtimeTitle">
-                  <h2 id="overtimeTitle" class="wizard-title">Überstunden melden</h2>
+                  <h2 id="overtimeTitle" class="wizard-title">Überstunden melden – auch nachträglich</h2>
                   <p class="wizard-hint" id="overtimeHint">Arbeitszeit ist 9 bis 16 Uhr. Alles davor oder danach zählt.</p>
                   <form id="overtimeForm" class="fleet-form" novalidate>
-                     <label for="overtimeDate"><b class="step-dot">1</b> An welchem Tag?</label>
+                     <label for="overtimeDate"><b class="step-dot">1</b> An welchem Tag? <span class="optional-label">heute oder ein früherer Tag</span></label>
+                     <div id="overtimeDays" class="recipient-list overtime-days" role="group" aria-label="Tag schnell wählen"></div>
                      <input id="overtimeDate" type="date" required>
                      <label for="overtimeJob"><b class="step-dot">2</b> Wegen welchem Termin?</label>
                      <select id="overtimeJob" required></select>
                      <input id="overtimeJobText" type="text" maxlength="200" placeholder="Zum Beispiel: Abholung Flughafen, Patient Müller" aria-label="Termin oder Grund" hidden>
+                     <p id="overtimeJobHint" class="field-hint overtime-job-hint" role="status" hidden></p>
                      <span class="field-label"><b class="step-dot">3</b> Wann hast du gearbeitet?</span>
                      <div class="time-pair">
                         <label class="time-box" for="overtimeStart"><span>Angefangen um</span><input id="overtimeStart" type="time"><small id="overtimeStartHint">nur wenn vor 9 Uhr</small></label>

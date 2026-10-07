@@ -56,9 +56,9 @@
                 ] },
                 { id: 'auftraege', title: 'Aufträge', lead: 'Eine rote Zahl bei [[Aufträge]] heißt: Ein Auftrag wartet auf deine Antwort. Mehrere Aufträge am selben Tag sagst du mit [[Zusage für den ganzen Tag]] auf einmal zu.', steps: [
                     ['12-auftrag-offen', 'Auftrag lesen', 'Patient, Praxis, Adresse und Telefon. [[In Karten öffnen]] zeigt den Weg. Unter jeder Nummer des Patienten: [[Anrufen]] und [[WhatsApp]].'],
-                    ['12b-auftrag-antwort', 'Immer antworten', '[[Zusage]], [[Unter Vorbehalt]] oder [[Absage]]. Vertippt? [[Rückgängig]] oder [[Antwort zurücknehmen]]. Einen kurzen Hinweis schickst du mit [[Senden]].'],
-                    ['12c-auftrag-zugesagt', 'Losfahren', 'Am Tag des Termins [[Losfahren]] tippen. Das geht erst, wenn du ein Fahrzeug übernommen hast.'],
-                    ['12d-auftrag-unterwegs', 'Fertig', 'Nach dem Termin [[Fertig – Auftrag beenden]] tippen. Die Einsatzleitung sieht sofort, dass du wieder frei bist.']
+                    ['12b-auftrag-antwort', 'Immer antworten', 'Auf jeder Karte stehen zwei große Knöpfe: [[Zusage]] oder [[Absage]]. Eine Absage geht nur mit Grund – danach ist der Auftrag für dich abgeschlossen und rot. Vertippt? [[Rückgängig]] oder [[Antwort ändern …]]. Einen kurzen Hinweis schickst du mit [[Senden]].'],
+                    ['12c-auftrag-zugesagt', 'Losfahren', 'Nach der Zusage wird aus dem Knopf [[Jetzt losfahren]]. Am Tag des Termins antippen – das geht erst mit Fahrzeug und erst, wenn dein laufender Auftrag beendet ist. Unter [[Frühere Unterlagen zum Patienten]] kannst du dich vorbereiten.'],
+                    ['12d-auftrag-unterwegs', 'Fertig', 'Nach dem Termin [[Fertig – Auftrag beenden]] tippen. Die Einsatzleitung sieht sofort, dass du wieder frei bist. Fällt der Termin aus oder geht der Patient alleine? Das meldest du ganz unten in der Karte.']
                 ] },
                 { id: 'unterlagen', title: 'Unterlagen fotografieren', lead: 'Arztbericht, Rezept oder Überweisung – direkt nach dem Termin.', steps: [
                     ['13-unterlagen', 'Starten', '[[Unterlage scannen]] unter [[Unterlagen]] – oder [[Unterlagen scannen]] direkt am Auftrag.'],
@@ -144,9 +144,9 @@
                 ] },
                 { id: 'auftraege', title: 'المهام', lead: 'الرقم الأحمر عند [[Aufträge]] يعني أن مهمة تنتظر ردّك. وإذا كانت لديك عدة مهام في اليوم نفسه فاضغط [[Zusage für den ganzen Tag]] للموافقة عليها دفعة واحدة.', steps: [
                     ['12-auftrag-offen', 'اقرأ المهمة', 'اسم المريض والعيادة والعنوان وأرقام الهاتف. اضغط [[In Karten öffnen]] لفتح الخريطة. وتحت كل رقم للمريض زرّان: [[Anrufen]] للاتصال و[[WhatsApp]] للمحادثة.'],
-                    ['12b-auftrag-antwort', 'أجب دائمًا', '[[Zusage]] موافقة، [[Unter Vorbehalt]] موافقة بتحفّظ، [[Absage]] اعتذار. ضغطت بالخطأ؟ اضغط [[Rückgängig]] أو [[Antwort zurücknehmen]]. ولإرسال ملاحظة قصيرة اكتبها ثم اضغط [[Senden]].'],
-                    ['12c-auftrag-zugesagt', 'عند الانطلاق', 'في يوم الموعد اضغط [[Losfahren]]. لا يعمل الزر إلا بعد استلام سيارة.'],
-                    ['12d-auftrag-unterwegs', 'عند الانتهاء', 'بعد الموعد اضغط [[Fertig – Auftrag beenden]]، فتعرف الإدارة فورًا أنك أصبحت متاحًا.']
+                    ['12b-auftrag-antwort', 'أجب دائمًا', 'على كل بطاقة زرّان كبيران: [[Zusage]] للموافقة أو [[Absage]] للاعتذار. الاعتذار يحتاج إلى ذكر السبب، وبعده تُغلق المهمة عندك وتظهر باللون الأحمر. ضغطت بالخطأ؟ اضغط [[Rückgängig]] أو [[Antwort ändern …]]. ولإرسال ملاحظة قصيرة اكتبها ثم اضغط [[Senden]].'],
+                    ['12c-auftrag-zugesagt', 'عند الانطلاق', 'بعد الموافقة يتحوّل الزر إلى [[Jetzt losfahren]]. اضغطه في يوم الموعد. لا يعمل إلا بعد استلام سيارة وبعد إنهاء المهمة الجارية. وتحت [[Frühere Unterlagen zum Patienten]] تجد أوراقًا سابقة عن المريض للتحضير.'],
+                    ['12d-auftrag-unterwegs', 'عند الانتهاء', 'بعد الموعد اضغط [[Fertig – Auftrag beenden]]، فتعرف الإدارة فورًا أنك أصبحت متاحًا. إذا أُلغي الموعد أو ذهب المريض وحده فبلّغ عن ذلك من أسفل البطاقة.']
                 ] },
                 { id: 'unterlagen', title: 'تصوير المستندات', lead: 'التقرير الطبي أو الوصفة أو الإحالة، مباشرةً بعد الموعد.', steps: [
                     ['13-unterlagen', 'ابدأ', 'اضغط [[Unterlage scannen]] في قسم [[Unterlagen]]، أو [[Unterlagen scannen]] في بطاقة المهمة.'],

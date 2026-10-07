@@ -222,6 +222,45 @@
         patienten: 'Sobald Dolmetscher Unterlagen hochladen, erscheinen die Patienten hier.'
     };
 
+    // ---------- Reiter nach Art: alle Unterlagen einer Art, egal ob neu, geprüft oder weitergeleitet ----------
+    // '' = Eingang (dann gelten die Kacheln oben). Unter „Rezepte“ und „Überweisungen“ gibt es Kategorien.
+    let typeTab = '';
+    let subKind = '';
+    const startsWith = prefix => doc => !isReport(doc) && kindKey(doc.kind).startsWith(prefix);
+    const TYPE_TABS = {
+        berichte: { test: isReport, one: 'Bericht', many: 'Berichte', text: 'der Dolmetscher – selbst geschrieben nach dem Termin.', empty: 'Es gibt noch keine Berichte der Dolmetscher.' },
+        arzt: { test: doc => !isReport(doc) && kindKey(doc.kind) === 'Arztbericht', one: 'Krankenhausbericht', many: 'Krankenhausberichte', text: '(Arztbericht, Befund, Entlassbericht) – hochgeladen von den Dolmetschern.', empty: 'Es wurde noch kein Krankenhaus- oder Arztbericht hochgeladen.' },
+        rezepte: { test: startsWith('Rezept'), prefix: 'Rezept', one: 'Rezept', many: 'Rezepte', text: '– wähle unten eine Kategorie.', empty: 'Es wurde noch kein Rezept hochgeladen.' },
+        ueberweisung: { test: startsWith('Überweisung'), prefix: 'Überweisung', one: 'Überweisung', many: 'Überweisungen', text: '– wähle unten eine Kategorie.', empty: 'Es wurde noch keine Überweisung hochgeladen.' },
+        sonstiges: { test: doc => !isReport(doc) && kindKey(doc.kind) !== 'Arztbericht' && !/^(Rezept|Überweisung)/.test(kindKey(doc.kind)), one: 'sonstige Unterlage', many: 'sonstige Unterlagen', text: '', empty: 'Keine sonstigen Unterlagen.' }
+    };
+    const typeRows = () => documents.filter(TYPE_TABS[typeTab].test).filter(doc => !subKind || kindKey(doc.kind) === subKind);
+    function renderTypeTabs() {
+        document.querySelectorAll('[data-doc-type]').forEach(tab => {
+            const name = tab.dataset.docType;
+            const active = name === typeTab;
+            tab.classList.toggle('is-active', active);
+            tab.setAttribute('aria-selected', String(active));
+            const badge = tab.querySelector('b');
+            if (badge) badge.textContent = String(documents.filter(TYPE_TABS[name].test).length);
+        });
+        // Kategorien: alle bekannten Arten mit diesem Anfang – und alles, was sonst noch so heißt.
+        const box = $('docSubKinds');
+        const prefix = typeTab ? TYPE_TABS[typeTab].prefix : '';
+        box.hidden = !prefix;
+        if (!prefix) return;
+        const inTab = documents.filter(TYPE_TABS[typeTab].test);
+        const kinds = [...new Set([...ALL_KINDS.filter(kind => kind.startsWith(prefix)), ...inTab.map(doc => kindKey(doc.kind))])];
+        const chip = (value, label, count) => {
+            const node = button('recipient-chip', `${label} (${count})`, () => { subKind = value; shown = LIST_STEP; renderTypeTabs(); renderList(); updateSelection(); });
+            node.dataset.subKind = value;
+            node.setAttribute('aria-pressed', String(subKind === value));
+            return node;
+        };
+        box.replaceChildren(chip('', `Alle ${TYPE_TABS[typeTab].many}`, inTab.length),
+            ...kinds.map(kind => chip(kind, kind.slice(prefix.length).trim() || kind, inTab.filter(doc => kindKey(doc.kind) === kind).length)));
+    }
+
     function renderTiles() {
         const count = name => String(documents.filter(FILTERS[name]).length);
         $('countNew').textContent = count('neu');
@@ -230,7 +269,7 @@
         $('countReports').textContent = count('berichte');
         $('countPatients').textContent = String(patients.length);
         document.querySelectorAll('[data-doc-filter]').forEach(tile => {
-            const active = tile.dataset.docFilter === filter;
+            const active = !typeTab && tile.dataset.docFilter === filter;
             tile.classList.toggle('is-active', active);
             tile.setAttribute('aria-pressed', String(active));
         });
@@ -312,7 +351,8 @@
 
     // ---------- Abschnitt „Unterlagen“: Liste zum gewählten Filter oder alle Patienten ----------
     function renderList() {
-        const showPatients = filter === 'patienten';
+        renderTypeTabs();
+        const showPatients = !typeTab && filter === 'patienten';
         $('docList').hidden = showPatients;
         $('patientList').hidden = !showPatients;
         if (showPatients) {
@@ -321,9 +361,12 @@
             $('docMore').hidden = patients.length <= shown;
             return;
         }
-        const rows = documents.filter(FILTERS[filter]);
-        $('docSummary').textContent = SUMMARY[filter](rows.length);
-        fillList('docList', rows.slice(0, shown).map(doc => docEntry(doc, true)), EMPTY[filter]);
+        const tab = typeTab ? TYPE_TABS[typeTab] : null;
+        const rows = tab ? typeRows() : documents.filter(FILTERS[filter]);
+        $('docSummary').textContent = tab
+            ? (rows.length ? `${plural(rows.length, tab.one, tab.many)}${subKind ? ` · ${subKind}` : ` ${tab.text}`}`.trim() : (subKind ? `Keine Unterlagen in „${subKind}“.` : tab.empty))
+            : SUMMARY[filter](rows.length);
+        fillList('docList', rows.slice(0, shown).map(doc => docEntry(doc, true)), tab ? (subKind ? `Keine Unterlagen in „${subKind}“.` : tab.empty) : EMPTY[filter]);
         $('docMore').hidden = rows.length <= shown;
     }
 
@@ -1042,7 +1085,18 @@
     }
 
     // ---------- Ereignisse ----------
+    document.querySelectorAll('[data-doc-type]').forEach(tab => tab.addEventListener('click', () => {
+        typeTab = tab.dataset.docType;
+        subKind = '';
+        shown = LIST_STEP;
+        renderTiles();
+        renderList();
+        updateSelection();
+    }));
     document.querySelectorAll('[data-doc-filter]').forEach(tile => tile.addEventListener('click', () => {
+        // Eine Kachel gehört zum Eingang: der Reiter springt zurück.
+        typeTab = '';
+        subKind = '';
         filter = tile.dataset.docFilter;
         shown = LIST_STEP;
         renderTiles();
