@@ -130,6 +130,50 @@
         box.replaceChildren(text, load, stay);
     }
 
+    // ---------- Zwischen den Tagen wechseln (z. B. heute ↔ morgen) ----------
+    // Sind online mehrere nicht abgeschlossene Tage ab heute vorhanden, steht über der Tabelle je Tag ein Knopf.
+    // So lässt sich nachmittags schon der morgige Tag verteilen und mit einem Tipp zum heutigen zurückkehren.
+    function daySwitch(rows, date) {
+        let box = document.getElementById('cloudDaySwitch');
+        const today = TerminCloud.todayIso();
+        const days = [...new Set(rows.filter(row => !row.archived && (row.date >= today || row.date === date)).map(row => row.date))].sort();
+        if (days.length < 2 || !days.includes(date)) { box?.remove(); return; }
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'cloudDaySwitch';
+            box.className = 'cloud-day-switch';
+            box.setAttribute('role', 'group');
+            box.setAttribute('aria-label', 'Zwischen den Tagen wechseln');
+            (document.querySelector('.fleet-table-wrap, #dataTable')?.parentElement || document.querySelector('main')).prepend(box);
+        }
+        const tomorrowDate = new Date(`${today}T00:00:00`); tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+        const label = el => el === today ? 'Heute' : el === tomorrow ? 'Morgen' : new Date(`${el}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long' });
+        const title = document.createElement('span');
+        title.className = 'cloud-day-switch-title';
+        title.textContent = 'Tag:';
+        box.replaceChildren(title, ...days.map(day => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cloud-day-button';
+            button.dataset.date = day;
+            button.setAttribute('aria-pressed', String(day === date));
+            button.textContent = `${label(day)} · ${formatFleetDate(day).slice(0, 6)}`;
+            button.title = day === date ? 'Dieser Tag ist gerade geöffnet' : `Zum ${formatFleetDate(day)} wechseln – der jetzige Tag bleibt online gespeichert`;
+            button.addEventListener('click', async () => {
+                if (day === currentDate()) return;
+                box.querySelectorAll('button').forEach(node => { node.disabled = true; });
+                const from = currentDate();
+                await syncDay();                                   // erst den offenen Tag sichern
+                // Der verlassene Tag soll danach nicht als „neuerer Tagesstand“ gemeldet werden.
+                try { sessionStorage.setItem(NEWER_SKIP_KEY, from); } catch (error) { /* dann erscheint der Hinweis einmal */ }
+                if (await switchDay(day)) { newerBanner(null); newerChecked = 0; }
+                box.querySelectorAll('button').forEach(node => { node.disabled = false; });
+            });
+            return button;
+        }));
+    }
+
     async function switchDay(date) {
         const { data, error } = await client.from('tt_days').select('*').eq('date', date).maybeSingle();
         if (error || !data?.records?.length) { if (error) showToast(TerminCloud.germanError(error), 'error'); return false; }
@@ -147,6 +191,7 @@
         const { data: rows, error } = await client.from('tt_days').select('date, updated_at, updated_by, archived').order('updated_at', { ascending: false }).limit(8);
         const data = (rows || []).filter(row => !row.archived || row.date === date);
         if (error || !data?.length) return;
+        daySwitch(data, date);
         const today = TerminCloud.todayIso();
         const mine = data.find(row => row.date === date);
         // „Abgeschlossen“ zählt nur, wenn es passiert ist, während der Tag hier offen war. Wer einen archivierten Tag
@@ -682,6 +727,82 @@
         } });
         syncDay();
     };
+
+    // ---------- „Übrige informieren“: Wer nicht eingeplant ist, muss nicht länger warten ----------
+    // Alle temporären Dolmetscher, deren Name an diesem Tag in keinem Termin steht, bekommen eine kurze, freundliche
+    // Nachricht (Portal + Mitteilung aufs Handy). Wer eingetragen ist, gilt als eingeplant – auch ohne gesendeten Auftrag.
+    const NO_JOBS_KEY = 'terminTool.noJobsTold.v1';
+    const toldOn = date => { try { return (JSON.parse(localStorage.getItem(NO_JOBS_KEY) || '{}') || {})[date] || []; } catch (error) { return []; } };
+    const rememberTold = (date, ids) => { try { const all = JSON.parse(localStorage.getItem(NO_JOBS_KEY) || '{}') || {}; const kept = Object.fromEntries(Object.entries(all).filter(([day]) => day >= date).slice(-6)); kept[date] = [...new Set([...(kept[date] || []), ...ids])]; localStorage.setItem(NO_JOBS_KEY, JSON.stringify(kept)); } catch (error) { /* dann wird beim nächsten Mal erneut gefragt */ } };
+
+    function noJobsText(date) {
+        const today = TerminCloud.todayIso();
+        const next = new Date(`${today}T00:00:00`); next.setDate(next.getDate() + 1);
+        const tomorrow = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+        const day = new Date(`${date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        const when = date === today ? `heute (${day})` : date === tomorrow ? `morgen (${day})` : day;
+        return `Hallo zusammen,\n\ndie Termine für ${when} sind verteilt. Für dich ist diesmal leider kein Auftrag dabei – du musst also nicht weiter warten.\n\nVielen Dank, dass du dich bereitgehalten hast! Sollte sich kurzfristig noch etwas ergeben, melden wir uns sofort bei dir.\n\nViele Grüße\ndeine Einsatzleitung`;
+    }
+
+    function noJobsDialog(people, already, date) {
+        return new Promise(resolve => {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'confirm-dialog no-jobs-dialog';
+            const title = document.createElement('h2');
+            title.textContent = `Nicht eingeplant am ${formatFleetDate(date)}: ${people.length} ${people.length === 1 ? 'Person' : 'Personen'} informieren`;
+            const names = document.createElement('p');
+            names.className = 'no-jobs-names';
+            names.textContent = people.map(item => item.full_name).join(', ');
+            const hint = document.createElement('p');
+            hint.className = 'field-hint';
+            hint.textContent = `Temporäre Dolmetscher, deren Name an diesem Tag in keinem Termin steht.${already ? ` ${already} ${already === 1 ? 'Person wurde' : 'Personen wurden'} schon informiert und bekommen nichts doppelt.` : ''} Niemand muss darauf antworten. Du kannst den Text ändern:`;
+            const text = document.createElement('textarea');
+            text.maxLength = 1000;
+            text.value = noJobsText(date);
+            text.setAttribute('aria-label', 'Nachricht an die nicht eingeplanten Dolmetscher');
+            const buttons = document.createElement('div');
+            buttons.className = 'modal-buttons';
+            const cancel = document.createElement('button');
+            cancel.type = 'button'; cancel.className = 'button-secondary'; cancel.textContent = 'Abbrechen';
+            const send = document.createElement('button');
+            send.type = 'button'; send.className = 'button-primary'; send.textContent = 'Nachricht senden';
+            const done = value => { dialog.close(); dialog.remove(); resolve(value); };
+            cancel.addEventListener('click', () => done(null));
+            dialog.addEventListener('cancel', event => { event.preventDefault(); done(null); });
+            send.addEventListener('click', () => { if (!text.value.trim()) { text.focus(); return; } done(text.value.trim()); });
+            buttons.append(cancel, send);
+            dialog.append(title, names, hint, text, buttons);
+            document.body.append(dialog);
+            dialog.showModal();
+        });
+    }
+
+    window.tellNoJobs = async function () {
+        if (!(await loadProfile())) { showToast('Dafür bitte zuerst online anmelden (Seite „Team“).', 'error'); return; }
+        const date = currentDate();
+        const list = records();
+        if (!date || !list.length) { showToast('Es ist kein Tag geöffnet.', 'error'); return; }
+        if (date < TerminCloud.todayIso()) { showToast('Dieser Tag liegt in der Vergangenheit.', 'error'); return; }
+        const { data: people, error } = await client.from('tt_profiles').select('id, full_name, active, role, employment');
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        const planned = new Set(list.filter(record => String(record.Status || '').trim().toLocaleLowerCase('de') !== 'storniert').map(record => String(record.Übersetzer || '').trim().toLocaleLowerCase('de')).filter(Boolean));
+        const free = people.filter(item => item.active && item.role === 'dolmetscher' && item.employment !== 'fest' && String(item.full_name || '').trim() && !planned.has(String(item.full_name).trim().toLocaleLowerCase('de')))
+            .sort((left, right) => left.full_name.localeCompare(right.full_name, 'de'));
+        const told = new Set(toldOn(date));
+        const fresh = free.filter(item => !told.has(item.id));
+        const unnamed = list.filter(record => !String(record.Übersetzer || '').trim() && String(record.Status || '').trim().toLocaleLowerCase('de') !== 'storniert').length;
+        if (!fresh.length) { showToast(free.length ? 'Alle nicht eingeplanten Dolmetscher wurden für diesen Tag schon informiert.' : 'Alle temporären Dolmetscher sind an diesem Tag eingeplant.', 'info'); return; }
+        if (unnamed && !await confirmDialog(`Bei ${unnamed} ${unnamed === 1 ? 'Termin steht' : 'Terminen steht'} noch kein Dolmetscher. Wer jetzt die Nachricht bekommt, rechnet nicht mehr mit einem Auftrag.\n\nTrotzdem schon Bescheid geben?`, 'Trotzdem informieren')) return;
+        const body = await noJobsDialog(fresh, free.length - fresh.length, date);
+        if (!body) return;
+        const ids = fresh.map(item => item.id);
+        const { error: sendError } = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: profile.full_name || 'Einsatzleitung', audience: 'einzeln', recipient_ids: ids, body });
+        if (sendError) { showToast(TerminCloud.germanError(sendError), 'error'); return; }
+        rememberTold(date, ids);
+        const push = await TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: ids, title: 'Termine sind verteilt', body: 'Für dich ist diesmal kein Auftrag dabei – du musst nicht weiter warten.' });
+        showToast(`${ids.length} ${ids.length === 1 ? 'Person' : 'Personen'} informiert – als Nachricht im Portal${push?.ok && push.data?.sent ? ' und als Mitteilung aufs Handy' : ''}.`, 'success', { duration: 9000 });
+    };
+    document.getElementById('noJobsButton')?.addEventListener('click', () => window.tellNoJobs());
 
     // Tag abschließen: online archivieren, hier schließen – danach ist Platz für die nächste Excel-Datei.
     window.closeTrackingDay = async function () {

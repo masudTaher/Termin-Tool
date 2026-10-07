@@ -2474,3 +2474,35 @@ button.pay-head:focus-visible { outline: 2px solid var(--brand); outline-offset:
 .doctor-auto { color: var(--muted); font-size: .84rem; font-weight: 650; }
 .doctor-auto[data-state="aktiv"] { color: var(--ok); }
 .doctor-chip.is-auto { background: var(--warn-soft); color: var(--warn); }
+
+/* 67  Live-Tracking: zwischen den Tagen wechseln · „Übrige informieren“ */
+.cloud-day-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.cloud-day-switch-title { color: var(--muted); font-size: .84rem; font-weight: 700; }
+.cloud-day-button, :root[data-theme="dark"] .cloud-day-button { min-height: 38px; padding: 6px 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: .9rem; font-weight: 650; cursor: pointer; }
+.cloud-day-button:hover, :root[data-theme="dark"] .cloud-day-button:hover { border-color: var(--brand); background: var(--surface-hover); color: var(--ink); }
+.cloud-day-button[aria-pressed="true"], :root[data-theme="dark"] .cloud-day-button[aria-pressed="true"] { border-color: var(--brand); background: var(--brand); color: #fff; cursor: default; }
+.no-jobs-dialog { width: min(600px, calc(100vw - 24px)); }
+.no-jobs-dialog h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.no-jobs-names { margin: 6px 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); font-size: .9rem; line-height: 1.5; }
+.no-jobs-dialog textarea { width: 100%; min-height: 150px; font: inherit; font-size: .92rem; line-height: 1.45; }
+
+/* 68  Abrechnung: auf einen Blick (Tage klein nebeneinander), „Mehr Details“; Portal: Korrektur – Tage/Belege antippen */
+.pay-glance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; align-items: start; }
+.pay-glance-second { margin-top: 12px !important; }
+.pay-daychips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pay-daychip { padding: 2px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--ink); font-size: .76rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.5; white-space: nowrap; }
+.pay-daychip.is-special { border-color: color-mix(in srgb, #2f9e5f 45%, var(--line)); background: color-mix(in srgb, #2f9e5f 16%, var(--surface)); }
+.pay-daychip.is-open { border-style: dashed; background: none; color: var(--muted); font-weight: 500; }
+.pay-detail > .pay-detail-grid { margin-top: 12px; }
+.pay-detail > .pay-detail-grid[hidden] { display: none; }
+.pay-reply-dialog { width: min(560px, calc(100vw - 24px)); }
+.pay-reply-dialog h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.pay-reply-dialog textarea { width: 100%; font: inherit; }
+@media (max-width: 1100px) { .pay-glance { grid-template-columns: 1fr; } }
+.statement-reply { margin: 0 0 8px; padding: 10px 12px; border-left: 4px solid var(--brand); border-radius: 9px; background: var(--brand-soft); color: var(--ink); font-size: .88rem; }
+.statement-pick { margin: 6px 0 8px; }
+.statement-pick[hidden] { display: none; }
+.statement-pick-title { margin: 8px 0 4px; color: var(--ink-soft); font-size: .82rem; font-weight: 700; }
+.statement-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.statement-chip, :root[data-theme="dark"] .statement-chip { min-height: 40px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: .88rem; font-weight: 600; }
+.statement-chip[aria-pressed="true"], :root[data-theme="dark"] .statement-chip[aria-pressed="true"] { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }

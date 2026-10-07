@@ -577,7 +577,31 @@ if (!window.TerminContact) {
             state.dataset.response = statement.response;
             state.textContent = { offen: 'Bitte prüfen und bestätigen.', 'bestätigt': `Abgeschlossen – von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Korrektur angefragt: „${statement.response_note}“ – das Büro meldet sich.` }[statement.response];
             body.append(state);
+            if (data.reply && statement.response === 'offen') {
+                const reply = document.createElement('p');
+                reply.className = 'statement-reply';
+                reply.textContent = `Antwort des Büros: ${data.reply}`;
+                body.append(reply);
+            }
             if (statement.response !== 'bestätigt') {
+                // Korrektur anfragen: betroffene Tage oder Belege antippen und kurz dazuschreiben, was nicht stimmt.
+                const pick = document.createElement('div');
+                pick.className = 'statement-pick';
+                pick.hidden = true;
+                const picked = new Set();
+                const chip = (label, id) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'statement-chip';
+                    button.textContent = label;
+                    button.setAttribute('aria-pressed', 'false');
+                    button.addEventListener('click', () => { if (picked.has(id)) picked.delete(id); else picked.add(id); button.setAttribute('aria-pressed', String(picked.has(id))); });
+                    return button;
+                };
+                const group = (title, chips) => { if (!chips.length) return; const head = document.createElement('p'); head.className = 'statement-pick-title'; head.textContent = title; const row = document.createElement('div'); row.className = 'statement-chips'; row.append(...chips); pick.append(head, row); };
+                group('Welcher Tag stimmt nicht? (antippen)', [...new Set([...(data.dates || []), ...special.map(item => item.date)])].sort().map(date => chip(dateText(date), `Tag ${dateText(date)}`)));
+                group('Welcher Beleg stimmt nicht?', receiptsOfMonth.map(item => chip(`${dateText(item.date)} · ${money(item.amount)}`, `Beleg ${dateText(item.date)} (${money(item.amount)})`)));
+                group('Oder:', [chip('Ein Tag fehlt', 'Ein Arbeitstag fehlt'), chip('Ein Beleg fehlt', 'Ein Beleg fehlt')]);
                 const note = document.createElement('textarea');
                 note.rows = 2;
                 note.maxLength = 500;
@@ -588,7 +612,8 @@ if (!window.TerminContact) {
                 buttons.className = 'job-buttons statement-buttons';
                 const respond = async (response) => {
                     if (response === 'einwand' && !note.value.trim()) { toast('Bitte schreib kurz, was nicht stimmt.', 'error'); note.focus(); return; }
-                    const { error } = await client.rpc('tt_respond_statement', { p_month: month, p_response: response, p_note: response === 'einwand' ? note.value.trim() : '' });
+                    const about = picked.size ? `Betrifft: ${[...picked].join(', ')} – ` : '';
+                    const { error } = await client.rpc('tt_respond_statement', { p_month: month, p_response: response, p_note: response === 'einwand' ? `${about}${note.value.trim()}`.slice(0, 500) : '' });
                     if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
                     toast(response === 'bestätigt' ? 'Abrechnung bestätigt und abgeschlossen. Danke!' : 'Korrektur angefragt – das Büro meldet sich.', 'success');
                     await loadStatements();
@@ -604,9 +629,9 @@ if (!window.TerminContact) {
                 wrong.className = 'button-secondary statement-correct';
                 wrong.textContent = 'Korrektur anfragen';
                 // Erster Tipp öffnet das Textfeld, der zweite sendet die Anfrage.
-                wrong.addEventListener('click', () => { if (note.hidden) { note.hidden = false; wrong.textContent = 'Korrektur senden'; note.focus(); return; } respond('einwand'); });
+                wrong.addEventListener('click', () => { if (note.hidden) { note.hidden = false; pick.hidden = false; wrong.textContent = 'Korrektur senden'; return; } respond('einwand'); });
                 buttons.append(ok, wrong);
-                body.append(note, buttons);
+                body.append(pick, note, buttons);
             }
         }
 

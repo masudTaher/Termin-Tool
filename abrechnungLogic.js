@@ -256,7 +256,7 @@ const Abrechnung = (() => {
 
     // Vergleich zweier Stände – ohne die Merkmale „laufend“ und „ausgeblendet“.
     const deep = value => JSON.stringify(value, (name, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(id => [id, item[id]])) : item);
-    const sameStatement = (left, right) => { const strip = data => { const { running, paused, ...rest } = data || {}; return deep(rest); }; return strip(left) === strip(right); };
+    const sameStatement = (left, right) => { const strip = data => { const { running, paused, reply, ...rest } = data || {}; return deep(rest); }; return strip(left) === strip(right); };
 
     // Der laufende Stand steht von selbst im Portal. Welche Zeilen müssen dafür geschrieben werden?
     //   • noch nichts im Portal            → laufenden Stand anlegen

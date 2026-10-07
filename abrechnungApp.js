@@ -20,6 +20,7 @@
     let dayJobs = new Map();
     let openPerson = '';
     let personQuery = '';
+    let moreDetails = false;          // „Mehr Details“ in der aufgeklappten Person
     let hiddenPeople = [];
     let autoNames = new Set();
     let tab = 'list';
@@ -279,7 +280,35 @@
         if (row.changedSince) portalField.append(el('small', 'payroll-sub payroll-changed', 'Seit dem Senden haben sich die Zahlen geändert – mit „Neu senden“ bekommt die Person den neuen Stand.'));
         const settings = payBox('Einstellungen', daysField, remarkField, portalField);
 
-        grid.append(bill, dayBox, receiptBox, settings);
+        // Auf einen Blick: Rechnung, alle Arbeitstage klein nebeneinander, Belege in einer Zeile. Alles Weitere unter „Mehr Details“.
+        const glance = el('div', 'pay-glance');
+        const chips = el('div', 'pay-daychips');
+        dates.forEach(date => {
+            const day = days.find(item => item.date === date) || { done: [], open: [] };
+            const special = specialByDate.get(date);
+            const counts = day.done.length > 0;
+            const chip = el('span', `pay-daychip${special ? ' is-special' : ''}${!counts && !special ? ' is-open' : ''}`, `${Abrechnung.shortDate(date)}${special ? ` · ${euro(special.amount)}` : ''}`);
+            chip.title = [weekday(date), ...(counts ? day.done : day.open), special ? `Sondertag ${euro(special.amount)}` : '', !counts && day.open.length ? (date > today ? 'geplant' : 'nicht beendet – zählt noch nicht') : ''].filter(Boolean).join(' · ');
+            chips.append(chip);
+        });
+        if (!dates.length) chips.append(el('span', 'pay-hint', 'noch kein Termin in diesem Monat'));
+        const receiptChips = el('div', 'pay-daychips');
+        row.receipts.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(item => {
+            const chip = el('span', `pay-daychip is-receipt${item.status === 'eingereicht' ? ' is-open' : ''}`, `${Abrechnung.shortDate(item.date)} · ${euro(item.amount)}`);
+            chip.title = [item.place || item.kind, item.status === 'eingereicht' ? 'noch nicht geprüft' : ''].filter(Boolean).join(' · ');
+            receiptChips.append(chip);
+        });
+        const side = el('section', 'pay-box pay-glance-side');
+        side.append(el('h3', null, `Arbeitstage (${row.workdays ?? '–'})`), chips, el('h3', 'pay-glance-second', `Belege (${row.receiptCount}) · ${euro(row.receiptSum)}`), receiptChips);
+        if (!row.receipts.length) receiptChips.append(el('span', 'pay-hint', 'keine'));
+        glance.append(bill, side);
+        const more = el('button', 'button-secondary fleet-end-button pay-more', moreDetails ? 'Weniger Details' : 'Mehr Details');
+        more.type = 'button';
+        more.setAttribute('aria-expanded', String(moreDetails));
+        more.title = 'Jeder Tag mit seinen Terminen, die einzelnen Belege und die Einstellungen (Arbeitstage von Hand, Bemerkung, Portal-Konto)';
+        more.addEventListener('click', () => { moreDetails = !moreDetails; renderList(); });
+        grid.hidden = !moreDetails;
+        grid.append(dayBox, receiptBox, settings);
 
         // Aktionen
         const actionCell = el('div', 'payroll-actions');
@@ -339,6 +368,18 @@
             return true;
         };
         // Eine gesendete Abrechnung lässt sich zurückziehen (zu früh oder falsch gesendet).
+        // Korrektur angefragt: korrigieren und „Neu senden“ – oder ablehnen (unverändert neu senden, mit kurzer Antwort).
+        if (closed && row.statement.response === 'einwand') {
+            const reject = el('button', 'button-quiet-danger pay-reject', 'Korrektur ablehnen');
+            reject.type = 'button';
+            reject.title = 'Die Abrechnung geht mit deiner Antwort noch einmal zum Bestätigen an die Person';
+            reject.addEventListener('click', async () => {
+                const reply = await askReply(row);
+                if (reply === null) return;
+                if (await releaseStatement(row, reply)) { showToast(`Antwort an ${row.name} gesendet – die Abrechnung wartet wieder auf Bestätigung.`, 'success'); await refresh(); window.refreshCloudInbox?.(); }
+            });
+            moreActions.append(reject);
+        }
         if (closed) {
             const withdraw = el('button', 'button-quiet-danger', 'Abschluss zurückziehen');
             withdraw.type = 'button';
@@ -352,7 +393,8 @@
             });
             moreActions.append(withdraw);
         }
-        detail.append(grid, actionCell);
+        actionCell.querySelector('.payroll-actions-main').append(more);
+        detail.append(glance, actionCell, grid);
         return detail;
     }
 
@@ -427,9 +469,36 @@
     $('copyNames').addEventListener('click', () => copyNamesToDirectory(result.rows.map(row => row.name), false));
 
     // Abschluss: fester Stand der Abrechnung, den die Person im Portal prüft und bestätigt.
-    async function releaseStatement(row) {
+    // Kurze Antwort des Büros auf eine angefragte Korrektur (null = abgebrochen).
+    function askReply(row) {
+        return new Promise(resolve => {
+            const dialog = el('dialog', 'confirm-dialog pay-reply-dialog');
+            const text = el('textarea');
+            text.rows = 3;
+            text.maxLength = 300;
+            text.placeholder = 'z. B. Der 6.10. war kein Arbeitstag – der Termin wurde abgesagt.';
+            text.setAttribute('aria-label', 'Antwort an den Dolmetscher');
+            const buttons = el('div', 'modal-buttons');
+            const cancel = el('button', 'button-secondary', 'Abbrechen');
+            cancel.type = 'button';
+            const send = el('button', 'button-primary', 'Ablehnen und neu senden');
+            send.type = 'button';
+            const done = value => { dialog.close(); dialog.remove(); resolve(value); };
+            cancel.addEventListener('click', () => done(null));
+            dialog.addEventListener('cancel', event => { event.preventDefault(); done(null); });
+            send.addEventListener('click', () => { if (!text.value.trim()) { showToast('Bitte schreib kurz, warum es so bleibt.', 'error'); text.focus(); return; } done(text.value.trim()); });
+            buttons.append(cancel, send);
+            dialog.append(el('h2', null, `Korrektur von ${row.name} ablehnen`), el('p', 'statement-dialog-meta', `Angefragt: „${row.statement.response_note}“ – Die Zahlen bleiben, wie sie sind. Die Person bekommt deine Antwort und bestätigt noch einmal.`), text, buttons);
+            document.body.append(dialog);
+            dialog.showModal();
+            text.focus();
+        });
+    }
+
+    async function releaseStatement(row, reply = '') {
         if (!row.profileId || row.salary == null) return false;
         const data = Abrechnung.statementData(row, { month, rate, dayDates, running: false });
+        if (reply) data.reply = reply;
         const { error } = await client.from('tt_statements').upsert({
             month, profile_id: row.profileId, person_name: row.name, data,
             released_at: new Date().toISOString(), released_by: profile.full_name || '',
