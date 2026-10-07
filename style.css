@@ -2471,3 +2471,6 @@ button.pay-head:focus-visible { outline: 2px solid var(--brand); outline-offset:
 .doctor-actions a { text-decoration: none; }
 .doctor-dialog { width: min(620px, calc(100vw - 24px)); }
 .doctor-dialog textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: .84rem; }
+.doctor-auto { color: var(--muted); font-size: .84rem; font-weight: 650; }
+.doctor-auto[data-state="aktiv"] { color: var(--ok); }
+.doctor-chip.is-auto { background: var(--warn-soft); color: var(--warn); }

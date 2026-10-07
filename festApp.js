@@ -170,7 +170,8 @@
         [...overtime].sort((left, right) => Number(left.status !== 'eingereicht') - Number(right.status !== 'eingereicht') || String(left.date).localeCompare(String(right.date))).forEach(item => {
             const tr = el('tr', item.status === 'abgelehnt' ? 'payroll-rejected' : '');
             const times = [item.start_time ? `Beginn ${String(item.start_time).slice(0, 5)}` : '', item.end_time ? `Ende ${String(item.end_time).slice(0, 5)}` : ''].filter(Boolean).join(' · ');
-            const parts = [item.minutes_before ? `${duration(item.minutes_before)} vorher` : '', item.minutes_after ? `${duration(item.minutes_after)} danach` : ''].filter(Boolean).join(', ');
+            const weekendDay = [0, 6].includes(new Date(`${item.date}T00:00:00`).getDay());
+            const parts = weekendDay ? 'Wochenende – ganze Zeit' : [item.minutes_before ? `${duration(item.minutes_before)} vorher` : '', item.minutes_after ? `${duration(item.minutes_after)} danach` : ''].filter(Boolean).join(', ');
             const amount = el('td');
             amount.append(el('strong', null, duration(minutesOf(item))), el('small', 'table-sub', parts));
             const note = el('td', null, [item.note, item.status === 'abgelehnt' && item.review_note ? `Abgelehnt: ${item.review_note}` : ''].filter(Boolean).join(' · ') || '–');
@@ -216,8 +217,11 @@
         const start = $('overtimeEditStart').value;
         const end = $('overtimeEditEnd').value;
         if (!$('overtimeEditDate').value) { showToast('Bitte wähle das Datum.', 'error', { target: '#overtimeEditDate' }); return; }
-        const before = start && toMinutes(start) < toMinutes(workHours.start) ? roundUp(toMinutes(workHours.start) - toMinutes(start)) : 0;
-        const after = end && toMinutes(end) > toMinutes(workHours.ende) ? roundUp(toMinutes(end) - toMinutes(workHours.ende)) : 0;
+        // Samstag und Sonntag zählt jede Stunde von Beginn bis Ende.
+        const weekend = [0, 6].includes(new Date(`${$('overtimeEditDate').value}T00:00:00`).getDay());
+        if (weekend && (!start || !end || toMinutes(end) <= toMinutes(start))) { showToast('Wochenende: Bitte Beginn und Ende eintragen (Ende nach dem Beginn) – die ganze Zeit zählt.', 'error', { target: '#overtimeEditStart' }); return; }
+        const before = weekend ? roundUp(toMinutes(end) - toMinutes(start)) : start && toMinutes(start) < toMinutes(workHours.start) ? roundUp(toMinutes(workHours.start) - toMinutes(start)) : 0;
+        const after = weekend ? 0 : end && toMinutes(end) > toMinutes(workHours.ende) ? roundUp(toMinutes(end) - toMinutes(workHours.ende)) : 0;
         if (before + after <= 0) { showToast(`Das sind keine Überstunden: Die Zeiten liegen innerhalb der Arbeitszeit (${workHours.start} bis ${workHours.ende} Uhr).`, 'error', { target: '#overtimeEditStart' }); return; }
         // Die Minuten rechnet die Datenbank selbst noch einmal aus – hier nur zur Anzeige mitgeschickt.
         const { error } = await client.from('tt_overtime').update({

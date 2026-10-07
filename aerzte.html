@@ -10,7 +10,7 @@
    <body data-page="aerzte">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · DOLMETSCHER</p><h1>Ärzte &amp; Standorte</h1><p>Fachrichtung, Gebäude und genauer Standort zu jedem Arzt. Was hier steht, kommt von selbst in jeden Auftrag – so weiß der Dolmetscher, wohin er muss.</p></div>
+            <div><p class="page-kicker">ONLINE · DOLMETSCHER</p><h1>Ärzte &amp; Standorte</h1><p>Fachrichtung, Gebäude und genauer Standort zu jedem Arzt. Fehlt etwas, wird es von selbst im Internet gesucht und ergänzt. Was hier steht, kommt in jeden Auftrag – so weiß der Dolmetscher, wohin er muss.</p></div>
             <div class="fleet-heading-actions">
                <button type="button" id="doctorAdd" class="button-primary">Arzt eintragen</button>
             </div>
@@ -20,12 +20,9 @@
          <section class="directory-card" aria-labelledby="doctorMissingTitle">
             <div class="doctor-head">
                <h2 id="doctorMissingTitle">Hier fehlt noch etwas <b id="doctorMissingCount" class="doctor-count">0</b></h2>
-               <div class="doctor-head-actions">
-                  <button type="button" id="doctorCopy" class="button-secondary" title="Die Liste dieser Ärzte kopieren – ohne Patienten, ohne Termine – und in den Chat mit der KI einfügen">1 · Liste für die KI kopieren</button>
-                  <button type="button" id="doctorPaste" class="button-secondary" title="Das Ergebnis der KI hier einfügen – es wird ins Verzeichnis übernommen">2 · Ergebnis der KI einfügen</button>
-               </div>
+               <span id="doctorAutoState" class="doctor-auto" role="status"></span>
             </div>
-            <p class="field-hint">Ärzte aus den Terminlisten der letzten 14 und der nächsten 30 Tage, zu denen die Fachrichtung noch fehlt. Die häufigsten stehen oben.</p>
+            <p class="field-hint">Ärzte aus den Terminlisten der letzten 14 und der nächsten 30 Tage, zu denen die Fachrichtung noch fehlt. Sie werden von selbst im Internet gesucht – was dabei nicht sicher zu finden ist, bleibt hier stehen.</p>
             <ul id="doctorMissing" class="doctor-list"></ul>
          </section>
 
@@ -58,19 +55,12 @@
          </form>
       </dialog>
 
-      <dialog id="doctorImportDialog" class="confirm-dialog doctor-dialog" aria-labelledby="doctorImportTitle">
-         <h2 id="doctorImportTitle">Ergebnis der KI einfügen</h2>
-         <p class="field-hint">Eine Zeile je Arzt: <b>Name | Ort | Fachrichtung | Gebäude / Standort | Hinweis zum Weg | Karten-Link</b></p>
-         <textarea id="doctorImportText" rows="10" spellcheck="false" aria-label="Ergebnis der Recherche"></textarea>
-         <p id="doctorImportInfo" class="field-hint" role="status"></p>
-         <div class="modal-buttons"><button type="button" class="button-secondary" id="doctorImportCancel">Abbrechen</button><button type="button" class="button-primary" id="doctorImportSave">Übernehmen</button></div>
-      </dialog>
-
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
       <script src="cloudConfig.js"></script>
       <script src="cloudClient.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="arztVerzeichnis.js"></script>
+      <script src="arztAuto.js"></script>
       <script src="cloudSettingsSync.js"></script>
       <script src="aerzteApp.js"></script>
    </body>

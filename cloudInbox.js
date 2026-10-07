@@ -79,17 +79,17 @@
         }
     }
 
-    // ---------- Abrechnung: laufender Stand von selbst im Portal ----------
-    // Auf jeder Büro-Seite, höchstens alle 15 Minuten (die Seite „Abrechnung“ macht es selbst).
-    let autoLoading = null;
     const loadScript = src => new Promise((resolve, reject) => { const node = document.createElement('script'); node.src = src; node.onload = resolve; node.onerror = reject; document.head.append(node); });
-    function autoStatements() {
-        if (window.__noAutoStatements || document.body.dataset.page === 'abrechnung') return;
-        if (!autoLoading) autoLoading = (async () => {
-            if (typeof Abrechnung === 'undefined') await loadScript('abrechnungLogic.js');
-            if (typeof AbrechnungAuto === 'undefined') await loadScript('abrechnungAuto.js');
-        })().catch(() => { autoLoading = null; });
-        Promise.resolve(autoLoading).then(() => { if (typeof AbrechnungAuto !== 'undefined') AbrechnungAuto.background(TerminCloud.client); });
+
+    // ---------- Ärzte & Standorte: fehlende Fachrichtung / Gebäude von selbst im Internet suchen ----------
+    let doctorLoading = null;
+    function autoDoctors() {
+        if (window.__noDoctorAuto) return;
+        if (!doctorLoading) doctorLoading = (async () => {
+            if (typeof ArztVerzeichnis === 'undefined') await loadScript('arztVerzeichnis.js');
+            if (typeof ArztAuto === 'undefined') await loadScript('arztAuto.js');
+        })().catch(() => { doctorLoading = null; });
+        Promise.resolve(doctorLoading).then(() => { if (typeof ArztAuto !== 'undefined') ArztAuto.run(false); });
     }
 
     // ---------- Zähler und Hinweise ----------
@@ -110,7 +110,7 @@
         setBadge('termine', counts.appointments || 0);
         setBadge('nachrichten', counts.chat || 0);
         refreshUsage(false);
-        if (TerminCloud.isStaff(profile)) autoStatements();
+        if (TerminCloud.isStaff(profile)) autoDoctors();
 
         let seen = null;
         try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); } catch (error) { /* erster Aufruf */ }

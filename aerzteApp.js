@@ -5,6 +5,7 @@
     let records = [];
     let query = '';
     let editingKey = null;
+    let autoState = 'unbekannt';
 
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -51,10 +52,11 @@
 
     function render() {
         const list = ArztVerzeichnis.read();
+        $('doctorAutoState').textContent = autoState === 'aus' ? 'Automatische Suche: noch nicht eingeschaltet' : autoState === 'aktiv' ? 'Automatische Suche: aktiv' : '';
+        $('doctorAutoState').dataset.state = autoState;
         // 1 · Hier fehlt noch etwas
         const missing = ArztVerzeichnis.missing(records, list);
         $('doctorMissingCount').textContent = String(missing.length);
-        $('doctorCopy').disabled = !missing.length;
         const missingList = $('doctorMissing');
         missingList.replaceChildren();
         if (!missing.length) missingList.append(el('li', 'directory-empty', records.length ? 'Alles vollständig – zu jedem Arzt der Terminlisten steht die Fachrichtung im Verzeichnis.' : 'Noch keine Terminliste online – oder du bist nicht angemeldet.'));
@@ -62,7 +64,8 @@
             const row = el('li', 'doctor-row is-missing');
             const main = el('div', 'doctor-main');
             main.append(el('strong', 'doctor-name', item.name), el('span', 'doctor-sub', [ArztVerzeichnis.addressOf(item) || 'ohne Adresse', `${item.count} ${item.count === 1 ? 'Termin' : 'Termine'}`].join(' · ')));
-            if (item.entry) main.append(el('span', 'doctor-sub', 'Im Verzeichnis, aber ohne Fachrichtung'));
+            if (item.entry) main.append(el('span', 'doctor-sub', item.entry.tried ? 'Von selbst gesucht – nichts Sicheres gefunden. Bitte von Hand eintragen.' : 'Im Verzeichnis, aber ohne Fachrichtung'));
+            else if (autoState !== 'aus') main.append(el('span', 'doctor-sub', 'Wird gerade von selbst gesucht …'));
             const actions = el('div', 'doctor-actions');
             const search = el('a', 'button-secondary fleet-end-button', 'Im Internet nachsehen');
             search.href = ArztVerzeichnis.searchUrl(item);
@@ -90,9 +93,11 @@
             if (item.building) facts.append(el('span', 'doctor-fact', item.building));
             if (item.hint) facts.append(el('span', 'doctor-sub', item.hint));
             if (!item.specialty) facts.append(el('span', 'doctor-sub', 'Fachrichtung fehlt'));
+            if (ArztVerzeichnis.unchecked(item)) facts.append(el('span', 'doctor-chip is-auto', 'von selbst gefunden – bitte prüfen'));
             main.append(facts);
             const actions = el('div', 'doctor-actions');
             if (item.map) { const map = el('a', 'button-secondary fleet-end-button', 'Karte'); map.href = item.map; map.target = '_blank'; map.rel = 'noopener'; actions.append(map); }
+            if (ArztVerzeichnis.unchecked(item)) actions.append(button('button-secondary fleet-end-button doctor-confirm', 'Stimmt ✓', () => { ArztVerzeichnis.confirm(key); render(); window.syncSettingsNow?.(); }));
             actions.append(button('button-quiet', 'Ändern', () => openForm(item, key)), button('button-quiet-danger', 'Löschen', async () => {
                 if (!await confirmDialog(`${item.name}${item.city ? ` (${item.city})` : ''} aus dem Verzeichnis löschen?`, 'Löschen')) return;
                 ArztVerzeichnis.remove(key);
@@ -111,7 +116,7 @@
     $('doctorSearch').addEventListener('input', () => { query = $('doctorSearch').value.trim(); render(); });
     $('doctorForm').addEventListener('submit', event => {
         event.preventDefault();
-        const entry = { name: $('doctorName').value, city: $('doctorCity').value, specialty: $('doctorSpecialty').value, building: $('doctorBuilding').value, hint: $('doctorHint').value, map: $('doctorMap').value, source: 'Büro' };
+        const entry = { name: $('doctorName').value, city: $('doctorCity').value, specialty: $('doctorSpecialty').value, building: $('doctorBuilding').value, hint: $('doctorHint').value, map: $('doctorMap').value, source: 'Büro', checked: true };
         if (!ArztVerzeichnis.normName(entry.name)) { showToast('Bitte den Namen des Arztes eintragen.', 'error'); $('doctorName').focus(); return; }
         if (entry.map.trim() && !/^https?:\/\//i.test(entry.map.trim())) { showToast('Der Karten-Link muss mit https:// beginnen.', 'error'); $('doctorMap').focus(); return; }
         if (!ArztVerzeichnis.save(entry, editingKey)) { showToast('Der Eintrag konnte nicht gespeichert werden.', 'error'); return; }
@@ -119,38 +124,6 @@
         render();
         window.syncSettingsNow?.();
         showToast('Gespeichert – steht ab jetzt in jedem neuen Auftrag zu diesem Arzt', 'success');
-    });
-
-    // Liste für die KI: nur Ärzte und Adressen – keine Patienten, keine Termine.
-    $('doctorCopy').addEventListener('click', async () => {
-        const missing = ArztVerzeichnis.missing(records);
-        const text = `Bitte recherchiere zu diesen Ärzten/Praxen die Fachrichtung und den genauen Standort (Gebäude, Eingang, Etage). Antwort: eine Zeile je Arzt im Format\nName | Ort | Fachrichtung | Gebäude / Standort | Hinweis zum Weg | Karten-Link\n\n${ArztVerzeichnis.exportText(missing)}`;
-        try { await navigator.clipboard.writeText(text); showToast(`${missing.length} ${missing.length === 1 ? 'Arzt' : 'Ärzte'} kopiert – jetzt in den Chat mit der KI einfügen`, 'success'); }
-        catch (error) { $('doctorImportTitle').textContent = 'Liste für die KI (bitte markieren und kopieren)'; $('doctorImportText').value = text; $('doctorImportSave').hidden = true; $('doctorImportInfo').textContent = ''; $('doctorImportDialog').showModal(); $('doctorImportText').select(); }
-    });
-    $('doctorPaste').addEventListener('click', () => {
-        $('doctorImportTitle').textContent = 'Ergebnis der KI einfügen';
-        $('doctorImportText').value = '';
-        $('doctorImportInfo').textContent = '';
-        $('doctorImportSave').hidden = false;
-        $('doctorImportDialog').showModal();
-        $('doctorImportText').focus();
-    });
-    $('doctorImportText').addEventListener('input', () => {
-        if ($('doctorImportSave').hidden) return;
-        const count = ArztVerzeichnis.parseImport($('doctorImportText').value).length;
-        $('doctorImportInfo').textContent = $('doctorImportText').value.trim() ? `${count} ${count === 1 ? 'Eintrag' : 'Einträge'} erkannt` : '';
-    });
-    $('doctorImportCancel').addEventListener('click', () => $('doctorImportDialog').close());
-    $('doctorImportSave').addEventListener('click', () => {
-        const entries = ArztVerzeichnis.parseImport($('doctorImportText').value);
-        if (!entries.length) { showToast('Keine Zeile im Format „Name | Ort | Fachrichtung | …“ erkannt.', 'error'); return; }
-        const before = ArztVerzeichnis.read();
-        ArztVerzeichnis.importEntries(entries);
-        $('doctorImportDialog').close();
-        render();
-        window.syncSettingsNow?.();
-        showToast(`${entries.length} ${entries.length === 1 ? 'Eintrag' : 'Einträge'} übernommen – bitte kurz prüfen`, 'success', { actionLabel: 'Rückgängig', onAction: () => { ArztVerzeichnis.write(before); render(); window.syncSettingsNow?.(); } });
     });
 
     async function load() {
@@ -163,6 +136,9 @@
         if (error) { setStatus(TerminCloud.germanError(error), 'error'); return; }
         records = data.flatMap(day => Array.isArray(day.records) ? day.records : []);
         render();
+        // Fehlendes von selbst im Internet suchen (nur Name und Adresse des Arztes gehen hinaus).
+        if (typeof ArztAuto !== 'undefined' && ArztAuto.enabled()) { autoState = await ArztAuto.run(true); render(); }
+        else { autoState = 'aus'; render(); }
     }
     load();
 })();

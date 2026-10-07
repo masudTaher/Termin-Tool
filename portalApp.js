@@ -518,8 +518,8 @@ if (!window.TerminContact) {
     // ---------- Abrechnung ----------
     async function loadStatements() {
         const { data, error } = await client.from('tt_statements').select('*').eq('profile_id', profile.id).order('month', { ascending: false }).limit(24);
-        // Ausgeblendete Abrechnungen gibt es für das Portal nicht. „Laufend“ = der Stand, der sich von selbst aktualisiert.
-        statementData = error ? [] : data.filter(item => !item.data?.paused);
+        // Eine Abrechnung gibt es erst, wenn das Büro sie am Monatsende gesendet hat (Reste früherer Zwischenstände zählen nicht).
+        statementData = error ? [] : data.filter(item => !item.data?.paused && !item.data?.running);
         const select = $('statementMonth');
         const previous = select.value;
         const now = new Date();
@@ -529,7 +529,7 @@ if (!window.TerminContact) {
             const option = document.createElement('option');
             option.value = month;
             const statement = statementData.find(item => item.month === month);
-            option.textContent = monthLabel(month) + (statement ? (statement.data?.running && statement.response === 'offen' ? ' · laufend' : { offen: ' · bitte prüfen', 'bestätigt': ' · bestätigt', einwand: ' · Einwand gemeldet' }[statement.response]) : '');
+            option.textContent = monthLabel(month) + (statement ? { offen: ' · bitte prüfen', 'bestätigt': ' · abgeschlossen', einwand: ' · Korrektur angefragt' }[statement.response] : '');
             return option;
         }));
         select.value = months.includes(previous) ? previous : (statementData.find(item => item.response === 'offen' && !item.data?.running)?.month || months[0]);
@@ -556,45 +556,41 @@ if (!window.TerminContact) {
             const receiptsOfMonth = receiptData.filter(item => item.date.startsWith(month) && item.status !== 'abgelehnt');
             const info = document.createElement('p');
             info.className = 'fleet-footnote';
-            info.textContent = `Die Abrechnung für ${monthLabel(month)} ist noch nicht freigegeben. Vorläufig aus deinen Einträgen:`;
+            info.textContent = `Die Abrechnung für ${monthLabel(month)} bekommst du am Monatsende zum Bestätigen. Bisher aus deinen Einträgen:`;
             body.append(info,
                 line('Gearbeitete Tage laut Aufträgen', worked.length ? `${worked.length} (${worked.map(dateText).join(', ')})` : '0'),
                 line('Eingereichte Belege', `${receiptsOfMonth.length} · ${money(receiptsOfMonth.reduce((sum, item) => sum + Number(item.amount), 0))}`));
         } else {
+            // Kurz und deutlich: Arbeitstage × Tagessatz, Sondertage, Belege, Gesamtbetrag.
             const data = statement.data || {};
-            const special = Array.isArray(data.specialDays) ? data.specialDays : [];
+            const special = (Array.isArray(data.specialDays) ? data.specialDays : []).filter(item => item.counts === 'Ja' || item.counts == null);
             const receiptsOfMonth = Array.isArray(data.receipts) ? data.receipts : [];
+            const normal = (data.workdays ?? 0) - (data.specialCount ?? 0);
             body.append(
-                line('Zeitraum', data.period || monthLabel(month)),
-                line('Arbeitstage', `${data.workdays ?? '–'}${data.dates?.length ? ` (${data.dates.map(dateText).join(', ')})` : ''}`),
-                line(`davon normale Tage × ${money(data.rate)}`, `${(data.workdays ?? 0) - (data.specialCount ?? 0)} Tage`),
-                ...special.map(item => line(`Sondertag ${dateText(item.date)}${item.job ? ` · ${item.job}` : ''}`, `${money(item.amount)}${item.counts === 'prüfen' ? ' (wird geprüft)' : ''}`)),
-                line('Salary', money(data.salary)),
-                ...receiptsOfMonth.map(item => line(`Beleg ${dateText(item.date)} · ${item.place || item.kind}`, money(item.amount))),
-                line(`Belege gesamt (${receiptsOfMonth.length})`, money(data.receiptSum)),
+                line(`${normal} ${normal === 1 ? 'Arbeitstag' : 'Arbeitstage'} × ${money(data.rate)}`, money(normal * Number(data.rate || 0))),
+                ...special.map(item => line(`Sondertag ${dateText(item.date)}`, money(item.amount))),
+                line(`Belege (${receiptsOfMonth.length})`, money(data.receiptSum)),
                 line('Gesamtbetrag', money(data.total), true)
             );
             const state = document.createElement('p');
             state.className = 'statement-state';
             state.dataset.response = statement.response;
-            const running = Boolean(data.running);
-            const stand = new Date(statement.released_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-            if (running && statement.response === 'offen') state.dataset.response = 'laufend';
-            state.textContent = running && statement.response === 'offen' ? `Laufender Stand vom ${stand} – er aktualisiert sich von selbst. Am Monatsende bekommst du die Abrechnung zum Bestätigen.` : { offen: 'Bitte prüfe die Abrechnung und bestätige sie.', 'bestätigt': `Von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Einwand gemeldet: „${statement.response_note}“ – die Einsatzleitung meldet sich.` }[statement.response];
+            state.textContent = { offen: 'Bitte prüfen und bestätigen.', 'bestätigt': `Abgeschlossen – von dir bestätigt am ${new Date(statement.responded_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`, einwand: `Korrektur angefragt: „${statement.response_note}“ – das Büro meldet sich.` }[statement.response];
             body.append(state);
             if (statement.response !== 'bestätigt') {
                 const note = document.createElement('textarea');
                 note.rows = 2;
                 note.maxLength = 500;
-                note.placeholder = 'Stimmt etwas nicht? Hier kurz beschreiben (z. B. fehlender Arbeitstag am 12.09.)';
-                note.setAttribute('aria-label', 'Einwand zur Abrechnung');
+                note.hidden = true;
+                note.placeholder = 'Was stimmt nicht? Kurz beschreiben (z. B. fehlender Arbeitstag am 12.09.)';
+                note.setAttribute('aria-label', 'Korrektur zur Abrechnung');
                 const buttons = document.createElement('div');
                 buttons.className = 'job-buttons statement-buttons';
                 const respond = async (response) => {
                     if (response === 'einwand' && !note.value.trim()) { toast('Bitte schreib kurz, was nicht stimmt.', 'error'); note.focus(); return; }
                     const { error } = await client.rpc('tt_respond_statement', { p_month: month, p_response: response, p_note: response === 'einwand' ? note.value.trim() : '' });
                     if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
-                    toast(response === 'bestätigt' ? 'Abrechnung bestätigt. Danke!' : 'Einwand gesendet.', 'success');
+                    toast(response === 'bestätigt' ? 'Abrechnung bestätigt und abgeschlossen. Danke!' : 'Korrektur angefragt – das Büro meldet sich.', 'success');
                     await loadStatements();
                     renderHome();
                 };
@@ -605,10 +601,11 @@ if (!window.TerminContact) {
                 ok.addEventListener('click', () => respond('bestätigt'));
                 const wrong = document.createElement('button');
                 wrong.type = 'button';
-                wrong.className = 'button-secondary';
-                wrong.textContent = running ? 'Stimmt nicht – melden' : 'Stimmt nicht';
-                wrong.addEventListener('click', () => respond('einwand'));
-                buttons.append(...(running ? [] : [ok]), wrong);          // bestätigt wird erst die abgeschlossene Abrechnung
+                wrong.className = 'button-secondary statement-correct';
+                wrong.textContent = 'Korrektur anfragen';
+                // Erster Tipp öffnet das Textfeld, der zweite sendet die Anfrage.
+                wrong.addEventListener('click', () => { if (note.hidden) { note.hidden = false; wrong.textContent = 'Korrektur senden'; note.focus(); return; } respond('einwand'); });
+                buttons.append(ok, wrong);
                 body.append(note, buttons);
             }
         }
@@ -2538,9 +2535,22 @@ if (!window.TerminContact) {
     // Überstunden werden auf volle 10 Minuten aufgerundet: 1 Std 13 Min → 1 Std 20 Min (die Datenbank rechnet genauso).
     const roundUp = minutes => Math.ceil(minutes / 10) * 10;
 
+    const overtimeWeekend = () => { const date = $('overtimeDate').value; return Boolean(date) && [0, 6].includes(new Date(`${date}T00:00:00`).getDay()); };
+    function overtimeTexts() {
+        const weekend = overtimeWeekend();
+        $('overtimeHint').textContent = weekend ? 'Samstag und Sonntag zählt jede Stunde als Überstunde. Trag ein, von wann bis wann du gearbeitet hast.'
+            : `Arbeitszeit ist ${WORK_START.replace(/^0/, '')} bis ${WORK_END} Uhr. Alles davor oder danach zählt als Überstunden.`;
+        $('overtimeStartHint').textContent = weekend ? 'Beginn – jede Uhrzeit' : `nur wenn vor ${WORK_START.replace(/^0/, '')} Uhr`;
+        $('overtimeEndHint').textContent = weekend ? 'Ende – jede Uhrzeit' : `nur wenn nach ${WORK_END} Uhr`;
+    }
     function overtimeMinutes() {
         const start = toMinutes($('overtimeStart').value);
         const end = toMinutes($('overtimeEnd').value);
+        // Samstag und Sonntag ist keine normale Arbeitszeit: Dort zählt jede Stunde von Beginn bis Ende.
+        if (overtimeWeekend()) {
+            const whole = start != null && end != null && end > start ? roundUp(end - start) : 0;
+            return { before: whole, after: 0, total: whole, hasInput: start != null || end != null, weekend: true, incomplete: start == null || end == null, wrongOrder: start != null && end != null && end <= start };
+        }
         const before = start != null && start < toMinutes(WORK_START) ? roundUp(toMinutes(WORK_START) - start) : 0;
         const after = end != null && end > toMinutes(WORK_END) ? roundUp(end - toMinutes(WORK_END)) : 0;
         return { before, after, total: before + after, hasInput: start != null || end != null };
@@ -2550,9 +2560,10 @@ if (!window.TerminContact) {
         const result = overtimeMinutes();
         const box = $('overtimeResult');
         if (!result.hasInput) { box.dataset.kind = 'empty'; box.textContent = 'Trag eine Uhrzeit ein.'; return; }
+        if (result.weekend && !result.total) { box.dataset.kind = 'warn'; box.textContent = result.wrongOrder ? 'Das Ende muss nach dem Beginn liegen.' : 'Wochenende: Bitte Beginn und Ende eintragen – die ganze Zeit zählt.'; return; }
         if (!result.total) { box.dataset.kind = 'warn'; box.textContent = `Das liegt in der normalen Arbeitszeit (${WORK_START} bis ${WORK_END} Uhr) – keine Überstunden.`; return; }
         box.dataset.kind = 'ok';
-        box.textContent = `Überstunden: ${duration(result.total)}` + (result.before && result.after ? ` (${duration(result.before)} vorher, ${duration(result.after)} danach)` : '') + ' · auf volle 10 Minuten aufgerundet';
+        box.textContent = `Überstunden: ${duration(result.total)}` + (result.weekend ? ' (Wochenende – die ganze Zeit zählt)' : '') + (result.before && result.after ? ` (${duration(result.before)} vorher, ${duration(result.after)} danach)` : '') + ' · auf volle 10 Minuten aufgerundet';
     }
     $('overtimeStart').addEventListener('input', updateOvertimeResult);
     $('overtimeEnd').addEventListener('input', updateOvertimeResult);
@@ -2624,7 +2635,7 @@ if (!window.TerminContact) {
         hint.hidden = !parts.length;
     }
     ['overtimeStart', 'overtimeEnd'].forEach(id => $(id).addEventListener('input', () => { overtimeTyped = true; }));
-    $('overtimeDate').addEventListener('change', fillOvertimeJobs);
+    $('overtimeDate').addEventListener('change', () => { overtimeTexts(); fillOvertimeJobs(); updateOvertimeResult(); });
     $('overtimeJob').addEventListener('change', () => {
         $('overtimeJobText').hidden = $('overtimeJob').value !== 'other';
         $('overtimeJobText').required = $('overtimeJob').value === 'other';
@@ -2633,10 +2644,8 @@ if (!window.TerminContact) {
     });
 
     function prepareOvertimeForm() {
-        $('overtimeHint').textContent = `Arbeitszeit ist ${WORK_START.replace(/^0/, '')} bis ${WORK_END} Uhr. Alles davor oder danach zählt als Überstunden.`;
-        $('overtimeStartHint').textContent = `nur wenn vor ${WORK_START.replace(/^0/, '')} Uhr`;
-        $('overtimeEndHint').textContent = `nur wenn nach ${WORK_END} Uhr`;
         if (!$('overtimeDate').value) $('overtimeDate').value = TerminCloud.todayIso();
+        overtimeTexts();
         $('overtimeDate').max = TerminCloud.todayIso();
         fillOvertimeJobs();
         updateOvertimeResult();
@@ -2706,7 +2715,7 @@ if (!window.TerminContact) {
         const job = jobsData.find(item => item.id === jobId);
         const appointment = job ? job.title : (jobId === 'other' ? $('overtimeJobText').value.trim() : '');
         if (!appointment) { toast('Bitte wähle den Termin oder trag ihn ein.', 'error'); (jobId === 'other' ? $('overtimeJobText') : $('overtimeJob')).focus(); return; }
-        if (!result.total) { updateOvertimeResult(); toast(result.hasInput ? 'Diese Zeiten sind keine Überstunden.' : 'Bitte trag mindestens eine Uhrzeit ein.', 'error'); return; }
+        if (!result.total) { updateOvertimeResult(); toast(result.weekend ? (result.wrongOrder ? 'Das Ende muss nach dem Beginn liegen.' : 'Am Wochenende bitte Beginn und Ende eintragen.') : result.hasInput ? 'Diese Zeiten sind keine Überstunden.' : 'Bitte trag mindestens eine Uhrzeit ein.', 'error'); return; }
         if (overtimeData.some(item => item.date === date && item.status !== 'abgelehnt' && (item.appointment === appointment))) {
             toast('Für diesen Termin hast du schon Überstunden gemeldet.', 'error');
             return;
@@ -2718,8 +2727,8 @@ if (!window.TerminContact) {
             const end = toMinutes($('overtimeEnd').value);
             const { error } = await client.from('tt_overtime').insert({
                 profile_id: profile.id, person_name: profile.full_name || profile.email, date,
-                start_time: start != null && result.before ? $('overtimeStart').value : null,
-                end_time: end != null && result.after ? $('overtimeEnd').value : null,
+                start_time: start != null && (result.before || result.weekend) ? $('overtimeStart').value : null,
+                end_time: end != null && (result.after || result.weekend) ? $('overtimeEnd').value : null,
                 minutes_before: result.before, minutes_after: result.after,
                 assignment_id: job ? job.id : null, appointment, note: $('overtimeNote').value.trim(), status: 'eingereicht'
             });

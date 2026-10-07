@@ -16,7 +16,7 @@
                <input id="payrollImportFile" class="visually-hidden" type="file" accept=".xlsx,.xls">
                <button type="button" id="payrollExport" class="button-secondary">Excel exportieren</button>
                <button type="button" id="payrollPrint" class="button-secondary">Übersicht drucken</button>
-               <button type="button" id="releaseAll" class="button-primary" title="Monat abschließen: Alle Abrechnungen dieses Monats gehen zum Bestätigen an die Dolmetscher">Monat abschließen</button>
+               <button type="button" id="releaseAll" class="button-primary" title="Am Monatsende, nach der Prüfung: Alle Abrechnungen dieses Monats gehen zum Bestätigen an die Dolmetscher">Monat abschließen · an alle senden</button>
             </div>
          </div>
          <p id="payrollStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
@@ -41,7 +41,7 @@
                </div>
 
                <div data-payroll-panel="list">
-                  <p class="fleet-footnote payroll-note">Ein Tipp auf einen Namen zeigt alles zu dieser Person: Rechnung, jeden Arbeitstag mit seinen Terminen, Sondertage und Belege. Die Arbeitstage zählen von selbst (jeder Tag mit einem beendeten Termin), und der laufende Stand steht ohne Freigabe im Portal. Erst am Monatsende: „Monat abschließen“ – dann bestätigen die Dolmetscher.</p>
+                  <p class="fleet-footnote payroll-note">Ein Tipp auf einen Namen zeigt alles zu dieser Person: Rechnung, jeden Arbeitstag mit seinen Terminen, Sondertage und Belege. Die Arbeitstage zählen von selbst (jeder Tag mit einem beendeten Termin) – du musst nichts einzeln freigeben. Die Dolmetscher sehen die Abrechnung erst, wenn du sie am Monatsende nach der Prüfung sendest („Monat abschließen“). Bestätigt der Dolmetscher, ist sie abgeschlossen.</p>
                   <div class="archive-tools">
                      <label class="board-search archive-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="personSearch" type="search" autocomplete="off" placeholder="Name suchen" aria-label="In der Liste nach Namen suchen"></label>
                      <span id="personSummary" class="archive-summary" role="status"></span>
@@ -113,7 +113,6 @@
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
       <script src="abrechnungLogic.js"></script>
-      <script src="abrechnungAuto.js"></script>
       <script src="abrechnungApp.js"></script>
    </body>
 </html>

@@ -20,8 +20,6 @@
     let dayJobs = new Map();
     let openPerson = '';
     let personQuery = '';
-    let pendingWrites = [];
-    let autoTimer = null;
     let hiddenPeople = [];
     let autoNames = new Set();
     let tab = 'list';
@@ -69,7 +67,12 @@
         ]);
         if (window.PhotoRequest) await PhotoRequest.load().catch(() => []);
         const statementResult = await client.from('tt_statements').select('*').eq('month', month);
-        statements = statementResult.error ? [] : statementResult.data;
+        // Im Portal steht eine Abrechnung erst, wenn sie nach der Prüfung gesendet wurde. Reste des früheren „laufenden Stands“
+        // (von selbst geschrieben oder ausgeblendet) zählen nicht und werden entfernt.
+        const allStatements = statementResult.error ? [] : statementResult.data;
+        const leftover = item => Boolean(item.data?.running || item.data?.paused);
+        statements = allStatements.filter(item => !leftover(item));
+        allStatements.filter(leftover).forEach(item => { client.from('tt_statements').delete().eq('month', item.month).eq('profile_id', item.profile_id).then(() => null, () => null); });
         archive = null;
         const failed = [receiptResult, specialResult, payrollResult, monthResult].find(item => item.error);
         if (failed) { setStatus(`${TerminCloud.germanError(failed.error)} Falls Tabellen fehlen: supabase/update-5.sql im SQL Editor ausführen.`, 'error'); return; }
@@ -96,10 +99,8 @@
         result = built.result;
         hiddenPeople = built.hiddenPeople;
         autoNames = built.autoNames;
-        // Der laufende Stand steht von selbst im Portal (nur laufender Monat und der Monat davor).
-        const writes = Abrechnung.planSync(result.rows, { month, rate, dayDates });
-        pendingWrites = AbrechnungAuto.enabled() && Abrechnung.autoMonth(month) ? writes : [];
-        queueAuto();
+        // Hat sich seit dem Senden etwas geändert? (row.changedSince)
+        Abrechnung.planSync(result.rows, { month, rate, dayDates });
         const objections = result.rows.filter(row => row.statement?.response === 'einwand');
         if (objections.length) result.checks.unshift(`Einwand von: ${objections.map(row => row.name).join(', ')}`);
         const range = Abrechnung.monthRange(month);
@@ -132,24 +133,6 @@
         if (tab === 'archive' && archive == null) loadArchive();
     }
 
-    // ---------- Laufender Stand von selbst im Portal ----------
-    function queueAuto() {
-        clearTimeout(autoTimer);
-        if (!pendingWrites.length) return;
-        autoTimer = setTimeout(async () => {
-            const writes = pendingWrites;
-            pendingWrites = [];
-            const forMonth = month;
-            const done = await AbrechnungAuto.write(client, forMonth, writes);
-            if (done <= 0 || forMonth !== month) return;
-            const { data, error } = await client.from('tt_statements').select('*').eq('month', month);
-            if (error) return;
-            statements = data;
-            archive = null;
-            render();
-        }, 500);
-    }
-
     // ---------- Endliste ----------
     async function savePayroll(name, changes) {
         const existing = payroll.find(item => Abrechnung.key(item.person_name) === Abrechnung.key(name));
@@ -177,13 +160,14 @@
     function portalState(row) {
         const statement = row.statement;
         if (!row.profileId) return ['kein Portal-Konto', 'bekannt'];
-        if (!statement) return ['noch nicht im Portal', 'bekannt'];
-        if (statement.data?.paused) return ['im Portal ausgeblendet', 'bekannt'];
-        if (statement.response === 'einwand') return ['Einwand', 'offen'];
-        if (statement.data?.running) return ['läuft von selbst', 'in Arbeit'];
-        return statement.response === 'bestätigt' ? ['bestätigt', 'erledigt'] : ['wartet auf Bestätigung', 'in Arbeit'];
+        if (!statement) return ['noch nicht gesendet', 'bekannt'];
+        if (statement.response === 'einwand') return ['Korrektur angefragt', 'offen'];
+        return statement.response === 'bestätigt' ? ['abgeschlossen ✓', 'erledigt'] : ['wartet auf Bestätigung', 'in Arbeit'];
     }
-    const isClosed = row => Boolean(row.statement) && !row.statement.data?.running && !row.statement.data?.paused;
+    const isClosed = row => Boolean(row.statement);
+    // Gesendet wird erst am Monatsende – vorher nur nach ausdrücklicher Rückfrage.
+    const monthOver = () => { const now = new Date(); const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; return today >= Abrechnung.monthRange(month).end; };
+    const earlyText = () => { const range = Abrechnung.monthRange(month); return `${range.label} läuft noch bis ${Abrechnung.longDate(range.end)}. Die Abrechnung geht normalerweise erst am letzten Tag des Monats an die Dolmetscher.\n\nTrotzdem jetzt schon senden?`; };
     const weekday = iso => new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
     const todayIso = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
 
@@ -292,7 +276,7 @@
         if (row.statement?.response_note) state.title = row.statement.response_note;
         portalField.append(el('span', null, 'Portal-Konto'), account, state);
         if (row.statement?.response === 'einwand') portalField.append(el('small', 'payroll-sub payroll-objection', `„${row.statement.response_note}“`));
-        if (row.changedSince) portalField.append(el('small', 'payroll-sub payroll-changed', 'Seit dem Abschluss haben sich die Zahlen geändert – mit „Neu senden“ bekommt die Person den neuen Stand.'));
+        if (row.changedSince) portalField.append(el('small', 'payroll-sub payroll-changed', 'Seit dem Senden haben sich die Zahlen geändert – mit „Neu senden“ bekommt die Person den neuen Stand.'));
         const settings = payBox('Einstellungen', daysField, remarkField, portalField);
 
         grid.append(bill, dayBox, receiptBox, settings);
@@ -307,9 +291,9 @@
         release.type = 'button';
         release.title = 'Abrechnung abschließen: Die Person prüft sie im Portal und bestätigt sie';
         release.disabled = !row.profileId || row.salary == null;
-        release.addEventListener('click', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} zum Bestätigen gesendet – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
+        release.addEventListener('click', async () => { if (!monthOver() && !await confirmDialog(earlyText(), 'Trotzdem senden')) return; if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} zum Bestätigen gesendet – sie steht jetzt auch im Archiv unter diesem Namen`, 'success'); await refresh(); } });
         mainActions.append(release);
-        const why = !row.profileId ? 'Im Portal zeigen geht erst mit Portal-Konto (unter „Einstellungen“).' : row.salary == null ? 'Im Portal zeigen geht erst mit Arbeitstagen.' : '';
+        const why = !row.profileId ? 'Senden geht erst mit Portal-Konto (unter „Einstellungen“).' : row.salary == null ? 'Senden geht erst mit Arbeitstagen.' : '';
         if (why) release.title = why;
         const print = el('button', 'button-secondary fleet-end-button payroll-icon-button');
         print.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span>Drucken</span>';
@@ -330,7 +314,7 @@
         remove.addEventListener('click', async () => {
             const label = Abrechnung.monthRange(month).label;
             const has = [row.workdays ? `${row.workdays} ${row.workdays === 1 ? 'Arbeitstag' : 'Arbeitstage'}` : '', row.receiptCount ? `${row.receiptCount} ${row.receiptCount === 1 ? 'Beleg' : 'Belege'}` : '', row.specialCount ? `${row.specialCount} ${row.specialCount === 1 ? 'Sondertag' : 'Sondertage'}` : ''].filter(Boolean).join(', ');
-            const released = row.statement && !row.statement.data?.paused ? `\n\nDie Abrechnung steht schon im Portal – sie wird dabei dort herausgenommen.` : '';
+            const released = row.statement ? `\n\nDie Abrechnung steht schon im Portal – sie wird dabei dort herausgenommen.` : '';
             const text = comesBack
                 ? `${row.name} für ${label} aus der Endliste nehmen?${has ? `\n\nFür diesen Monat steht bei dieser Person: ${has}. Das zählt dann nicht mehr in der Endliste mit.` : ''}${released}\n\nNichts wird gelöscht: Unter der Liste kannst du die Person jederzeit wieder einblenden.`
                 : `${row.name} für ${label} aus der Endliste löschen (eingetragene Arbeitstage, Bemerkung, Konto-Verknüpfung)?${released}`;
@@ -354,7 +338,7 @@
             if (error) { showToast(TerminCloud.germanError(error), 'error'); return false; }
             return true;
         };
-        // Ein Abschluss lässt sich zurückziehen (zu früh oder falsch gesendet) – danach läuft der Stand wieder von selbst.
+        // Eine gesendete Abrechnung lässt sich zurückziehen (zu früh oder falsch gesendet).
         if (closed) {
             const withdraw = el('button', 'button-quiet-danger', 'Abschluss zurückziehen');
             withdraw.type = 'button';
@@ -367,25 +351,6 @@
                 window.refreshCloudInbox?.();
             });
             moreActions.append(withdraw);
-        }
-        // Der laufende Stand lässt sich für eine Person im Portal ausblenden – und wieder zeigen.
-        if (row.profileId && row.statement?.data?.paused) {
-            const show = el('button', 'button-quiet pay-portal-show', 'Im Portal wieder zeigen');
-            show.type = 'button';
-            show.addEventListener('click', async () => { if (!await dropStatement()) return; showToast(`${row.name} sieht die Abrechnung wieder im Portal.`, 'success'); await refresh(); });
-            moreActions.append(show);
-        } else if (row.profileId && row.salary != null && !closed && AbrechnungAuto.enabled()) {
-            const hide = el('button', 'button-quiet-danger pay-portal-hide', 'Im Portal ausblenden');
-            hide.type = 'button';
-            hide.title = 'Diese Person sieht den laufenden Stand dieses Monats dann nicht im Portal';
-            hide.addEventListener('click', async () => {
-                const { error } = await client.from('tt_statements').upsert({ month, profile_id: row.profileId, person_name: row.name, data: { paused: true, label: Abrechnung.monthRange(month).label },
-                    released_at: new Date().toISOString(), released_by: profile.full_name || '', response: 'offen', response_note: '', responded_at: null }, { onConflict: 'month,profile_id' });
-                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                showToast(`${row.name} sieht die Abrechnung für diesen Monat nicht mehr im Portal.`, 'success', { actionLabel: 'Rückgängig', onAction: async () => { await client.from('tt_statements').delete().eq('month', month).eq('profile_id', row.profileId); await refresh(); } });
-                await refresh();
-            });
-            moreActions.append(hide);
         }
         detail.append(grid, actionCell);
         return detail;
@@ -416,7 +381,7 @@
             state.dataset.status = stateKind;
             const stateCell = el('span', 'pay-cell pay-state');
             stateCell.append(state);
-            if (row.changedSince) stateCell.append(el('small', 'payroll-sub payroll-changed', 'geändert seit Abschluss'));
+            if (row.changedSince) stateCell.append(el('small', 'payroll-sub payroll-changed', 'geändert seit dem Senden'));
             head.append(el('span', 'pay-chevron'), who,
                 cell('Arbeitstage', row.workdays == null ? '–' : String(row.workdays), 'pay-days-count'),
                 cell('Sondertage', row.specialText || '–', 'pay-special'),
@@ -475,8 +440,8 @@
     }
 
     $('releaseAll').addEventListener('click', async () => {
-        const closed = row => row.statement && !row.statement.data?.running && !row.statement.data?.paused;
-        const ready = result.rows.filter(row => row.profileId && row.salary != null && !row.statement?.data?.paused && !(closed(row) && row.statement.response === 'bestätigt' && !row.changedSince) && !(closed(row) && row.statement.response === 'offen' && !row.changedSince));
+        const ready = result.rows.filter(row => row.profileId && row.salary != null && !(row.statement && !row.changedSince && row.statement.response !== 'einwand'));
+        if (!monthOver() && !await confirmDialog(earlyText(), 'Trotzdem senden')) return;
         if (!ready.length) { showToast('Es gibt nichts zu senden: Entweder ist schon alles gesendet, oder es fehlen Portal-Konto und Arbeitstage.', 'info'); return; }
         const confirmed = await confirmDialog(`${Abrechnung.monthRange(month).label} abschließen und ${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} zum Bestätigen an die Dolmetscher senden?\n\nSchon bestätigte, unveränderte Abrechnungen bleiben, wie sie sind. Du kannst jeden Abschluss wieder zurückziehen.`, 'Abschließen und senden');
         if (!confirmed) return;
@@ -724,7 +689,7 @@
 
     async function loadArchive() {
         const { data, error } = await client.from('tt_statements').select('*').order('month', { ascending: false });
-        archive = error ? [] : data.filter(item => !item.data?.paused);
+        archive = error ? [] : data.filter(item => !item.data?.paused && !item.data?.running);
         renderArchive();
         if (error) $('archiveSummary').textContent = TerminCloud.germanError(error);
     }

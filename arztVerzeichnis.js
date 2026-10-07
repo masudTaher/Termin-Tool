@@ -27,15 +27,21 @@ const ArztVerzeichnis = (() => {
     const clean = entry => ({
         name: text(entry.name), city: text(entry.city), specialty: text(entry.specialty), building: text(entry.building),
         hint: text(entry.hint), map: /^https?:\/\//i.test(text(entry.map)) ? text(entry.map) : '',
-        source: text(entry.source), updated: entry.updated || new Date().toISOString()
+        source: text(entry.source), updated: entry.updated || new Date().toISOString(),
+        // checked: vom Büro bestätigt · tried: wann zuletzt von selbst im Internet gesucht wurde
+        checked: entry.checked !== false, tried: entry.tried || ''
     });
+    // Von selbst gefunden und vom Büro noch nicht bestätigt?
+    const unchecked = entry => Boolean(entry && entry.source === 'KI' && entry.checked === false && (text(entry.specialty) || text(entry.building)));
     const complete = entry => Boolean(entry && text(entry.specialty));
 
     // Passender Eintrag: erst Name + Stadt, sonst ein Eintrag mit demselben Namen ohne Stadt, sonst der einzige mit diesem Namen.
     function find(name, city, list = read()) {
         const wanted = normName(name);
         if (!wanted) return null;
-        const same = list.filter(item => normName(item.name) === wanted);
+        // Gleicher Name – oder derselbe Nachname mit/ohne Vornamen („Anna Ritter“ ↔ „Ritter“).
+        const exact = list.filter(item => normName(item.name) === wanted);
+        const same = exact.length ? exact : list.filter(item => { const name = normName(item.name); return name && (` ${name}`.endsWith(` ${wanted}`) || ` ${wanted}`.endsWith(` ${name}`)); });
         if (!same.length) return null;
         const town = normCity(city);
         return same.find(item => normCity(item.city) === town)
@@ -57,7 +63,8 @@ const ArztVerzeichnis = (() => {
     function messageFields(name, city, list) {
         const entry = find(name, city, list);
         if (!entry) return [];
-        return [['Fachrichtung', entry.specialty], ['Gebäude / Standort', entry.building], ['Hinweis zum Weg', entry.hint], ['Karte', entry.map]].filter(([, value]) => value);
+        return [['Fachrichtung', entry.specialty], ['Gebäude / Standort', entry.building], ['Hinweis zum Weg', entry.hint], ['Karte', entry.map],
+            ['Hinweis', unchecked(entry) ? 'Fachrichtung und Standort automatisch aus dem Internet – bitte vor Ort prüfen.' : '']].filter(([, value]) => value);
     }
 
     // Ärzte aus Terminlisten, zu denen die Fachrichtung noch fehlt – jeder nur einmal, die häufigsten zuerst.
@@ -70,7 +77,7 @@ const ArztVerzeichnis = (() => {
             const id = keyOf(name, city);
             const known = find(name, city, list);
             if (complete(known)) return;
-            const item = found.get(id) || { key: id, name, city, street: text(record['Arzt Nr::Strasse']), zip: text(record['Arzt Nr::PLZ']), count: 0, entry: known };
+            const item = found.get(id) || { key: id, name, city, rawName: text(record['Arzt Nr::Name']), street: text(record['Arzt Nr::Strasse']), zip: text(record['Arzt Nr::PLZ']), count: 0, entry: known };
             item.count += 1;
             if (!item.street) item.street = text(record['Arzt Nr::Strasse']);
             if (!item.zip) item.zip = text(record['Arzt Nr::PLZ']);
@@ -98,6 +105,37 @@ const ArztVerzeichnis = (() => {
         return write([...byKey.values()]) ? entries.length : 0;
     }
 
+    // Von selbst im Internet suchen: welche Ärzte sind dran? Nur solche ohne Fachrichtung, je Arzt höchstens alle 30 Tage.
+    const RETRY_MS = 30 * 24 * 60 * 60 * 1000;
+    function toLookUp(records, list = read(), now = Date.now()) {
+        return missing(records, list).filter(item => !item.entry?.tried || now - new Date(item.entry.tried).getTime() > RETRY_MS);
+    }
+    // Ergebnis der Suche eintragen. Nichts gefunden: Der Versuch wird trotzdem gemerkt (kein tägliches Nachfragen).
+    function applyLookUp(items, results) {
+        const byKey = new Map(read().map(item => [keyOf(item.name, item.city), item]));
+        const stamp = new Date().toISOString();
+        let found = 0;
+        items.forEach((item, index) => {
+            const result = results?.[index];
+            if (!result || result.error) return;                      // Dienst nicht erreichbar: später noch einmal
+            const id = keyOf(item.name, item.city);
+            const known = find(item.name, item.city, [...byKey.values()]);
+            if (complete(known)) return;                               // inzwischen vom Büro eingetragen
+            const base = known || { name: item.name, city: item.city };
+            const next = result.found
+                ? clean({ ...base, specialty: result.specialty, building: base.building || result.building, hint: base.hint || result.hint, map: base.map || result.map, source: 'KI', checked: false, tried: stamp, updated: stamp })
+                : clean({ ...base, tried: stamp, updated: stamp, checked: base.checked });
+            if (result.found) found += 1;
+            byKey.delete(known ? keyOf(known.name, known.city) : id);
+            byKey.set(keyOf(next.name, next.city), next);
+        });
+        write([...byKey.values()]);
+        return found;
+    }
+    function confirm(key) {
+        return write(read().map(item => keyOf(item.name, item.city) === key ? { ...item, checked: true, updated: new Date().toISOString() } : item));
+    }
+
     // Zwei Stände zusammenführen (dieses Gerät ↔ Datenbank): je Arzt gilt der neuere Eintrag.
     function merge(local, remote) {
         const byKey = new Map();
@@ -110,7 +148,7 @@ const ArztVerzeichnis = (() => {
         return [...byKey.values()].sort((left, right) => text(left.name).localeCompare(text(right.name), 'de') || text(left.city).localeCompare(text(right.city), 'de'));
     }
 
-    return { STORAGE, normName, normCity, keyOf, read, write, find, save, remove, complete, messageFields, missing, addressOf, searchUrl, exportText, parseImport, importEntries, merge };
+    return { unchecked, toLookUp, applyLookUp, confirm, STORAGE, normName, normCity, keyOf, read, write, find, save, remove, complete, messageFields, missing, addressOf, searchUrl, exportText, parseImport, importEntries, merge };
 })();
 
 if (typeof module !== 'undefined') module.exports = ArztVerzeichnis;
