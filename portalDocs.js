@@ -226,7 +226,7 @@ window.PortalDocs = (function () {
         const todays = all.filter(job => job.date === today());
         const earlier = all.filter(job => job.date !== today());
         list.replaceChildren(...todays.map(jobCard));
-        if (!todays.length) list.append(el('p', 'directory-empty doc-no-today', 'Für heute steht kein Termin im Portal.'));
+        if (!todays.length) list.append(el('p', 'directory-empty doc-no-today', 'Für heute steht kein Termin in der App.'));
         if (earlier.length) {
             const more = el('button', 'link-button doc-earlier', `Termine der letzten Tage anzeigen (${earlier.length})`);
             more.type = 'button';
@@ -814,5 +814,7 @@ window.PortalDocs = (function () {
         }
     });
 
-    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }) };
+    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }),
+        // Erledigte Termine eines Tages, zu denen noch kein Bericht geschrieben ist (ausgefallene zählen nicht).
+        missingReports: date => core.jobs().filter(job => job.date === date && !job.cancelled && job.response !== 'abgesagt' && jobDone(job) && !job.storno_at && !['storniert', 'alleine'].includes(job.work_status) && !reportOf(job.id)).length };
 })();

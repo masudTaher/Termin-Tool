@@ -1,5 +1,5 @@
-// Kurzanleitung für das Dolmetscher-Portal – Deutsch und Arabisch.
-// Die Texte stehen hier; [[…]] kennzeichnet den Namen einer Schaltfläche, so wie sie im Portal heißt.
+// Kurzanleitung für die Dolmetscher-App „Medical Office Bonn“ – Deutsch und Arabisch.
+// Die Texte stehen hier; [[…]] kennzeichnet den Namen einer Schaltfläche, so wie sie in der App heißt.
 // Sprache: ?sprache=ar | ?sprache=de, sonst die zuletzt gewählte, sonst die Sprache des Geräts.
 (function () {
     const IMAGE_PATH = 'anleitung/';
@@ -9,18 +9,18 @@
     const GUIDE = {
         de: {
             dir: 'ltr',
-            pageTitle: 'Kurzanleitung · Dolmetscher-Portal',
-            name: 'Dolmetscher-Portal',
+            pageTitle: 'Kurzanleitung · Medical Office Bonn',
+            name: 'Medical Office Bonn',
             kicker: 'Kurzanleitung',
             title: 'In 5 Minuten startklar',
             lead: 'Alles Wichtige auf dem Handy: Auto, Aufträge, Unterlagen, Arbeitstage und Belege.',
             org: ['Botschaft Katar · Medical Office Bonn', 'Abteilung Transport und Dolmetscher'],
             orgOther: 'المكتب الصحي القطري في مدينة بون',
             orgOtherLang: 'ar',
-            openPortal: 'Zum Portal',
-            backToPortal: 'Zurück zum Portal',
+            openPortal: 'Zur App',
+            backToPortal: 'Zurück zur App',
             print: 'Drucken / als PDF speichern',
-            qr: 'Portal öffnen: Code mit der Handy-Kamera scannen',
+            qr: 'App öffnen: Code mit der Handy-Kamera scannen',
             contents: 'Inhalt',
             zoomHint: 'Nach links wischen für den nächsten Schritt · Bild antippen = größer',
             zoom: 'Bild größer zeigen',
@@ -29,7 +29,7 @@
             footer: 'Entwickelt von Abdulrahman Allam',
             sections: [
                 { id: 'start', title: 'So startest du', lead: 'Vier Schritte – dann ist dein Konto bereit.', steps: [
-                    ['01-anmelden', 'Portal öffnen', 'Tippe auf den Link aus WhatsApp – oder scanne den QR-Code mit der Handy-Kamera.'],
+                    ['01-anmelden', 'App öffnen', 'Tippe auf den Link aus WhatsApp – oder scanne den QR-Code mit der Handy-Kamera.'],
                     ['02-registrieren', 'Neu registrieren', 'Tippe [[Neu registrieren]]. Name, Handynummer, E-Mail und ein eigenes Passwort eintragen. Wähle [[Temporär]] oder [[Fest angestellt]] und [[Dolmetscherin]] oder [[Dolmetscher]].'],
                     ['03-warten', 'Kurz warten', 'Die Einsatzleitung schaltet dein Konto frei. Danach tippst du [[Erneut prüfen]].'],
                     ['19-konto', 'Als App speichern', 'Oben rechts auf deine Initialen tippen: [[Mitteilungen einschalten]] und [[Als App auf das Handy legen]].']
@@ -63,26 +63,26 @@
                 { id: 'unterlagen', title: 'Unterlagen fotografieren', lead: 'Arztbericht, Rezept oder Überweisung – direkt nach dem Termin.', steps: [
                     ['13-unterlagen', 'Starten', '[[Unterlage scannen]] unter [[Unterlagen]] – oder [[Unterlagen scannen]] direkt am Auftrag.'],
                     ['13c-unterlage-art', 'Art wählen', 'Arztbericht, Rezept (Medikamente, Physiotherapie, Hilfsmittel), Überweisung (Facharzt, Radiologie) oder Sonstiges.'],
-                    ['13e-unterlage-seiten', 'Seiten fotografieren', 'Blatt auf einen dunklen Untergrund legen, jede Seite einzeln. Das Portal schneidet den Rand zu und prüft, ob alles lesbar ist.'],
-                    ['13f-unterlage-senden', 'Prüfen und senden', '[[Als PDF senden]] tippen. Fehlt eine Seite, sagt dir das Portal vorher Bescheid.']
+                    ['13e-unterlage-seiten', 'Seiten fotografieren', 'Blatt auf einen dunklen Untergrund legen, jede Seite einzeln. Die App schneidet den Rand zu und prüft, ob alles lesbar ist.'],
+                    ['13f-unterlage-senden', 'Prüfen und senden', '[[Als PDF senden]] tippen. Fehlt eine Seite, sagt dir die App vorher Bescheid.']
                 ] },
                 { id: 'arbeitstage', title: 'Arbeitstage', badge: 'Temporär', lead: 'Sag der Einsatzleitung, wann du arbeiten kannst – ein Tipp pro Tag.', steps: [
                     ['04b-morgen-frage', '„Kannst du morgen arbeiten?“', 'Fragt die Einsatzleitung für morgen an, steht die Frage oben auf der Startseite: [[Ja, ich kann]] oder [[Nein, ich kann nicht]].'],
                     ['14-arbeitstage', 'Tage eintragen', 'Unter [[Arbeitstage]] für jeden Tag [[Kann]] oder [[Kann nicht]] tippen.'],
-                    ['14c-wochenplan', 'Wochenplan', 'Jeden Freitag um 15 Uhr fragt das Portal nach der nächsten Woche. Samstag und Sonntag erinnert es noch einmal.'],
+                    ['14c-wochenplan', 'Wochenplan', 'Jeden Freitag um 15 Uhr fragt die App nach der nächsten Woche. Samstag und Sonntag erinnert sie noch einmal.'],
                     ['14e-wochenplan-ausgefuellt', 'Nächste Woche', '[[Tage auswählen]] tippen und die Tage antippen. Das dauert eine halbe Minute.']
                 ], tips: [
                     ['Wochenende', 'Samstag und Sonntag stehen nur bei Dolmetschern (Männern) zur Auswahl.']
                 ] },
                 { id: 'zeiten', title: 'Zeiten', badge: 'Fest angestellt', lead: 'Überstunden, Urlaub, Krankheit und Notfall – alles unter [[Zeiten]].', steps: [
-                    ['15-ueberstunden', 'Überstunden', 'Arbeitszeit ist 9 bis 16 Uhr. Was davor oder danach liegt, trägst du mit dem Termin ein – das Portal rechnet selbst.'],
+                    ['15-ueberstunden', 'Überstunden', 'Arbeitszeit ist 9 bis 16 Uhr. Was davor oder danach liegt, trägst du mit dem Termin ein – die App rechnet selbst.'],
                     ['15b-urlaub', 'Urlaub beantragen', 'Im Reiter [[Urlaub · Krank · Notfall]]: [[Urlaub]] wählen, von–bis eintragen, [[Urlaub beantragen]] tippen.'],
                     ['15c-krank', 'Krank oder Notfall', '[[Krank]] oder [[Notfall]] wählen und sofort melden – die Einsatzleitung bekommt eine Mitteilung und kann umplanen.'],
                     ['15d-abwesenheiten-liste', 'Deine Anträge', 'Du siehst den Stand: [[wartet]], [[genehmigt]] oder [[abgelehnt]]. Solange ein Antrag wartet, kannst du ihn zurückziehen.']
                 ] },
                 { id: 'belege', title: 'Abrechnung und Belege', lead: 'Geparkt oder getankt? Beleg fotografieren – fertig.', steps: [
                     ['16b-abrechnung-mit-beleg', 'Abrechnung', 'Arbeitstage, Sondertage und Belege des Monats. Gibt die Einsatzleitung die Abrechnung frei: prüfen und bestätigen.'],
-                    ['17-beleg', 'Beleg einreichen', '[[Beleg einreichen]] tippen und den Beleg fotografieren. Betrag, Datum und Ort liest das Portal aus – bitte kurz prüfen.'],
+                    ['17-beleg', 'Beleg einreichen', '[[Beleg einreichen]] tippen und den Beleg fotografieren. Betrag, Datum und Ort liest die App aus – bitte kurz prüfen.'],
                     ['20-neu-anfordern-start', '„Bitte neues Foto“', 'Ist ein Foto nicht lesbar, bittet das Büro um ein neues. Die Bitte steht rot oben auf der Startseite.'],
                     ['20b-neu-anfordern', 'Neu fotografieren', 'Die Bitte öffnen, [[Foto aufnehmen]] und dann [[Neues Foto senden]] tippen.']
                 ] },
@@ -91,14 +91,14 @@
                     ['19-konto', 'Mein Konto', 'Oben rechts auf deine Initialen: Mitteilungen, App, diese Anleitung, Passwort ändern, Abmelden.']
                 ], tips: [
                     ['Passwort vergessen?', 'Auf der Anmeldeseite [[Passwort vergessen?]] tippen. Die Einsatzleitung gibt dir ein neues.', 'warn'],
-                    ['iPhone', 'Mitteilungen gehen nur, wenn das Portal als App auf dem Home-Bildschirm liegt.']
+                    ['iPhone', 'Mitteilungen gehen nur, wenn die App auf dem Home-Bildschirm liegt.']
                 ] }
             ]
         },
         ar: {
             dir: 'rtl',
-            pageTitle: 'دليل مختصر · بوابة المترجمين',
-            name: 'بوابة المترجمين',
+            pageTitle: 'دليل مختصر · المكتب الصحي – بون',
+            name: 'المكتب الصحي – بون',
             kicker: 'دليل مختصر',
             title: 'جاهز للعمل في خمس دقائق',
             lead: 'كل ما تحتاجه على جوالك: السيارة، المهام، المستندات، أيام العمل والإيصالات.',

@@ -4,8 +4,10 @@
 //   DocScan.fromFile()      Foto laden (Drehung laut EXIF), längere Seite höchstens maxSide
 //   DocScan.detect()        die vier Ecken des Blatts finden – oder null, wenn kein Blatt sicher zu erkennen ist
 //   DocScan.warp()          das Blatt gerade ziehen (Perspektive)
-//   DocScan.enhance()       Schatten entfernen und Kontrast anheben: 'auto' | 'color' | 'gray' | 'bw'
+//   DocScan.enhance()       wie ein Scanner: Papier rein weiß, Schrift dunkel und scharf – 'auto' | 'color' | 'gray' | 'bw'
 //   DocScan.assess()        Helligkeit, Kontrast, Schärfe und Hinweise auf Deutsch
+//   DocScan.straighten()    schief eingezogene Seite gerade rücken (skew = nur den Winkel messen, rotate / turn = drehen)
+//   DocScan.blank()         leere Seite erkennen (Rückseite, Trennblatt)
 //   DocScan.pageInfo()      Seitenzähler im erkannten Text („Seite 2 von 3“)
 //   DocScan.missingPages()  fehlende oder doppelt fotografierte Seiten (beide Seitenzähler-Funktionen brauchen kein DOM)
 //   DocScan.LIMITS          alle Schwellen an einer Stelle
@@ -29,8 +31,23 @@ const DocScan = (() => {
         bright: 200,            // … „hell“ (überbelichtet), wenn die mittlere Helligkeit darüber liegt, sonst „kontrast“
         sharpness: 0.25,        // Schärfe geteilt durch den Kontrast im Kleinen darunter → „unscharf“
         minSide: 700,           // kürzere Seite in Bildpunkten darunter → „klein“
-        maxGain: 2,             // so stark werden Schatten höchstens aufgehellt
-        bwLevel: 0.78           // 'bw': schwarz ist, was dunkler als 78 % des Papiers an dieser Stelle ist
+        maxGain: 3,             // so stark werden Schatten höchstens aufgehellt
+        paperSide: 200,         // längere Seite der kleinen Kopie für die Papierfarbe
+        paperRadius: 6,         // Dunkles bis zu dieser Breite (· 2, in Punkten der kleinen Kopie) gilt als Schrift, nicht als Schatten
+        darkArea: 0.3,          // Flächen dunkler als 30 % des Papiers sind kein Schatten (Foto, Logo, Tisch) – nicht aufhellen
+        whiteMin: 0.8,          // Weißpunkt: alles, was heller ist als dieser Anteil der Papierfarbe, wird rein weiß …
+        whiteMax: 0.95,         // … je nach Rauschen des Fotos zwischen diesen beiden Grenzen
+        whiteNoise: 2.6,        // Abstand des Weißpunkts zum Papier in Vielfachen des Rauschens
+        blackMax: 0.3,          // Schwarzpunkt höchstens bei 30 % der Papierfarbe (blasse Schrift nicht verschlucken)
+        inkGamma: 1.25,         // Kurve > 1: Schrift wird dunkler
+        neutral: 22,            // Farbabstand (0…255), unter dem eine Stelle als farblos gilt
+        sharpen: 0.8,           // Stärke des Schärfens (0 = aus)
+        bwLevel: 0.78,          // 'bw': schwarz ist, was dunkler als 78 % des Papiers an dieser Stelle ist
+        skewMax: 8,             // Schräglage: gesucht wird zwischen −8° und +8°
+        skewMin: 0.3,           // … kleinere Winkel bleiben, wie sie sind
+        skewGain: 1.15,         // … und nur, wenn die Zeilen danach deutlich schärfer getrennt sind
+        blankEdge: 0.07,        // leere Seite: dieser Rand links/rechts zählt nicht (Lochung, Heftklammern)
+        blankInk: 0.0006        // leere Seite: weniger als 0,06 % dunkle Stellen im Inneren
     };
     const ISSUES = {
         dunkel: 'Das Foto ist zu dunkel. Bitte mit mehr Licht noch einmal aufnehmen.',
@@ -465,17 +482,31 @@ const DocScan = (() => {
         });
     }
 
-    // ---------- Aufhellen ----------
-    // Helligkeit des Papiers an jeder Stelle, auf einer kleinen Kopie: Dunkles bis zur Größe 2 · radius schließen, dann weichzeichnen.
-    // Übrig bleibt die Beleuchtung (Schatten, dunkle Ecken) – Schrift, Stempel und Unterschriften stecken nicht mehr darin.
-    function paperMap(canvas, radius) {
-        const { gray, width, height } = grayOf(canvas, 160);
-        const closed = spread(spread(gray, width, height, radius, Math.max), width, height, radius, Math.min);
-        return { map: blur(closed, width, height, 1), width, height };
+    // ---------- Aufhellen: aus dem Foto wird ein „Scan“ ----------
+    // Papierfarbe an jeder Stelle – je Farbkanal, auf einer kleinen Kopie: Dunkles bis zur Größe 2 · radius schließen, dann
+    // weichzeichnen. Übrig bleiben Beleuchtung und Farbstich (Schatten, dunkle Ecken, gelbes Lampenlicht) – Schrift, Stempel
+    // und Unterschriften stecken nicht mehr darin.
+    function paperMaps(canvas, radius, side = LIMITS.paperSide) {
+        const small = shrink(canvas, side), { width, height } = small;
+        const rgba = context(small).getImageData(0, 0, width, height).data;
+        const maps = [0, 1, 2].map(channel => {
+            const plane = new Float32Array(width * height);
+            for (let i = 0, p = channel; i < plane.length; i++, p += 4) plane[i] = rgba[p];
+            return blur(spread(spread(plane, width, height, radius, Math.max), width, height, radius, Math.min), width, height, 2);
+        });
+        return { maps, width, height };
+    }
+    // Wert, unter dem der Anteil share aller Zählungen liegt (hist: Zählungen je Stufe).
+    function levelAt(hist, share) {
+        let total = 0, seen = 0;
+        for (let i = 0; i < hist.length; i++) total += hist[i];
+        for (let i = 0; i < hist.length; i++) { seen += hist[i]; if (seen >= total * share) return i; }
+        return hist.length - 1;
     }
 
     // Macht das Blatt gut lesbar und gibt ein neues Canvas zurück (die Vorlage bleibt, wie sie ist).
-    //   'auto'   Schatten heraus (durch die Papierhelligkeit teilen), dann Kontrast spreizen – Farben bleiben (Stempel, Unterschrift)
+    //   'auto'   wie ein Scanner: Papier wird rein weiß (Schatten und Farbstich heraus, je Farbkanal durch die Papierfarbe geteilt),
+    //            Schrift wird dunkler und schärfer – Farben bleiben (Stempel, Unterschrift, Markierungen)
     //   'color'  nur Kontrast spreizen, die Beleuchtung bleibt (für Fotos und farbige Vorlagen)
     //   'gray'   wie 'auto', aber in Graustufen
     //   'bw'     reines Schwarz-Weiß: schwarz ist, was deutlich dunkler ist als das Papier an dieser Stelle
@@ -485,54 +516,213 @@ const DocScan = (() => {
         const ctx = context(out);
         ctx.drawImage(canvas, 0, 0);
         const image = ctx.getImageData(0, 0, width, height), data = image.data;
-        if (mode !== 'color') {
-            // Für Farbe und Grau bleibt Dunkles bis etwa 3 cm stehen (Logo, Stempel); für Schwarz-Weiß zählt, dass auch schmale Schatten verschwinden.
-            const paper = paperMap(canvas, mode === 'bw' ? 3 : 7), map = paper.map, pw = paper.width, ph = paper.height;
-            const top = map.reduce((most, value) => Math.max(most, value), 1);      // hellste Stelle des Papiers
-            const floor = top / LIMITS.maxGain;
-            const place = (index, size, count) => Math.min(count - 1, Math.max(0, (index + 0.5) * count / size - 0.5));
-            const columns = Float32Array.from({ length: width }, (unused, x) => place(x, width, pw));      // Lage jeder Spalte in der kleinen Karte
+        const place = (index, size, count) => Math.min(count - 1, Math.max(0, (index + 0.5) * count / size - 0.5));
+        if (mode === 'bw') {
+            // Für Schwarz-Weiß zählt, dass auch schmale Schatten verschwinden (kleiner Radius).
+            const { gray, width: pw, height: ph } = grayOf(canvas, 160);
+            const map = blur(spread(spread(gray, pw, ph, 3, Math.max), pw, ph, 3, Math.min), pw, ph, 1);
+            const columns = Float32Array.from({ length: width }, (unused, x) => place(x, width, pw));
             const line = new Float32Array(pw + 1);
             for (let y = 0, p = 0; y < height; y++) {
                 const fy = place(y, height, ph), y0 = fy | 0, y1 = Math.min(ph - 1, y0 + 1);
                 for (let x = 0; x < pw; x++) line[x] = map[y0 * pw + x] + (map[y1 * pw + x] - map[y0 * pw + x]) * (fy - y0);
                 line[pw] = line[pw - 1];
                 for (let x = 0; x < width; x++, p += 4) {
-                    const x0 = columns[x] | 0, local = line[x0] + (line[x0 + 1] - line[x0]) * (columns[x] - x0);      // Papierhelligkeit an dieser Stelle
-                    if (mode === 'bw') {
-                        data[p] = data[p + 1] = data[p + 2] = luma(data[p], data[p + 1], data[p + 2]) < LIMITS.bwLevel * local ? 0 : 255;
-                    } else {
-                        const gain = top / Math.max(local, floor);
-                        data[p] *= gain;
-                        data[p + 1] *= gain;
-                        data[p + 2] *= gain;
-                    }
+                    const x0 = columns[x] | 0, local = line[x0] + (line[x0 + 1] - line[x0]) * (columns[x] - x0);
+                    data[p] = data[p + 1] = data[p + 2] = luma(data[p], data[p + 1], data[p + 2]) < LIMITS.bwLevel * local ? 0 : 255;
                 }
             }
+            ctx.putImageData(image, 0, 0);
+            return out;
         }
-        if (mode !== 'bw') {
+        if (mode === 'color') {
             // Kontrast: Was zwischen dem 1. und dem 99. Hundertstel der Helligkeit liegt, wird auf 0 … 255 gespreizt.
             const hist = new Float64Array(256);
             for (let p = 0; p < data.length; p += 16) hist[Math.round(luma(data[p], data[p + 1], data[p + 2]))]++;
-            const total = Math.ceil(data.length / 16);
-            let seen = 0, low = 0, high = 255;
-            for (let value = 0; value < 256; value++) {
-                if (seen < total * 0.01) low = value;
-                if (seen < total * 0.99) high = value;
-                seen += hist[value];
-            }
-            low = Math.min(low, high - 96);                                          // fast leere Seiten nicht überziehen
+            const high = levelAt(hist, 0.99), low = Math.min(levelAt(hist, 0.01), high - 96);      // fast leere Seiten nicht überziehen
             const lut = new Uint8ClampedArray(256);
             for (let value = 0; value < 256; value++) lut[value] = (value - low) * 255 / (high - low);
-            for (let p = 0; p < data.length; p += 4) {
-                data[p] = lut[data[p]];
-                data[p + 1] = lut[data[p + 1]];
-                data[p + 2] = lut[data[p + 2]];
-                if (mode === 'gray') data[p] = data[p + 1] = data[p + 2] = luma(data[p], data[p + 1], data[p + 2]);
+            for (let p = 0; p < data.length; p += 4) { data[p] = lut[data[p]]; data[p + 1] = lut[data[p + 1]]; data[p + 2] = lut[data[p + 2]]; }
+            ctx.putImageData(image, 0, 0);
+            return out;
+        }
+
+        // ----- 'auto' und 'gray' -----
+        const paper = paperMaps(canvas, LIMITS.paperRadius), pw = paper.width, ph = paper.height;
+        // Papierfarbe an gut beleuchteter Stelle (je Kanal) – der Maßstab dafür, was „dunkle Fläche“ ist.
+        const tops = paper.maps.map(map => { const hist = new Float64Array(256); for (let i = 0; i < map.length; i++) hist[Math.min(255, Math.max(0, Math.round(map[i])))]++; return Math.max(1, levelAt(hist, 0.9)); });
+        const topLuma = luma(tops[0], tops[1], tops[2]);
+        const columns = Float32Array.from({ length: width }, (unused, x) => place(x, width, pw));
+        const lines = [new Float32Array(pw + 1), new Float32Array(pw + 1), new Float32Array(pw + 1)];
+        const fillLines = y => {
+            const fy = place(y, height, ph), y0 = fy | 0, y1 = Math.min(ph - 1, y0 + 1), t = fy - y0;
+            for (let k = 0; k < 3; k++) {
+                const map = paper.maps[k], line = lines[k];
+                for (let x = 0; x < pw; x++) line[x] = map[y0 * pw + x] + (map[y1 * pw + x] - map[y0 * pw + x]) * t;
+                line[pw] = line[pw - 1];
+            }
+        };
+        // Papierfarbe an der Stelle x der aktuellen Zeile. Dunkle Flächen (Foto, großes Logo, Tisch neben dem Blatt) sind kein
+        // Schatten: Dort gilt die normale Papierfarbe, sie werden also nicht aufgehellt.
+        const local = [0, 0, 0];
+        const fadeLow = LIMITS.darkArea, fadeHigh = LIMITS.darkArea + 0.12, floor = 1 / LIMITS.maxGain;
+        const paperAt = x => {
+            const x0 = columns[x] | 0, fx = columns[x] - x0;
+            let r = lines[0][x0] + (lines[0][x0 + 1] - lines[0][x0]) * fx;
+            let g = lines[1][x0] + (lines[1][x0 + 1] - lines[1][x0]) * fx;
+            let b = lines[2][x0] + (lines[2][x0 + 1] - lines[2][x0]) * fx;
+            const rel = luma(r, g, b) / topLuma;
+            if (rel < fadeHigh) {
+                const keep = rel <= fadeLow ? 0 : (rel - fadeLow) / (fadeHigh - fadeLow);
+                r = tops[0] + (r - tops[0]) * keep; g = tops[1] + (g - tops[1]) * keep; b = tops[2] + (b - tops[2]) * keep;
+            }
+            local[0] = Math.max(r, tops[0] * floor); local[1] = Math.max(g, tops[1] * floor); local[2] = Math.max(b, tops[2] * floor);
+        };
+
+        // 1. Blick: Wie hell ist das Papier im Verhältnis zur Papierfarbe (Rauschen!) und wie dunkel die Schrift?
+        const STEPS = 512, SPAN = 1.25;                                              // Verhältnis 0 … 1,25 in 512 Stufen
+        const ratios = new Float64Array(STEPS);
+        const stride = Math.max(1, Math.round(Math.sqrt(width * height / 160000)));
+        for (let y = 0; y < height; y += stride) {
+            fillLines(y);
+            for (let x = 0, p = y * width * 4; x < width; x += stride, p += stride * 4) {
+                paperAt(x);
+                const ratio = luma(data[p] / local[0], data[p + 1] / local[1], data[p + 2] / local[2]);
+                ratios[Math.min(STEPS - 1, (ratio * STEPS / SPAN) | 0)]++;
+            }
+        }
+        // Papier: die häufigste Stufe im hellen Bereich; Streuung darum = Rauschen des Fotos.
+        let mode1 = 0;
+        for (let i = (0.7 * STEPS / SPAN) | 0; i < STEPS; i++) if (ratios[i] > ratios[mode1] || !mode1) mode1 = i;
+        const paperLevel = (mode1 + 0.5) * SPAN / STEPS;
+        let weight = 0, spreadSum = 0;
+        for (let i = 0; i < STEPS; i++) {
+            const value = (i + 0.5) * SPAN / STEPS;
+            if (Math.abs(value - paperLevel) > 0.15) continue;
+            weight += ratios[i]; spreadSum += ratios[i] * (value - paperLevel) ** 2;
+        }
+        const noise = weight ? Math.sqrt(spreadSum / weight) : 0.02;
+        // Weißpunkt: knapp unter dem Papier – je verrauschter das Foto, desto mehr Abstand. Schwarzpunkt: die dunkelste Schrift.
+        const white = Math.min(LIMITS.whiteMax, Math.max(LIMITS.whiteMin, paperLevel - LIMITS.whiteNoise * noise)) ;
+        const black = Math.min(LIMITS.blackMax, Math.max(0.04, (levelAt(ratios, 0.004) + 0.5) * SPAN / STEPS));
+        const LUT = 1024, lutSpan = 1.25;
+        const lut = new Uint8ClampedArray(LUT + 1);
+        for (let i = 0; i <= LUT; i++) {
+            const t = Math.min(1, Math.max(0, (i * lutSpan / LUT - black) / (white - black)));
+            lut[i] = Math.round(255 * Math.pow(t, LIMITS.inkGamma));
+        }
+        const scale = LUT / lutSpan;
+
+        // 2. Durchgang: jeden Farbkanal durch die Papierfarbe teilen, dann die Kurve.
+        const gray = mode === 'gray';
+        const lightness = new Uint8Array(width * height);                            // Helligkeit nach der Kurve – fürs Schärfen
+        for (let y = 0, p = 0, i = 0; y < height; y++) {
+            fillLines(y);
+            for (let x = 0; x < width; x++, p += 4, i++) {
+                paperAt(x);
+                let r = lut[Math.min(LUT, data[p] * scale / local[0]) | 0];
+                let g = lut[Math.min(LUT, data[p + 1] * scale / local[1]) | 0];
+                let b = lut[Math.min(LUT, data[p + 2] * scale / local[2]) | 0];
+                const light = (r * 77 + g * 150 + b * 29) >> 8;
+                // Fast farblose Stellen (schwarze Schrift mit Farbrauschen) werden rein grau; Farbiges bleibt farbig.
+                const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+                if (gray || chroma <= LIMITS.neutral) r = g = b = light;
+                else if (chroma < LIMITS.neutral * 2) { const keep = (chroma - LIMITS.neutral) / LIMITS.neutral; r = light + (r - light) * keep; g = light + (g - light) * keep; b = light + (b - light) * keep; }
+                data[p] = r; data[p + 1] = g; data[p + 2] = b;
+                lightness[i] = light;
+            }
+        }
+
+        // 3. Schärfen (unscharf maskieren): Unterschied zur weichgezeichneten Helligkeit verstärken. Reines Weiß bleibt weiß.
+        if (LIMITS.sharpen > 0) {
+            const soft = new Uint8Array(lightness.length), row = new Float32Array(Math.max(width, height));
+            for (let y = 0; y < height; y++) {                                         // waagerecht 1-4-6-4-1
+                const o = y * width;
+                for (let x = 0; x < width; x++) {
+                    const a = lightness[o + Math.max(0, x - 2)], b2 = lightness[o + Math.max(0, x - 1)], c = lightness[o + x], d = lightness[o + Math.min(width - 1, x + 1)], e = lightness[o + Math.min(width - 1, x + 2)];
+                    row[x] = (a + e + 4 * (b2 + d) + 6 * c) / 16;
+                }
+                for (let x = 0; x < width; x++) soft[o + x] = row[x];
+            }
+            const amount = LIMITS.sharpen;
+            for (let x = 0; x < width; x++) {                                          // senkrecht, dann gleich anwenden
+                for (let y = 0; y < height; y++) {
+                    const a = soft[Math.max(0, y - 2) * width + x], b2 = soft[Math.max(0, y - 1) * width + x], c = soft[y * width + x], d = soft[Math.min(height - 1, y + 1) * width + x], e = soft[Math.min(height - 1, y + 2) * width + x];
+                    row[y] = (a + e + 4 * (b2 + d) + 6 * c) / 16;
+                }
+                for (let y = 0; y < height; y++) {
+                    const i = y * width + x, delta = (lightness[i] - row[y]) * amount;
+                    if (delta > -1 && delta < 1) continue;
+                    const p = i * 4;
+                    data[p] += delta; data[p + 1] += delta; data[p + 2] += delta;      // Uint8ClampedArray begrenzt auf 0 … 255
+                }
             }
         }
         ctx.putImageData(image, 0, 0);
         return out;
+    }
+
+    // ---------- Gerade rücken, drehen, leere Seiten ----------
+    // Schräglage der Schrift in Grad (im Uhrzeigersinn positiv), z. B. bei schief eingezogenen Seiten eines Kopierers.
+    // Verfahren: Die dunklen Stellen einer kleinen Kopie werden für jeden Winkel zeilenweise gezählt – stehen die Schriftzeilen
+    // waagerecht, wechseln volle und leere Zeilen am schärfsten. sure = false: zu wenig Schrift oder kein klarer Winkel.
+    function skew(canvas, { maxAngle = LIMITS.skewMax } = {}) {
+        const { gray, width, height } = grayOf(canvas, 480);
+        const level = Math.min(170, Math.max(60, otsu(gray)));
+        const xs = [], ys = [];
+        for (let y = 2; y < height - 2; y++) for (let x = 2; x < width - 2; x++) if (gray[y * width + x] < level) { xs.push(x - width / 2); ys.push(y - height / 2); }
+        if (xs.length < 250 || xs.length > width * height * 0.5) return { angle: 0, sure: false };
+        const rows = new Float64Array(height * 2 + 4);
+        const score = degrees => {
+            const sin = Math.sin(degrees * Math.PI / 180), cos = Math.cos(degrees * Math.PI / 180);
+            rows.fill(0);
+            for (let i = 0; i < xs.length; i++) rows[Math.round(ys[i] * cos - xs[i] * sin + height) | 0]++;
+            let sum = 0;
+            for (let r = 1; r < rows.length; r++) { const step = rows[r] - rows[r - 1]; sum += step * step; }
+            return sum;
+        };
+        let best = 0, bestScore = score(0);
+        const flat = bestScore;
+        for (let degrees = -maxAngle; degrees <= maxAngle + 1e-9; degrees += 0.5) { const value = score(degrees); if (value > bestScore) { bestScore = value; best = degrees; } }
+        for (let degrees = best - 0.4; degrees <= best + 0.4 + 1e-9; degrees += 0.1) { const value = score(degrees); if (value > bestScore) { bestScore = value; best = degrees; } }
+        const angle = Math.round(best * 10) / 10;
+        return { angle, sure: Math.abs(angle) >= LIMITS.skewMin && Math.abs(angle) < maxAngle - 0.05 && bestScore >= flat * LIMITS.skewGain };
+    }
+
+    // Dreht das Blatt um einen beliebigen Winkel (Grad, im Uhrzeigersinn). Nichts wird abgeschnitten: Das Ergebnis ist so groß,
+    // dass das gedrehte Blatt ganz hineinpasst; die Ecken werden weiß.
+    function rotate(canvas, degrees) {
+        const rad = degrees * Math.PI / 180, sin = Math.abs(Math.sin(rad)), cos = Math.abs(Math.cos(rad));
+        const out = makeCanvas(canvas.width * cos + canvas.height * sin, canvas.width * sin + canvas.height * cos);
+        const ctx = context(out);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.translate(out.width / 2, out.height / 2);
+        ctx.rotate(rad);
+        ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+        return out;
+    }
+    // Rückt schief eingezogene Seiten gerade – nur wenn der Winkel sicher erkannt ist. { canvas, angle } (angle 0 = unverändert).
+    function straighten(canvas, options) {
+        const found = skew(canvas, options);
+        return found.sure ? { canvas: rotate(canvas, -found.angle), angle: found.angle } : { canvas, angle: 0 };
+    }
+    // Vierteldrehungen im Uhrzeigersinn (1 = 90°, 2 = auf den Kopf, 3 = 270°).
+    function turn(canvas, quarters) {
+        const steps = ((Math.round(quarters) % 4) + 4) % 4;
+        return steps ? rotate(canvas, steps * 90) : canvas;
+    }
+
+    // Ist die Seite leer (Rückseite, Trennblatt)? ink = Anteil dunkler Stellen im Inneren des Blatts – Lochung, Heftklammern und
+    // dunkle Scanränder am Rand zählen nicht. Am besten auf dem bereits aufgehellten Blatt prüfen.
+    function blank(canvas) {
+        const { gray, width, height } = grayOf(canvas, 400);
+        const left = Math.round(width * LIMITS.blankEdge), top = Math.round(height * LIMITS.blankEdge * 0.6);
+        let dark = 0, count = 0;
+        for (let y = top; y < height - top; y++) for (let x = left; x < width - left; x++, count++) if (gray[y * width + x] < 200) dark++;
+        const ink = count ? dark / count : 0;
+        return { blank: ink < LIMITS.blankInk, ink };
     }
 
     // ---------- Prüfen ----------
@@ -644,7 +834,7 @@ const DocScan = (() => {
         return messages;
     }
 
-    return { fromFile, detect, warp, enhance, assess, toBlob, process, pageInfo, missingPages, LIMITS };
+    return { fromFile, detect, warp, enhance, assess, toBlob, process, pageInfo, missingPages, skew, rotate, straighten, turn, blank, LIMITS };
 })();
 if (typeof window !== 'undefined') window.DocScan = DocScan;
 if (typeof module !== 'undefined') module.exports = DocScan;

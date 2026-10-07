@@ -2506,3 +2506,85 @@ button.pay-head:focus-visible { outline: 2px solid var(--brand); outline-offset:
 .statement-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .statement-chip, :root[data-theme="dark"] .statement-chip { min-height: 40px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: .88rem; font-weight: 600; }
 .statement-chip[aria-pressed="true"], :root[data-theme="dark"] .statement-chip[aria-pressed="true"] { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+
+/* 69  Portal: „Meine Tage“ – Monatsübersicht des Dolmetschers, klein und auf einen Blick */
+.my-month { margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--line); }
+.my-month-count { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 8px; font-size: 1.35rem; font-weight: 800; }
+.my-month-count span { color: var(--muted); font-size: .84rem; font-weight: 600; }
+.my-days { display: flex; flex-direction: column; }
+.my-day { border-bottom: 1px solid var(--line); }
+.my-day > summary { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 3px 2px; cursor: pointer; list-style: none; font-size: .86rem; }
+.my-day > summary::-webkit-details-marker { display: none; }
+.my-day > summary::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); }
+.my-day[open] > summary::before { transform: rotate(45deg); }
+.my-day-date { flex: 0 0 84px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.my-day-count { flex: 1 1 auto; color: var(--muted); }
+.my-day.is-special > summary { background: color-mix(in srgb, #2f9e5f 12%, var(--surface)); border-radius: 7px; }
+.my-day-chip { padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #2f9e5f 22%, var(--surface)); color: #1f7a45; font-size: .76rem; font-weight: 750; white-space: nowrap; }
+:root[data-theme="dark"] .my-day-chip { color: #7fd6a3; }
+.my-day-jobs { margin: 0 0 6px; padding: 0 0 0 22px; color: var(--ink-soft); font-size: .84rem; line-height: 1.5; }
+.my-receipts { margin-top: 8px; border-top: 1px solid var(--line); }
+.my-receipts .my-day-count { text-align: right; color: var(--ink); font-weight: 700; }
+.my-sums { margin-top: 8px; }
+.my-month-note { margin-top: 8px; }
+
+/* ==========================================================================
+   70. Name „Medical Office Bonn“: Zeichen neben dem Namen (Puls-Linie statt Buchstaben)
+   ========================================================================== */
+.app-brand-mark svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.portal-header .app-brand-mark svg { width: 26px; height: 26px; }
+.portal-header .app-brand-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ==========================================================================
+   71. Dolmetscher-App: Hell/Dunkel-Knopf, liegen gebliebene Aufträge, Erinnerung nach dem letzten Auftrag
+   ========================================================================== */
+.portal-header-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.portal-header-actions { display: flex; align-items: center; gap: 8px; }
+.portal-header-actions[hidden] { display: none; }
+.theme-switch .theme-sun { display: none; }
+:root[data-theme="dark"] .theme-switch .theme-sun { display: block; }
+:root[data-theme="dark"] .theme-switch .theme-moon { display: none; }
+@media (max-width: 400px) {
+  .portal-header { gap: 8px; padding-inline: 12px; }
+  .portal-header-tools, .portal-header-actions { gap: 6px; }
+  .portal-header .icon-button, :root[data-theme="dark"] .portal-header .icon-button { width: 40px; min-height: 40px; }
+  .portal-header .app-brand { gap: 8px; }
+  .portal-header .app-brand-mark { width: 32px; height: 32px; border-radius: 10px; }
+  .portal-header .app-brand-copy strong { font-size: .92rem; }
+}
+@media (max-width: 350px) { .portal-header .app-brand-mark { display: none; } }
+
+.late-jobs { display: grid; gap: 10px; margin: 4px 0 16px; padding: 14px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 14px; background: var(--warn-soft); }
+:root[data-theme="dark"] .late-jobs { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+.late-head { display: grid; gap: 3px; }
+.late-head strong { font-size: 1rem; }
+.late-head span { color: var(--ink-soft); font-size: .86rem; line-height: 1.4; }
+.late-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.late-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.late-text { display: grid; min-width: 0; gap: 2px; }
+.late-text strong { font-size: .93rem; }
+.late-text span { overflow: hidden; color: var(--ink-soft); font-size: .84rem; text-overflow: ellipsis; white-space: nowrap; }
+.late-text .late-patient { color: var(--muted); }
+.late-buttons { display: grid; flex: 0 0 auto; justify-items: center; gap: 2px; }
+.late-buttons .late-done { min-height: 40px; padding: 8px 14px; }
+.late-buttons .late-gone { min-height: 30px; font-size: .78rem; }
+
+dialog.day-done { width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; background: var(--bg); color: var(--ink); }
+dialog.day-done::backdrop { background: var(--bg); }
+.day-done-inner { display: flex; width: min(100%, 520px); min-height: 100%; flex-direction: column; align-items: stretch; gap: 14px; margin: 0 auto; padding: max(28px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); }
+.day-done-check { width: 76px; height: 76px; align-self: center; fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.day-done-inner h2 { margin: 0; font-size: 1.45rem; letter-spacing: -.02em; text-align: center; }
+.day-done-lead { margin: 0 0 4px; color: var(--ink-soft); text-align: center; }
+.day-done-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.day-done-row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.day-done-row[data-state="open"] { border-color: color-mix(in srgb, var(--brand) 55%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 25%, transparent); }
+.day-done-mark { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: var(--surface-soft); color: var(--muted); }
+.day-done-mark svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.day-done-row[data-state="done"] .day-done-mark { background: color-mix(in srgb, var(--ok) 16%, var(--surface)); color: var(--ok); }
+.day-done-row[data-state="open"] .day-done-mark { background: var(--brand-soft); color: var(--brand-dark); }
+.day-done-text { display: grid; min-width: 0; flex: 1 1 auto; gap: 2px; }
+.day-done-text strong { font-size: 1rem; }
+.day-done-text span { color: var(--ink-soft); font-size: .85rem; line-height: 1.35; }
+.day-done-row button { flex: 0 0 auto; min-height: 42px; padding: 8px 14px; }
+.day-done-inner > .big-button { margin-top: auto; }
+.yesno-dialog h2 { margin: 0 0 10px; font-size: 1.15rem; }

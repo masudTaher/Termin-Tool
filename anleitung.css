@@ -232,3 +232,6 @@ html[lang="ar"] .guide-step h3 { line-height: 1.55; }
   .guide-tip strong { font-size: 8.8pt; }
   .guide-foot { margin-top: 4mm; font-size: 7.4pt; }
 }
+
+/* Zeichen neben dem Namen: Puls-Linie statt Buchstaben */
+.guide-mark svg { width: 27px; height: 27px; fill: none; stroke: #fff; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }

@@ -103,7 +103,7 @@
         nav.className = 'app-nav';
         nav.innerHTML = `
             <a class="app-brand" href="index.html" aria-label="Medical Office Bonn – Übersicht">
-                <span class="app-brand-mark" aria-hidden="true">MO</span>
+                <span class="app-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 12.5h4l2-4.5 3.2 8.6 2.6-6.4 1.4 2.3H21"/></svg></span>
                 <span class="app-brand-copy"><strong>Medical Office Bonn</strong><small>Transport und Dolmetscher</small></span>
             </a>
             <nav aria-label="Hauptnavigation">

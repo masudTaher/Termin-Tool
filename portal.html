@@ -4,31 +4,41 @@
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
       <meta name="robots" content="noindex">
-      <title>Dolmetscher-Portal · Medical Office Bonn</title>
+      <title>Medical Office Bonn</title>
       <!-- Als App auf dem Handy: Android nutzt das Manifest, iPhone die apple-Angaben. -->
       <link rel="manifest" href="manifest.json">
       <meta name="theme-color" content="#1769aa">
       <meta name="mobile-web-app-capable" content="yes">
       <meta name="apple-mobile-web-app-capable" content="yes">
-      <meta name="apple-mobile-web-app-title" content="Dolmetscher">
+      <meta name="apple-mobile-web-app-title" content="Medical Office">
       <meta name="apple-mobile-web-app-status-bar-style" content="default">
       <link rel="apple-touch-icon" href="icon-180.png">
       <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
       <link rel="stylesheet" href="style.css">
       <script>
-         // Das Portal folgt der Einstellung des Handys (hell/dunkel).
-         if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+         // Hell oder dunkel: Es gilt die eigene Wahl (Knopf oben neben der Glocke) – sonst die Einstellung des Handys.
+         (function () {
+            var saved = null;
+            try { saved = localStorage.getItem('terminTool.portal.theme'); } catch (error) { /* ohne Speicher gilt die Einstellung des Handys */ }
+            if (saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+         })();
       </script>
    </head>
    <body data-page="portal">
       <header class="portal-header">
-         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true">MO</span><span class="app-brand-copy"><strong>Dolmetscher-Portal</strong><small id="portalUser">Medical Office Bonn · Transport und Dolmetscher</small></span></span>
-         <span class="portal-header-actions" id="portalHeaderActions" hidden>
-            <button type="button" class="icon-button" id="openMessages" aria-label="Nachrichten">
-               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.500 2 6.500H4c0-1 2-2 2-6.500z"/><path d="M10 19.500a2 2 0 0 0 4 0"/></svg>
-               <em id="messagesBadge" class="tab-badge" hidden></em>
+         <span class="app-brand"><span class="app-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 12.5h4l2-4.5 3.2 8.6 2.6-6.4 1.4 2.3H21"/></svg></span><span class="app-brand-copy"><strong>Medical Office Bonn</strong><small id="portalUser">Dolmetscher und Transport</small></span></span>
+         <span class="portal-header-tools">
+            <button type="button" class="icon-button theme-switch" id="themeSwitch" aria-pressed="false" aria-label="Dunkle Ansicht einschalten" title="Hell / Dunkel">
+               <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+               <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
             </button>
-            <button type="button" class="icon-button icon-button-avatar" id="openAccount" aria-label="Mein Konto"><span id="accountInitials">?</span></button>
+            <span class="portal-header-actions" id="portalHeaderActions" hidden>
+               <button type="button" class="icon-button" id="openMessages" aria-label="Nachrichten">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.500 2 6.500H4c0-1 2-2 2-6.500z"/><path d="M10 19.500a2 2 0 0 0 4 0"/></svg>
+                  <em id="messagesBadge" class="tab-badge" hidden></em>
+               </button>
+               <button type="button" class="icon-button icon-button-avatar" id="openAccount" aria-label="Mein Konto"><span id="accountInitials">?</span></button>
+            </span>
          </span>
       </header>
 
@@ -350,6 +360,8 @@
                <h2 id="jobsTitle" class="wizard-title">Meine Aufträge</h2>
                <p class="wizard-hint" id="jobsSummary">Wird geladen …</p>
                <button type="button" id="jobsFoldToggle" class="link-button jobs-fold-toggle" hidden>Alle aufklappen</button>
+               <!-- Liegen gebliebene Aufträge früherer Tage: nachträglich abschließen, damit der Tag zählt -->
+               <div id="lateJobs" class="late-jobs" hidden></div>
                <ul id="jobList" class="job-list"></ul>
                <details class="job-history">
                   <summary id="jobHistorySummary">Archiv: frühere Aufträge</summary>
@@ -558,7 +570,7 @@
                <div id="reportPick">
                   <p class="wizard-hint">Zu welchem Termin schreibst du? Tippe ihn an – Patient, Patientennummer und Arzt werden übernommen.</p>
                   <div id="reportJobList" class="car-list"></div>
-                  <p id="reportNoJobs" class="directory-empty" hidden>Du hast in den letzten sieben Tagen keinen Termin, zu dem ein Bericht fehlt. Ein Bericht gehört immer zu einem Auftrag aus dem Portal.</p>
+                  <p id="reportNoJobs" class="directory-empty" hidden>Du hast in den letzten sieben Tagen keinen Termin, zu dem ein Bericht fehlt. Ein Bericht gehört immer zu einem Auftrag aus der App.</p>
                </div>
                <form id="reportForm" class="fleet-form" novalidate hidden>
                   <dl id="reportFacts" class="vehicle-state report-facts"></dl>
@@ -663,7 +675,7 @@
             <!-- ===== Bereich 4 (temporär): Abrechnung ===== -->
             <section class="directory-card" data-panel="statement" aria-labelledby="statementTitle" hidden>
                <h2 id="statementTitle" class="wizard-title">Meine Abrechnung</h2>
-               <p class="wizard-hint">Prüfe den Monat, sobald er freigegeben ist, und bestätige ihn.</p>
+               <p class="wizard-hint">Deine Tage und Belege auf einen Blick. Am Monatsende bekommst du die Abrechnung zum Bestätigen.</p>
                <div class="fleet-form"><label for="statementMonth">Monat</label><select id="statementMonth"></select></div>
                <div id="statementBody" class="statement-body"></div>
             </section>
@@ -805,6 +817,16 @@
          <div class="gender-choice">
             <button type="button" class="button-primary big-button" data-gender="weiblich">Dolmetscherin</button>
             <button type="button" class="button-primary big-button" data-gender="männlich">Dolmetscher</button>
+         </div>
+      </dialog>
+      <!-- Letzter Auftrag des Tages erledigt: Erinnerung über den ganzen Bildschirm -->
+      <dialog id="dayDone" class="day-done" aria-labelledby="dayDoneTitle">
+         <div class="day-done-inner">
+            <svg class="day-done-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l8 8 14-16"/></svg>
+            <h2 id="dayDoneTitle">Letzter Auftrag für heute erledigt</h2>
+            <p id="dayDoneLead" class="day-done-lead"></p>
+            <ul id="dayDoneList" class="day-done-list"></ul>
+            <button type="button" id="dayDoneClose" class="button-primary big-button">Fertig für heute</button>
          </div>
       </dialog>
       <!-- Bestätigung nach Übernahme / Rückgabe -->

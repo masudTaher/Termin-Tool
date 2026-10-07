@@ -34,7 +34,7 @@ if (!window.TerminContact) {
     const FUEL = config.fuelLabels || ['Leer', '1/4', '1/2', '3/4', 'Voll'];
     const WORK_START = config.workStart || '09:00';
     const WORK_END = config.workEnd || '16:00';
-    const DEFAULT_USER_LINE = 'Medical Office Bonn · Transport und Dolmetscher';
+    const DEFAULT_USER_LINE = 'Dolmetscher und Transport';
     let profile = null;
     let vehicles = [];
     let openHandovers = [];
@@ -338,6 +338,25 @@ if (!window.TerminContact) {
     document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => goTo(button.dataset.go)));
     $('openMessages').addEventListener('click', () => goTo('messages'));
     $('openAccount').addEventListener('click', () => goTo('account'));
+
+    // ---------- Hell / Dunkel: Knopf oben neben der Glocke ----------
+    // Die Wahl bleibt auf diesem Handy gespeichert. Ohne eigene Wahl gilt die Einstellung des Handys (siehe portal.html).
+    const THEME_KEY = 'terminTool.portal.theme';
+    function showTheme() {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        const button = $('themeSwitch');
+        if (!button) return;
+        button.setAttribute('aria-pressed', String(dark));
+        button.setAttribute('aria-label', dark ? 'Helle Ansicht einschalten' : 'Dunkle Ansicht einschalten');
+        button.title = dark ? 'Zur hellen Ansicht' : 'Zur dunklen Ansicht';
+    }
+    $('themeSwitch')?.addEventListener('click', () => {
+        const dark = document.documentElement.dataset.theme !== 'dark';
+        if (dark) document.documentElement.dataset.theme = 'dark'; else delete document.documentElement.dataset.theme;
+        try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (error) { /* gilt dann bis zum Neuladen */ }
+        showTheme();
+    });
+    showTheme();
     $('messagesBack').addEventListener('click', () => goTo(previousView));
     $('accountBack').addEventListener('click', () => goTo(previousView));
     $('receiptBack').addEventListener('click', () => goTo(receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')));
@@ -353,6 +372,8 @@ if (!window.TerminContact) {
         const unread = unreadMessages();
         const notices = [];
         if (unread) notices.push([`${unread} neue ${unread === 1 ? 'Nachricht' : 'Nachrichten'} von der Einsatzleitung`, () => goTo('messages')]);
+        const late = lateJobs().length;
+        if (late) notices.push([late === 1 ? 'Ein Auftrag von einem früheren Tag ist noch nicht abgeschlossen – bitte abschließen' : `${late} Aufträge von früheren Tagen sind noch nicht abgeschlossen – bitte abschließen`, () => { goTo('jobs'); window.requestAnimationFrame(() => $('lateJobs')?.scrollIntoView({ block: 'start' })); }]);
         // Aufträge stehen jetzt im Abschnitt „Heute“ (nächster Auftrag groß, weitere als Zeilen) – nicht mehr als Textzeile.
         renderHomeJobs(today, open);
         const waiting = statementData.find(item => item.response === 'offen' && !item.data?.running);
@@ -365,7 +386,7 @@ if (!window.TerminContact) {
             item.append(button);
             return item;
         }));
-        setBadge('jobs', open);
+        setBadge('jobs', open + late);
         setBadge('statement', waiting ? '!' : '');
         $('messagesBadge').hidden = !unread;
         $('messagesBadge').textContent = unread ? String(unread) : '';
@@ -381,7 +402,7 @@ if (!window.TerminContact) {
         jobsRendered = '';
         goTo('jobs');
         loadJobs().then(() => {
-            const card = [...document.querySelectorAll('#jobList .job-card')].find(node => node.dataset.id === id);
+            const card = [...document.querySelectorAll('#jobList .job-card, #lateJobs .late-row')].find(node => node.dataset.id === id);
             if (!card) return;
             const header = document.querySelector('.portal-header')?.getBoundingClientRect().bottom || 0;
             window.scrollTo({ top: window.scrollY + card.getBoundingClientRect().top - header - 12 });
@@ -537,6 +558,94 @@ if (!window.TerminContact) {
     }
     $('statementMonth').addEventListener('change', () => renderStatement());
 
+    // „Meine Tage“: Die eigene Monatsübersicht – jederzeit sichtbar, ohne Freigabe. Jeder Tag mit einem beendeten Auftrag
+    // zählt von selbst. Tage klein untereinander (antippen zeigt die Aufträge), Sondertage markiert, am Ende drei Summen.
+    async function renderMyMonth(month, body, sent) {
+        const dateShort = iso => new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        let info = null;
+        const answer = await client.rpc('tt_my_month', { p_month: month });
+        if (!answer.error && answer.data) info = answer.data;
+        if (!info) {
+            // Ohne Update 27: aus den eigenen beendeten Aufträgen (ohne Sondertage).
+            const byDate = new Map();
+            jobsData.filter(item => !item.cancelled && item.work_status === 'beendet' && item.date.startsWith(month)).forEach(item => byDate.set(item.date, [...(byDate.get(item.date) || []), item.title || 'Auftrag']));
+            info = { rate: 80, days: [...byDate.entries()].sort().map(([date, jobs]) => ({ date, jobs })), special: [], workdays: null };
+        }
+        const rate = Number(info.rate || 80);
+        const special = new Map((info.special || []).map(item => [item.date, Number(item.amount)]));
+        const days = new Map((info.days || []).map(item => [item.date, item.jobs || []]));
+        const dates = [...new Set([...days.keys(), ...special.keys()])].sort();
+        const workdays = info.workdays ?? days.size;
+        const normal = Math.max(0, workdays - special.size);
+        const specialSum = [...special.values()].reduce((sum, amount) => sum + amount, 0);
+        const daySum = normal * rate + specialSum;
+        const receiptsOfMonth = receiptData.filter(item => item.date.startsWith(month) && item.status !== 'abgelehnt').sort((left, right) => left.date.localeCompare(right.date));
+        const receiptSum = receiptsOfMonth.reduce((sum, item) => sum + Number(item.amount), 0);
+
+        const box = document.createElement('section');
+        box.className = 'my-month';
+        const head = document.createElement('h3');
+        head.className = 'my-month-count';
+        head.textContent = `${workdays} ${workdays === 1 ? 'Arbeitstag' : 'Arbeitstage'}`;
+        const sub = document.createElement('span');
+        sub.textContent = `${monthLabel(month)}${special.size ? ` · davon ${special.size} ${special.size === 1 ? 'Sondertag' : 'Sondertage'}` : ''}`;
+        head.append(sub);
+        const list = document.createElement('div');
+        list.className = 'my-days';
+        dates.forEach(date => {
+            const item = document.createElement('details');
+            item.className = `my-day${special.has(date) ? ' is-special' : ''}`;
+            const summary = document.createElement('summary');
+            const when = document.createElement('span');
+            when.className = 'my-day-date';
+            when.textContent = dateShort(date);
+            const jobs = days.get(date) || [];
+            const count = document.createElement('span');
+            count.className = 'my-day-count';
+            count.textContent = jobs.length ? `${jobs.length} ${jobs.length === 1 ? 'Auftrag' : 'Aufträge'}` : 'Sondertag';
+            summary.append(when, count);
+            if (special.has(date)) { const chip = document.createElement('span'); chip.className = 'my-day-chip'; chip.textContent = `Sondertag ${money(special.get(date))}`; summary.append(chip); }
+            const detail = document.createElement('ul');
+            detail.className = 'my-day-jobs';
+            (jobs.length ? jobs : ['Sondertag – vom Büro eingetragen']).forEach(text => { const row = document.createElement('li'); row.textContent = text; detail.append(row); });
+            item.append(summary, detail);
+            list.append(item);
+        });
+        if (!dates.length) { const empty = document.createElement('p'); empty.className = 'directory-empty'; empty.textContent = 'In diesem Monat ist noch kein Auftrag beendet.'; list.append(empty); }
+
+        const receipts = document.createElement('details');
+        receipts.className = 'my-day my-receipts';
+        const receiptHead = document.createElement('summary');
+        const receiptTitle = document.createElement('span');
+        receiptTitle.className = 'my-day-date';
+        receiptTitle.textContent = `Belege (${receiptsOfMonth.length})`;
+        const receiptTotal = document.createElement('span');
+        receiptTotal.className = 'my-day-count';
+        receiptTotal.textContent = money(receiptSum);
+        receiptHead.append(receiptTitle, receiptTotal);
+        const receiptList = document.createElement('ul');
+        receiptList.className = 'my-day-jobs';
+        receiptsOfMonth.forEach(item => { const row = document.createElement('li'); row.textContent = `${dateShort(item.date)} · ${item.place || item.kind || 'Beleg'} · ${money(item.amount)}${item.status === 'eingereicht' ? ' · wird noch geprüft' : ''}`; receiptList.append(row); });
+        if (!receiptsOfMonth.length) { const row = document.createElement('li'); row.textContent = 'Kein Beleg hochgeladen.'; receiptList.append(row); }
+        receipts.append(receiptHead, receiptList);
+
+        const sums = document.createElement('div');
+        sums.className = 'my-sums';
+        const sumLine = (term, value, strong) => { const row = document.createElement('div'); row.className = `statement-line${strong ? ' is-total' : ''}`; const left = document.createElement('span'); left.textContent = term; const right = document.createElement('span'); right.textContent = value; row.append(left, right); return row; };
+        sums.append(
+            sumLine(`Tage (${normal} × ${money(rate)}${special.size ? ` + ${special.size} ${special.size === 1 ? 'Sondertag' : 'Sondertage'}` : ''})`, money(daySum)),
+            sumLine(`Belege (${receiptsOfMonth.length})`, money(receiptSum)),
+            sumLine('Zusammen', money(daySum + receiptSum), true));
+        const note = document.createElement('p');
+        note.className = 'fleet-footnote my-month-note';
+        note.textContent = sent ? 'Die einzelnen Tage und Belege, wie sie heute im System stehen.'
+            : `Jeder Tag zählt von selbst, sobald dein Auftrag beendet ist. Die Abrechnung für ${monthLabel(month)} bekommst du am Monatsende zum Bestätigen.`;
+        if (info.workdays != null && info.workdays !== days.size) { const manual = document.createElement('p'); manual.className = 'fleet-footnote'; manual.textContent = `Vom Büro eingetragen: ${info.workdays} Arbeitstage.`; box.append(manual); }
+        box.prepend(head);
+        box.append(list, receipts, sums, note);
+        if ($('statementMonth').value === month) body.append(box);
+    }
+
     async function renderStatement() {
         const month = $('statementMonth').value;
         const statement = statementData.find(item => item.month === month);
@@ -552,14 +661,7 @@ if (!window.TerminContact) {
         };
         const dateText = iso => new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
         if (!statement) {
-            const worked = [...new Set(jobsData.filter(item => !item.cancelled && item.work_status === 'beendet' && item.date.startsWith(month)).map(item => item.date))].sort();
-            const receiptsOfMonth = receiptData.filter(item => item.date.startsWith(month) && item.status !== 'abgelehnt');
-            const info = document.createElement('p');
-            info.className = 'fleet-footnote';
-            info.textContent = `Die Abrechnung für ${monthLabel(month)} bekommst du am Monatsende zum Bestätigen. Bisher aus deinen Einträgen:`;
-            body.append(info,
-                line('Gearbeitete Tage laut Aufträgen', worked.length ? `${worked.length} (${worked.map(dateText).join(', ')})` : '0'),
-                line('Eingereichte Belege', `${receiptsOfMonth.length} · ${money(receiptsOfMonth.reduce((sum, item) => sum + Number(item.amount), 0))}`));
+            // Noch nichts gesendet: Die eigene Übersicht („Meine Tage“) steht gleich darunter.
         } else {
             // Kurz und deutlich: Arbeitstage × Tagessatz, Sondertage, Belege, Gesamtbetrag.
             const data = statement.data || {};
@@ -634,6 +736,9 @@ if (!window.TerminContact) {
                 body.append(pick, note, buttons);
             }
         }
+
+        await renderMyMonth(month, body, Boolean(statement));
+        if ($('statementMonth').value !== month) return;          // inzwischen wurde ein anderer Monat gewählt
 
         // Eigene Fahrzeuge im Monat
         const list = $('statementVehicles');
@@ -935,7 +1040,129 @@ if (!window.TerminContact) {
         await loadJobs();
         if (isFest() && overtime) loadOvertime();
         renderHome();
+        if (action === 'finish') maybeDayDone(item);
     }
+
+    // ---------- Liegen gebliebene Aufträge nachträglich abschließen ----------
+    // Ein Auftrag von einem früheren Tag, der weder gestartet noch beendet, abgesagt, ausgefallen oder zurückgezogen ist.
+    // Zurück bis zum Ersten des Vormonats – das sind die Monate, die noch abgerechnet werden.
+    const lateFrom = () => { const now = new Date(); return isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)); };
+    const jobLate = (item, today = TerminCloud.todayIso()) => !item.cancelled && item.date < today && item.date >= lateFrom()
+        && !jobStarted(item) && !jobFinished(item) && item.response !== 'abgesagt';
+    const lateJobs = () => jobsData.filter(item => jobLate(item)).sort(jobOrder);
+
+    // Kurze Rückfrage (Ja / Abbrechen) als eigenes Fenster – kein Dialog des Browsers.
+    function askYesNo({ title, text, okLabel = 'Ja', cancelLabel = 'Abbrechen' }) {
+        const dialog = el('dialog', 'confirm-dialog yesno-dialog');
+        const heading = el('h2', '', title);
+        heading.id = 'yesNoTitle';
+        dialog.setAttribute('aria-labelledby', 'yesNoTitle');
+        const buttons = el('div', 'modal-buttons');
+        const cancel = el('button', 'button-secondary', cancelLabel);
+        cancel.type = 'button';
+        const ok = el('button', 'button-primary', okLabel);
+        ok.type = 'button';
+        buttons.append(cancel, ok);
+        dialog.append(heading, el('p', '', text), buttons);
+        document.body.append(dialog);
+        return new Promise(resolve => {
+            let result = false;
+            ok.addEventListener('click', () => { result = true; dialog.close(); });
+            cancel.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => { dialog.remove(); resolve(result); });
+            dialog.showModal();
+        });
+    }
+
+    async function finishLate(item, button) {
+        const info = homeJobText(item);
+        const when = new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        const sure = await askYesNo({
+            title: 'Auftrag nachträglich abschließen',
+            text: `${when}${info.time ? `, ${info.time} Uhr` : ''} – ${info.place}.\nHat der Termin stattgefunden und ist er erledigt?`,
+            okLabel: 'Ja, abschließen'
+        });
+        if (!sure) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_assignment_progress', { p_id: item.id, p_action: 'finish' });
+        if (error) { button.disabled = false; toast(TerminCloud.germanError(error), 'error'); return; }
+        toast(`Auftrag vom ${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} abgeschlossen. Der Tag zählt jetzt.`, 'success');
+        jobsRendered = '';
+        await loadJobs();
+        renderHome();
+    }
+
+    function renderLateJobs() {
+        const box = $('lateJobs');
+        if (!box) return;
+        const late = lateJobs();
+        box.hidden = !late.length;
+        if (!late.length) { box.replaceChildren(); return; }
+        const head = el('div', 'late-head');
+        head.append(el('strong', '', `Noch nicht abgeschlossen (${late.length})`),
+            el('span', '', late.length === 1 ? 'Dieser Auftrag von einem früheren Tag ist noch offen. Schließe ihn ab, damit der Tag zählt.' : 'Diese Aufträge von früheren Tagen sind noch offen. Schließe sie ab, damit die Tage zählen.'));
+        const list = el('ul', 'late-list');
+        late.forEach(item => {
+            const info = homeJobText(item);
+            const row = el('li', 'late-row');
+            row.dataset.id = item.id;
+            const text = el('div', 'late-text');
+            const day = new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+            text.append(el('strong', '', `${day}${info.time ? ` · ${info.time} Uhr` : ''}`), el('span', '', [info.place, info.city].filter(Boolean).join(' · ')));
+            if (info.patient) text.append(el('span', 'late-patient', info.patient));
+            const done = el('button', 'button-primary late-done', 'Abschließen');
+            done.type = 'button';
+            done.addEventListener('click', () => finishLate(item, done));
+            const gone = el('button', 'link-button late-gone', 'Fand nicht statt');
+            gone.type = 'button';
+            gone.addEventListener('click', () => stornoJob(item, gone));
+            const buttons = el('div', 'late-buttons');
+            buttons.append(done, gone);
+            row.append(text, buttons);
+            list.append(row);
+        });
+        box.replaceChildren(head, list);
+    }
+
+    // ---------- Letzter Auftrag des Tages erledigt: Erinnerung über den ganzen Bildschirm ----------
+    function maybeDayDone(item) {
+        const today = TerminCloud.todayIso();
+        if (item.date !== today) return;
+        const mine = jobsData.filter(job => job.date === today && !job.cancelled && job.response !== 'abgesagt');
+        if (mine.some(job => !jobFinished(job))) return;                       // heute steht noch etwas an
+        if (!mine.some(job => jobFinished(job) && !jobStorno(job))) return;
+        showDayDone();
+    }
+    function showDayDone() {
+        const dialog = $('dayDone');
+        if (!dialog || dialog.open) return;
+        const first = String(profile?.full_name || '').split(' ')[0];
+        $('dayDoneLead').textContent = `Danke${first ? `, ${first}` : ''}! Bitte denk noch an diese Punkte:`;
+        const go = view => () => { dialog.close(); goTo(view); };
+        const entry = (state, title, hint, label, action) => {
+            const row = el('li', 'day-done-row');
+            row.dataset.state = state;
+            const text = el('div', 'day-done-text');
+            text.append(el('strong', '', title));
+            if (hint) text.append(el('span', '', hint));
+            row.append(svgSpan('day-done-mark', state === 'done' ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'), text);
+            if (label) { const button = el('button', state === 'open' ? 'button-primary' : 'button-secondary', label); button.type = 'button'; button.addEventListener('click', action); row.append(button); }
+            return row;
+        };
+        const missing = window.PortalDocs?.missingReports?.(TerminCloud.todayIso()) ?? 0;
+        $('dayDoneList').replaceChildren(
+            myHandover
+                ? entry('open', 'Fahrzeug zurückgeben', [vehicleById(myHandover.vehicle_id)?.plate || '', 'Kilometer, Tank und Parkort eintragen'].filter(Boolean).join(' · '), 'Zurückgeben', go('return'))
+                : entry('done', 'Fahrzeug', 'Du hast gerade kein Fahrzeug.'),
+            missing
+                ? entry('open', missing === 1 ? 'Bericht schreiben' : `${missing} Berichte schreiben`, 'Zu jedem Termin gehört ein kurzer Bericht.', 'Bericht schreiben', go('docReport'))
+                : entry('done', 'Berichte', 'Zu jedem Termin von heute gibt es einen Bericht.'),
+            entry('hint', 'Unterlagen scannen', 'Arztbericht, Rezept oder Überweisung – falls du welche bekommen hast.', 'Scannen', go('docNew')),
+            entry('hint', 'Belege einreichen', 'Parkticket oder Tankbeleg – falls du etwas ausgelegt hast.', 'Beleg', go('receipts'))
+        );
+        dialog.showModal();
+    }
+    $('dayDoneClose')?.addEventListener('click', () => $('dayDone').close());
 
     // Es läuft immer nur EIN Auftrag: Der nächste lässt sich erst starten, wenn der laufende beendet (oder als ausgefallen gemeldet) ist.
     const runningJobBeside = item => jobsData.find(other => other.id !== item.id && !other.cancelled && jobStarted(other) && !jobFinished(other)) || null;
@@ -1591,7 +1818,8 @@ if (!window.TerminContact) {
         $('jobsSummary').textContent = upcoming.length
             ? `${upcoming.length} ${upcoming.length === 1 ? 'Auftrag' : 'Aufträge'}${open ? `, ${open} ${open === 1 ? 'wartet' : 'warten'} auf deine Antwort` : ''}`
             : 'Im Moment hast du keine Aufträge.';
-        setBadge('jobs', open);
+        setBadge('jobs', open + lateJobs().length);
+        renderLateJobs();
 
         // Hinweis, wenn seit dem letzten Laden ein neuer Auftrag dazugekommen ist.
         const ids = new Set(upcoming.map(item => item.id));
@@ -2940,7 +3168,7 @@ if (!window.TerminContact) {
         const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
         $('pushInfo').textContent = state === 'on' ? 'Eingeschaltet. Du bekommst eine Mitteilung bei neuen Aufträgen, Nachrichten und wenn das Auto nach 16 Uhr noch nicht zurück ist.'
             : state === 'blocked' ? 'Mitteilungen sind für diese Seite gesperrt. Erlaube sie in den Einstellungen des Handys (Mitteilungen → Dolmetscher).'
-            : state === 'unsupported' ? (isIos ? 'Auf dem iPhone gehen Mitteilungen erst, wenn du das Portal als App auf den Home-Bildschirm gelegt hast (siehe unten) und es von dort öffnest.' : 'Dieser Browser unterstützt keine Mitteilungen. Öffne das Portal in Chrome.')
+            : state === 'unsupported' ? (isIos ? 'Auf dem iPhone gehen Mitteilungen erst, wenn du die App auf den Home-Bildschirm gelegt hast (siehe unten) und sie von dort öffnest.' : 'Dieser Browser unterstützt keine Mitteilungen. Öffne das Portal in Chrome.')
             : 'Du bekommst eine Mitteilung bei neuen Aufträgen, Nachrichten und wenn das Auto nach 16 Uhr noch nicht zurück ist.';
     }
 
