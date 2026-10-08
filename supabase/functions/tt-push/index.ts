@@ -164,6 +164,31 @@ Deno.serve(async (req) => {
           jobs += 1;
         }
       }
+      // 2b) „Bist du schon losgefahren?“ – eine halbe und eine Viertelstunde vor dem Termin, wenn der Auftrag von heute noch nicht
+      //     gestartet ist (nicht abgesagt, nicht storniert, nicht zurückgezogen). Jede Stufe geht je Auftrag genau einmal hinaus
+      //     (Merkzettel tt_push_log; fehlt die Tabelle, wird nichts gesendet).
+      let depart = 0;
+      {
+        const { data: waitingJobs } = await admin.from('tt_assignments')
+          .select('id, interpreter_id, title, date, time, response, work_status, started_at, finished_at, storno_at')
+          .eq('date', now.date).eq('cancelled', false).is('started_at', null).is('finished_at', null);
+        for (const job of waitingJobs ?? []) {
+          if (job.response === 'abgesagt' || job.storno_at || !['', 'offen'].includes(String(job.work_status ?? '').trim().toLowerCase())) continue;
+          const appointment = berlinTime(String(job.date ?? ''), String(job.time ?? ''));
+          if (!appointment) continue;
+          const minutes = (appointment - Date.now()) / 60000;
+          const step = minutes <= 15 && minutes > -5 ? '15' : minutes <= 30 && minutes > 15 ? '30' : '';
+          if (!step) continue;
+          const { error: logError } = await admin.from('tt_push_log').insert({ key: `losfahren:${job.id}:${step}` });
+          if (logError) continue;
+          const result = await sendTo([job.interpreter_id], {
+            title: 'Bist du schon losgefahren?',
+            body: `${job.title}: Bitte drücke beim Losfahren „Jetzt losfahren“.`,
+            url: 'portal.html?seite=auftraege', tag: `losfahren-${job.id}`,
+          });
+          if (result.sent) depart += 1;
+        }
+      }
       // 3) Wochenplan der temporären Dolmetscher: Freitag ab 13 Uhr wird die nächste Woche im Portal freigegeben – dann geht
       //    die Nachricht hinaus (Mitteilung aufs Handy und Nachricht im Portal),
       //    Samstag und Sonntag ab 11 Uhr eine Erinnerung – nur an Personen, die für die nächste Woche noch keinen Tag
@@ -196,7 +221,7 @@ Deno.serve(async (req) => {
           plan = result.sent;
         }
       }
-      return json({ reminded, open, jobs, plan });
+      return json({ reminded, open, jobs, plan, depart });
     }
 
     const profile = await caller(req);

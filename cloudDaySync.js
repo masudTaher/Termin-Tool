@@ -454,8 +454,52 @@
                 await client.from('tt_assignments').update(update).eq('id', assignment.id);
             }
         }
+        // Zweite Person im Auftrag: eigene Rückmeldung, eigenes „Losfahren“ und „Fertig“. Der Stand des Termins folgt der ersten Person.
+        for (const record of records()) {
+            if (!record._id2) continue;
+            const assignment = byAppointment.get(record._id2);
+            const clear = () => { if (record._zweitAntwort) { delete record._zweitAntwort; changed = true; } };
+            if (!assignment || assignment.cancelled) { clear(); continue; }
+            if (!record._zweit || !sameName(assignment.interpreter_name, record._zweit)) {
+                await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
+                clear();
+                continue;
+            }
+            const text = assignment.storno_at ? `Fällt aus${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}`
+                : RESPONSE_TEXT[assignment.response] + (assignment.response_note ? ` – ${assignment.response_note}` : '');
+            if (record._zweitAntwort !== text) { record._zweitAntwort = text; changed = true; }
+            responses.set(assignment.appointment_id, assignment.response);
+            const before = lastResponses ? lastResponses.get(assignment.appointment_id) : undefined;
+            if (lastResponses && before !== assignment.response && assignment.response !== 'offen') {
+                showToast(`Termin · ${assignment.interpreter_name} (2. Person, ${record._zweitAufgabe || 'Transport'}): ${RESPONSE_TEXT[assignment.response]} für ${assignment.title}${assignment.response_note ? ` – „${assignment.response_note}“` : ''}`, assignment.response === 'abgesagt' ? 'error' : 'success', { duration: 12000, keep: true });
+            } else if (lastResponses && before && before !== 'offen' && assignment.response === 'offen') {
+                showToast(`Termin · ${assignment.interpreter_name} (2. Person) hat die Antwort zurückgenommen: ${assignment.title}`, 'info', { duration: 12000, keep: true });
+            }
+            if (assignment.started_at && record._zweitStart !== assignment.started_at) {
+                record._zweitStart = assignment.started_at;
+                if (lastResponses) showToast(`${assignment.interpreter_name} (2. Person) ist losgefahren: ${assignment.title}`, 'info', { duration: 10000, keep: true });
+                changed = true;
+            }
+            if (assignment.finished_at && record._zweitEnde !== assignment.finished_at) {
+                record._zweitEnde = assignment.finished_at;
+                if (lastResponses && !assignment.storno_at) showToast(`${assignment.interpreter_name} (2. Person) ist fertig und wieder frei: ${assignment.title}`, 'success', { duration: 12000, keep: true });
+                changed = true;
+            }
+            if (assignment.storno_at && record._zweitStorno !== assignment.storno_at) {
+                record._zweitStorno = assignment.storno_at;
+                if (lastResponses) showToast(`Termin · ${assignment.interpreter_name} (2. Person) meldet „fällt aus“: ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}`, 'error', { duration: 20000, keep: true });
+                changed = true;
+            }
+            // Ist der Termin hier abgeschlossen (beendet, storniert …), gilt das auch für die zweite Person; „losgefahren“ meldet sie selbst.
+            const rowStatus = String(record.Status || 'offen').trim();
+            const own = assignment.finished_at ? 'beendet' : assignment.started_at ? 'losgefahren' : 'offen';
+            const wanted = ['offen', 'losgefahren'].includes(rowStatus.toLocaleLowerCase('de-DE')) ? own : rowStatus;
+            if (!assignment.storno_at && String(assignment.work_status || 'offen') !== wanted && !(wanted === 'offen' && !assignment.work_status)) {
+                await client.from('tt_assignments').update({ work_status: wanted }).eq('id', assignment.id);
+            }
+        }
         // Gelöschte Termine: Auftrag zurückziehen.
-        const ids = new Set(records().map(record => record._id));
+        const ids = new Set(records().flatMap(record => [record._id, record._id2].filter(Boolean)));
         for (const assignment of assignments) {
             if (!assignment.cancelled && !ids.has(assignment.appointment_id)) await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
         }
@@ -594,7 +638,7 @@
             ...restart,
             appointment_id: record._id, date, time, interpreter_id: target.id, interpreter_name: target.full_name,
             title: [time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · '),
-            message: createWhatsAppAppointmentMessage(record, true),
+            message: createWhatsAppAppointmentMessage(record, true) + teamBlock(record, false),
             response: 'offen', response_note: '', responded_at: null, cancelled: false,
             work_status: String(record.Status || 'offen'), sent_at: new Date().toISOString(), sent_by: profile.full_name || ''
         };
@@ -617,9 +661,107 @@
         record['Rückmeldung'] = RESPONSE_TEXT.offen;
         persistTerminRecords(records(), 'tracking');
         window.refreshTrackingRows?.();
-        showToast(`Auftrag an ${target.full_name} gesendet${note && attachment.path ? ' – mit Bemerkung und Anhang' : note ? ' – mit Bemerkung' : attachment.path ? ' – mit Anhang' : ''}`, 'success');
+        // Zweite Person im Auftrag (Transport / Dolmetschen / zweites Fahrzeug): Sie bekommt ihren eigenen Auftrag.
+        const second = record._zweit ? await sendSecond(record) : '';
+        showToast(`Auftrag an ${target.full_name}${second === 'gesendet' || second === 'gleich' ? ` und ${record._zweit}` : ''} gesendet${note && attachment.path ? ' – mit Bemerkung und Anhang' : note ? ' – mit Bemerkung' : attachment.path ? ' – mit Anhang' : ''}`, 'success');
         // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
         TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place, note ? `Hinweis: ${note}` : '', attachment.path ? 'mit Anhang' : ''].filter(Boolean).join(' · ').slice(0, 280) });
+        syncDay();
+    };
+
+    // ---------- Zweite Person im Auftrag ----------
+    // Der Abschnitt „IM TEAM“ steht am Ende des Auftrags: Die App zeigt daraus, wer mit im Auftrag ist und wer welche Aufgabe hat.
+    function teamBlock(record, forSecond) {
+        if (!record._zweit) return '';
+        const role2 = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug'].includes(record._zweitAufgabe) ? record._zweitAufgabe : 'Transport';
+        const role1 = role2 === 'Transport' ? 'Dolmetschen' : role2 === 'Dolmetschen' ? 'Transport' : 'Zweites Fahrzeug';
+        const label = role => role === 'Transport' ? 'Transport (fahren)' : role === 'Zweites Fahrzeug' ? 'Fahren mit eigenem Fahrzeug' : role;
+        const first = getAppointmentInterpreterName(record);
+        const partner = forSecond ? first : record._zweit;
+        const person = profiles.find(item => item.active && sameName(item.full_name, partner));
+        const car = forSecond ? String(record.Fahrzeug || '') : String(record._zweitAuto || '');
+        const ownCar = forSecond ? String(record._zweitAuto || '') : String(record.Fahrzeug || '');
+        const one = value => String(value || '').replace(/[\r\n]+/g, ' ').trim();
+        return '\n\n' + ['*IM TEAM*',
+            `Mit dir: ${one(partner)}`,
+            `Deine Aufgabe: ${label(forSecond ? role2 : role1)}`,
+            `Aufgabe Kollege: ${label(forSecond ? role1 : role2)}`,
+            ownCar ? `Dein Fahrzeug: ${one(ownCar)}` : '',
+            car ? `Fahrzeug Kollege: ${one(car)}` : '',
+            person?.phone ? `Telefon Kollege: ${one(person.phone)}` : ''
+        ].filter(Boolean).join('\n');
+    }
+
+    // Auftrag an die zweite Person: gesendet | gleich (stand schon so im Portal – ihre Antwort bleibt) | '' (ging nicht).
+    async function sendSecond(record) {
+        if (!record._zweit || !record._id2) return '';
+        if (!profiles.some(item => 'phone' in item)) profiles = (await client.from('tt_profiles').select('*')).data || profiles;
+        const target = profiles.find(item => item.active && sameName(item.full_name, record._zweit));
+        if (!target) { showToast(`${record._zweit} (2. Person) hat kein freigeschaltetes Portal-Konto – an sie geht kein Auftrag. Konten schaltest du auf der Seite „Team“ frei.`, 'error', { duration: 12000 }); return ''; }
+        const date = currentDate();
+        const time = String(record.Termin_Uhrzeit || '').slice(0, 5);
+        const oneLine = value => window.TerminContact ? TerminContact.singleLine(value) : String(value || '').trim();
+        const doctorName = oneLine(record['Arzt Nr::Name']);
+        const place = oneLine(getAppointmentLocation(record));
+        const message = createWhatsAppAppointmentMessage(record, true) + teamBlock(record, true);
+        const { data: previous } = await client.from('tt_assignments').select('*').eq('appointment_id', record._id2).maybeSingle();
+        const note = String(record._hinweis || '');
+        const same = previous && !previous.cancelled && previous.interpreter_id === target.id && previous.message === message && previous.date === date
+            && String(previous.time || '').slice(0, 5) === time && String(previous.office_note || '') === note && (previous.attachment_path || null) === (record._anhang || null);
+        if (same) return 'gleich';
+        // Nur die Angaben zum Team haben sich geändert (dieselbe Person, derselbe Termin): Ihre Antwort bleibt stehen.
+        const keep = previous && !previous.cancelled && previous.interpreter_id === target.id && previous.date === date && String(previous.time || '').slice(0, 5) === time;
+        const restart = previous && 'started_at' in previous && previous.interpreter_id !== target.id ? { started_at: null, finished_at: null, reminded_at: null, reminder_count: 0 } : {};
+        const fields = {
+            ...restart,
+            appointment_id: record._id2, date, time, interpreter_id: target.id, interpreter_name: target.full_name,
+            title: [time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · '), message,
+            ...(keep ? {} : { response: 'offen', response_note: '', responded_at: null }), cancelled: false,
+            ...(keep ? {} : { work_status: 'offen' }), sent_at: new Date().toISOString(), sent_by: profile.full_name || ''
+        };
+        let { error } = await client.from('tt_assignments').upsert({ ...fields, office_note: note, attachment_path: record._anhang || null, attachment_name: record._anhangName || '' }, { onConflict: 'appointment_id' });
+        if (error && /office_note|attachment_/i.test(error.message || '')) ({ error } = await client.from('tt_assignments').upsert(fields, { onConflict: 'appointment_id' }));
+        if (error) { showToast(`Auftrag an ${record._zweit} (2. Person): ${TerminCloud.germanError(error)}`, 'error'); return ''; }
+        if (!keep) record._zweitAntwort = RESPONSE_TEXT.offen;
+        delete record._zweitStorno;
+        if (restart.reminder_count === 0) { delete record._zweitStart; delete record._zweitEnde; }
+        const first = getAppointmentInterpreterName(record);
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: keep ? 'Auftrag geändert' : 'Neuer Auftrag',
+            body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place, first ? `mit ${first}` : ''].filter(Boolean).join(' · ').slice(0, 280) });
+        return 'gesendet';
+    }
+
+    // Die zweite Person wurde eingetragen, geändert oder entfernt, nachdem der Auftrag der ersten schon im Portal stand:
+    // Die zweite bekommt ihren Auftrag (oder er wird zurückgezogen), bei der ersten ändert sich nur der Abschnitt „Im Team“ –
+    // ihre Zusage bleibt stehen.
+    window.syncSecondAssignment = async function (index) {
+        const record = records()[index];
+        if (!record || !record._id2) return;
+        if (!(await loadProfile())) { showToast('Melde dich zuerst auf der Seite „Team“ als Einsatzleitung an, um Aufträge zu senden.', 'error'); return; }
+        stamp();
+        let result = '';
+        if (record._zweit) result = await sendSecond(record);
+        else {
+            const { data: previous } = await client.from('tt_assignments').select('*').eq('appointment_id', record._id2).maybeSingle();
+            if (previous && !previous.cancelled) {
+                await client.from('tt_assignments').update({ cancelled: true }).eq('id', previous.id);
+                TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [previous.interpreter_id], title: 'Auftrag zurückgezogen', body: `${formatFleetDate(previous.date)} · ${previous.title} – dieser Auftrag gilt nicht mehr.` });
+                result = 'zurück';
+            }
+        }
+        // Erste Person: nur der Text des Auftrags ändert sich.
+        const { data: main } = await client.from('tt_assignments').select('*').eq('appointment_id', record._id).maybeSingle();
+        const message = createWhatsAppAppointmentMessage(record, true) + teamBlock(record, false);
+        if (main && !main.cancelled && main.message !== message && sameName(main.interpreter_name, record.Übersetzer)) {
+            const { error } = await client.from('tt_assignments').update({ message }).eq('id', main.id);
+            if (!error) TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [main.interpreter_id], title: 'Auftrag geändert',
+                body: `${main.title}: ${record._zweit ? `${record._zweit} ist mit dir im Auftrag (${record._zweitAufgabe || 'Transport'}).` : 'Du bist jetzt allein im Auftrag.'}`.slice(0, 280) });
+        }
+        persistTerminRecords(records(), 'tracking');
+        window.refreshTrackingRows?.();
+        showToast(record._zweit
+            ? (result ? `${record._zweit} ist als zweite Person im Auftrag (${record._zweitAufgabe || 'Transport'}) – beide sehen es in ihrer App.` : `${record._zweit} ist eingetragen, der Auftrag ging aber nicht hinaus.`)
+            : 'Zweite Person entfernt – ihr Auftrag ist zurückgezogen.', result || !record._zweit ? 'success' : 'error', { duration: 10000 });
         syncDay();
     };
 
@@ -785,7 +927,7 @@
         if (date < TerminCloud.todayIso()) { showToast('Dieser Tag liegt in der Vergangenheit.', 'error'); return; }
         const { data: people, error } = await client.from('tt_profiles').select('id, full_name, active, role, employment');
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        const planned = new Set(list.filter(record => String(record.Status || '').trim().toLocaleLowerCase('de') !== 'storniert').map(record => String(record.Übersetzer || '').trim().toLocaleLowerCase('de')).filter(Boolean));
+        const planned = new Set(list.filter(record => String(record.Status || '').trim().toLocaleLowerCase('de') !== 'storniert').flatMap(record => [record.Übersetzer, record._zweit]).map(name => String(name || '').trim().toLocaleLowerCase('de')).filter(Boolean));
         const free = people.filter(item => item.active && item.role === 'dolmetscher' && item.employment !== 'fest' && String(item.full_name || '').trim() && !planned.has(String(item.full_name).trim().toLocaleLowerCase('de')))
             .sort((left, right) => left.full_name.localeCompare(right.full_name, 'de'));
         const told = new Set(toldOn(date));

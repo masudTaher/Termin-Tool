@@ -63,10 +63,13 @@ window.PeopleLive = (function () {
         // Termine des Tages je Name (so, wie die Einsatzleitung sie im Live-Tracking eingeteilt hat)
         const recordsByName = new Map();
         records.forEach(record => {
-            const key = nameKey(record?.Übersetzer);
-            if (!key) return;
-            if (!recordsByName.has(key)) recordsByName.set(key, { name: String(record.Übersetzer).trim().replace(/\s+/g, ' '), list: [] });
-            recordsByName.get(key).list.push(record);
+            // Erste und zweite Person im Auftrag sind beide für den Termin eingeplant.
+            [record?.Übersetzer, record?._zweit].forEach(person => {
+                const key = nameKey(person);
+                if (!key) return;
+                if (!recordsByName.has(key)) recordsByName.set(key, { name: String(person).trim().replace(/\s+/g, ' '), list: [] });
+                if (!recordsByName.get(key).list.includes(record)) recordsByName.get(key).list.push(record);
+            });
         });
 
         function build(profile, fallbackName) {

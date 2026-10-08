@@ -171,6 +171,27 @@
 
 
 
+<!-- Zweite Person im Auftrag: eine fährt, eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen -->
+<dialog id="secondDialog" class="confirm-dialog special-dialog second-dialog" aria-labelledby="secondDialogTitle">
+  <form id="secondDialogForm" class="fleet-form" novalidate>
+    <h2 id="secondDialogTitle">Zweite Person für diesen Auftrag</h2>
+    <p class="field-hint" id="secondDialogInfo"></p>
+    <label for="secondDialogName">Wer kommt dazu?</label>
+    <input id="secondDialogName" type="text" list="dolmetscherSuggestions" autocomplete="off" maxlength="80" placeholder="Name eingeben">
+    <span class="field-label" id="secondDialogRoleLabel">Aufgabe der zweiten Person</span>
+    <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="secondDialogRoleLabel">
+      <label><input type="radio" name="secondRole" value="Transport" checked><span>Transport (fährt)</span></label>
+      <label><input type="radio" name="secondRole" value="Dolmetschen"><span>Dolmetschen</span></label>
+      <label><input type="radio" name="secondRole" value="Zweites Fahrzeug"><span>Zweites Fahrzeug</span></label>
+    </div>
+    <p class="field-hint" id="secondDialogRoleHint"></p>
+    <label for="secondDialogCar">Fahrzeug der zweiten Person <span class="optional-label">optional</span></label>
+    <select id="secondDialogCar"></select>
+    <p class="field-hint">Beide bekommen den Auftrag in ihre App und sehen dort, wer mit ihnen im Auftrag ist und wer welche Aufgabe hat.</p>
+    <div class="modal-buttons special-buttons"><button type="button" class="button-quiet-danger" id="secondDialogRemove">Entfernen</button><span></span><button type="button" class="button-secondary" id="secondDialogCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+  </form>
+</dialog>
+
 <!-- Sonderkonditionen (selten): Betrag in Euro für diesen Tag, optional mit Grund -->
 <dialog id="specialDialog" class="confirm-dialog special-dialog" aria-labelledby="specialDialogTitle">
   <form id="specialDialogForm" class="fleet-form" novalidate>

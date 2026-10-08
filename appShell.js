@@ -45,6 +45,7 @@
 
     const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
     const ICONS = {
+        card: icon('<rect x="3" y="6" width="18" height="12.5" rx="2"/><path d="M3 10h18M7 14.5h4"/>'),
         swap: icon('<path d="M7 7h12l-3-3M17 17H5l3 3"/>'),
         pin: icon('<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
         filter: icon('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
@@ -84,6 +85,7 @@
         ] },
         { group: 'Fahrzeuge', items: [
             { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
+            { page: 'tankkarten', href: 'fahrzeugakte.html?ansicht=tankkarten', label: 'Tankkarten', icon: ICONS.card },
             { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Übergaben', icon: ICONS.folder }
         ] },
         { group: 'Dolmetscher', items: [
@@ -99,7 +101,10 @@
     ];
 
     function buildShell() {
-        const current = document.body.dataset.page || '';
+        // „Tankkarten“ ist eine eigene Ansicht der Fuhrpark-Seite (eigener Menüpunkt, getrennt von den Fahrzeugen).
+        const fuelView = document.body.dataset.page === 'fahrzeugakte' && /[?&]ansicht=tankkarten(&|$)/.test(location.search);
+        if (fuelView) { document.body.dataset.view = 'tankkarten'; document.title = 'Tankkarten · Medical Office Bonn'; }
+        const current = fuelView ? 'tankkarten' : document.body.dataset.page || '';
         const nav = document.createElement('aside');
         nav.className = 'app-nav';
         nav.innerHTML = `

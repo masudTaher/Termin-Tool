@@ -2746,3 +2746,22 @@ a.icon-button.switch-office, :root[data-theme="dark"] a.icon-button.switch-offic
 a.big-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 a.start-switch { display: inline-flex; align-items: center; margin-top: 10px; text-decoration: none; }
 .app-nav-switch, :root[data-theme="dark"] .app-nav-switch { flex: 0 0 auto; margin: 0 0 8px; border: 1px solid rgba(255, 255, 255, .28); }
+
+/* ===== 75. Zweite Person im Auftrag (Einsatzleitung: Zeile und Fenster · Dolmetscher-App: „Im Team“) ===== */
+button.second-line, :root[data-theme="dark"] button.second-line { display: flex; width: 100%; min-height: 30px; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; padding: 3px 8px; border: 1px dashed var(--brand); border-radius: 8px; background: color-mix(in srgb, var(--brand) 7%, var(--surface)); color: var(--ink); font-size: .8rem; text-align: left; box-shadow: none; }
+button.second-line:hover { background: color-mix(in srgb, var(--brand) 14%, var(--surface)); }
+button.second-add, :root[data-theme="dark"] button.second-add { display: block; min-height: 22px; margin-top: 2px; padding: 0 2px; border: 0; background: transparent; color: var(--brand); font-size: .76rem; font-weight: 650; box-shadow: none; }
+button.second-add:hover { background: transparent; text-decoration: underline; }
+.second-mark { display: inline-grid; width: 16px; height: 16px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--brand); color: #fff; font-size: .75rem; font-weight: 800; line-height: 1; }
+.second-role { color: var(--ink-soft); font-weight: 600; }
+.second-line .response-pill { margin: 0; }
+.second-dialog .segmented { margin-bottom: 4px; }
+.job-section.job-team { margin: 10px 12px 4px; padding: 10px; border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
+.job-team-name { display: block; font-size: 1.05rem; }
+.job-team-own { margin: 6px 0 2px; font-weight: 700; }
+
+/* ===== 76. Tankkarten: eigene Ansicht, getrennt vom Fuhrpark ===== */
+.fleet-heading-fuel { display: none; }
+body[data-page="fahrzeugakte"]:not([data-view="tankkarten"]) #fuelSection { display: none; }
+body[data-view="tankkarten"] .fleet-heading-cars, body[data-view="tankkarten"] #fileApp > section:not(#fuelSection), body[data-view="tankkarten"] #retiredSection, body[data-view="tankkarten"] #enableNotifications { display: none !important; }
+body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }

@@ -21,7 +21,8 @@ const Abrechnung = (() => {
         (days || []).forEach(day => {
             const names = new Set();
             (Array.isArray(day.records) ? day.records : []).forEach(record => {
-                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet' && key(record.Übersetzer)) names.add(key(record.Übersetzer));
+                // Auch die zweite Person im Auftrag (Transport / Dolmetschen / zweites Fahrzeug) hat an dem Tag gearbeitet.
+                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet') [record.Übersetzer, record._zweit].forEach(name => { if (key(name)) names.add(key(name)); });
             });
             names.forEach(name => perPerson.set(name, (perPerson.get(name) || 0) + 1));
         });
@@ -34,7 +35,7 @@ const Abrechnung = (() => {
         (days || []).forEach(day => {
             const names = new Set();
             (Array.isArray(day.records) ? day.records : []).forEach(record => {
-                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet' && key(record.Übersetzer)) names.add(key(record.Übersetzer));
+                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet') [record.Übersetzer, record._zweit].forEach(name => { if (key(name)) names.add(key(name)); });
             });
             names.forEach(name => perPerson.set(name, [...(perPerson.get(name) || []), day.date].sort()));
         });
@@ -195,14 +196,16 @@ const Abrechnung = (() => {
         const perPerson = new Map();
         (days || []).forEach(day => {
             (Array.isArray(day.records) ? day.records : []).forEach(record => {
-                const id = key(record.Übersetzer);
                 const status = String(record.Status || '').toLocaleLowerCase('de');
-                if (!id || status === 'storniert') return;
-                if (!perPerson.has(id)) perPerson.set(id, new Map());
-                const dates = perPerson.get(id);
-                if (!dates.has(day.date)) dates.set(day.date, { date: day.date, done: [], open: [] });
                 const text = [String(record.Termin_Uhrzeit || '').slice(0, 5), record['Arzt Nr::Name'], record['Arzt Nr::Ort'] || record.Ort].filter(Boolean).join(' · ') || 'Termin';
-                dates.get(day.date)[status === 'beendet' ? 'done' : 'open'].push(text);
+                // Erste und zweite Person im Auftrag: Der Termin steht bei beiden.
+                [...new Set([key(record.Übersetzer), key(record._zweit)])].forEach((id, position) => {
+                    if (!id || status === 'storniert') return;
+                    if (!perPerson.has(id)) perPerson.set(id, new Map());
+                    const dates = perPerson.get(id);
+                    if (!dates.has(day.date)) dates.set(day.date, { date: day.date, done: [], open: [] });
+                    dates.get(day.date)[status === 'beendet' ? 'done' : 'open'].push(position && record._zweitAufgabe ? `${text} (${record._zweitAufgabe})` : text);
+                });
             });
         });
         perPerson.forEach((dates, id) => perPerson.set(id, [...dates.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))));

@@ -301,9 +301,13 @@ function renderTrackingTable(data) {
             escapeHtml(getAppointmentLocation(termin)),
             `<div class="interpreter-line"><input class="interpreter-input" type="text" list="dolmetscherSuggestions" autocomplete="off" data-index="${index}" value="${escapeHtml(getAppointmentInterpreterName(termin))}" aria-label="Dolmetscher/in für Termin ${index + 1}" placeholder="Name eingeben"><span class="job-count" data-index="${index}" hidden></span></div>`
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
-                + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button></div>`
+                + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button>`
+                + `</div>`
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>`
-                    + (cloudReady ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : ''),
+                    + (cloudReady ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : '')
+                // Zweite Person im Auftrag – oder der Knopf, um eine einzutragen.
+                + (termin._zweit ? `<button type="button" class="second-line" data-index="${index}" title="Zweite Person im Auftrag – ändern oder entfernen"><span class="second-mark" aria-hidden="true">+</span><b>${escapeHtml(termin._zweit)}</b><span class="second-role">${escapeHtml(termin._zweitAufgabe || 'Transport')}${termin._zweitAuto ? ` · ${escapeHtml(termin._zweitAuto)}` : ''}</span>${termin._zweitAntwort ? `<span class="response-pill" data-response="${escapeHtml(String(termin._zweitAntwort).split(' – ')[0])}">${escapeHtml(termin._zweitAntwort)}</span>` : ''}</button>` : '')
+                + (termin._zweit ? '' : `<button type="button" class="second-add" data-index="${index}" title="Zweite Person für diesen Auftrag: zum Beispiel eine Person fährt und eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen">+ zweite Person</button>`),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
                 + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : ''),
             `<div class="tracking-row-actions">`
@@ -333,14 +337,16 @@ let showPeopleWithoutAccount = false;   // Namen aus der Terminliste ohne Portal
 function interpreterLoad(data = trackingData) {
     const load = new Map();
     data.forEach(termin => {
-        const name = getAppointmentInterpreterName(termin);
         const group = getTrackingStatusGroup(termin);
-        if (!name || group === 'storniert') return;
-        const key = name.toLocaleLowerCase('de');
-        const entry = load.get(key) || { name, total: 0, open: 0, running: 0, done: 0 };
-        entry.total += 1;
-        entry[group === 'offen' ? 'open' : group === 'unterwegs' ? 'running' : 'done'] += 1;
-        load.set(key, entry);
+        // Auch die zweite Person im Auftrag (Transport / Dolmetschen / zweites Fahrzeug) ist für diesen Termin eingeplant.
+        [getAppointmentInterpreterName(termin), String(termin._zweit || '').trim()].forEach(name => {
+            if (!name || group === 'storniert') return;
+            const key = name.toLocaleLowerCase('de');
+            const entry = load.get(key) || { name, total: 0, open: 0, running: 0, done: 0 };
+            entry.total += 1;
+            entry[group === 'offen' ? 'open' : group === 'unterwegs' ? 'running' : 'done'] += 1;
+            load.set(key, entry);
+        });
     });
     return load;
 }
@@ -538,6 +544,7 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         else if (button.classList.contains('assign-remind')) window.remindTrackingAssignment?.(index, button);
         else if (button.classList.contains('assign-withdraw')) window.withdrawTrackingAssignment?.(index, button);
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
+        else if (button.classList.contains('second-add') || button.classList.contains('second-line')) openSecondDialog(index);
         else if (button.classList.contains('special-button')) openSpecialDialog(index);
     });
     tableBody.addEventListener('change', event => {
@@ -1517,6 +1524,90 @@ function setSpecial(index, amount, reason) {
         if (!(amount > 0)) { window.jumpToProblem?.('#specialDialogAmount'); showToast('Bitte trag den Betrag in Euro ein.', 'error', { target: '#specialDialogAmount' }); return; }
         dialog.close();
         setSpecial(specialDialogIndex, amount, document.getElementById('specialDialogReason').value);
+    });
+})();
+
+// ---------- Zweite Person im Auftrag: eine Person fährt, eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen ----------
+// Am Termin gespeichert (nicht in der Excel-Liste): _zweit (Name), _zweitAufgabe, _zweitAuto, _id2 (eigener Auftrag im Portal),
+// _zweitAntwort (Rückmeldung aus dem Portal). Die erste Person bleibt die im Feld „Dolmetscher“.
+const SECOND_ROLES = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug'];
+let secondDialogIndex = null;
+
+function secondRoleHint(role, first, second) {
+    const a = first || 'Die erste Person', b = second || 'die zweite Person';
+    return role === 'Dolmetschen' ? `${b} dolmetscht, ${a} fährt (Transport).`
+        : role === 'Zweites Fahrzeug' ? `${a} und ${b} fahren jeweils mit einem eigenen Fahrzeug.`
+            : `${b} fährt (Transport), ${a} dolmetscht.`;
+}
+
+function openSecondDialog(index) {
+    const termin = trackingData[index];
+    const dialog = document.getElementById('secondDialog');
+    if (!termin || !dialog) return;
+    secondDialogIndex = index;
+    const first = getAppointmentInterpreterName(termin);
+    document.getElementById('secondDialogInfo').textContent = [
+        String(termin.Termin_Uhrzeit || '').slice(0, 5) ? `${String(termin.Termin_Uhrzeit).slice(0, 5)} Uhr` : '',
+        termin['Arzt Nr::Name'] || '', first ? `1. Person: ${first}` : 'noch keine erste Person eingetragen'
+    ].filter(Boolean).join(' · ');
+    document.getElementById('secondDialogName').value = termin._zweit || '';
+    const role = SECOND_ROLES.includes(termin._zweitAufgabe) ? termin._zweitAufgabe : 'Transport';
+    dialog.querySelectorAll('input[name="secondRole"]').forEach(radio => { radio.checked = radio.value === role; });
+    const plates = typeof readActiveFleetVehicles === 'function' ? readActiveFleetVehicles().filter(vehicle => !vehicle.service) : [];
+    const chosen = String(termin._zweitAuto || '');
+    document.getElementById('secondDialogCar').innerHTML = `<option value="">Kein Auto / noch offen</option>`
+        + (chosen && !plates.some(vehicle => vehicle.plate === chosen) ? `<option value="${escapeHtml(chosen)}" selected>${escapeHtml(chosen)}</option>` : '')
+        + plates.map(vehicle => `<option value="${escapeHtml(vehicle.plate)}" ${vehicle.plate === chosen ? 'selected' : ''}>${escapeHtml(getFleetVehicleLabel(vehicle))}</option>`).join('');
+    document.getElementById('secondDialogRemove').hidden = !termin._zweit;
+    const showHint = () => {
+        document.getElementById('secondDialogRoleHint').textContent = secondRoleHint(dialog.querySelector('input[name="secondRole"]:checked')?.value, first, document.getElementById('secondDialogName').value.trim());
+    };
+    dialog.oninput = showHint;
+    showHint();
+    dialog.showModal();
+    document.getElementById('secondDialogName').focus();
+}
+
+function setSecond(index, name, role, car) {
+    const termin = trackingData[index];
+    if (!termin) return;
+    const clean = String(name || '').trim().replace(/\s+/g, ' ');
+    const before = { name: termin._zweit || '', role: termin._zweitAufgabe || '', car: termin._zweitAuto || '' };
+    if (before.name === clean && (!clean || (before.role === role && before.car === car))) return;
+    recordTrackingUndo(clean ? 'Zweite Person geändert' : 'Zweite Person entfernt');
+    if (clean) {
+        if (before.name.toLocaleLowerCase('de') !== clean.toLocaleLowerCase('de')) delete termin._zweitAntwort;
+        termin._zweit = clean;
+        termin._zweitAufgabe = SECOND_ROLES.includes(role) ? role : 'Transport';
+        if (car) termin._zweitAuto = car; else delete termin._zweitAuto;
+        if (!termin._id2) termin._id2 = crypto.randomUUID();
+        if (typeof addInterpreterName === 'function') addInterpreterName(clean);
+    } else {
+        // _id2 bleibt: Daran erkennt der Abgleich den schon gesendeten Auftrag der zweiten Person und zieht ihn zurück.
+        delete termin._zweit; delete termin._zweitAufgabe; delete termin._zweitAuto; delete termin._zweitAntwort;
+    }
+    persistTerminRecords(trackingData, 'tracking');
+    renderTrackingTable(trackingData);
+    const away = clean ? (window.trackingPeopleAway || []).find(person => String(person.name).toLocaleLowerCase('de') === clean.toLocaleLowerCase('de')) : null;
+    if (away) showToast(`Achtung: ${away.name} ist an diesem Tag abwesend – ${away.reason}. Der Name wurde trotzdem eingetragen.`, 'error', { duration: 12000 });
+    // Ist der Auftrag der ersten Person schon im Portal, geht die Änderung sofort hinaus (beide sehen, wer mit ihnen im Auftrag ist).
+    if (typeof window.syncSecondAssignment === 'function' && termin['Rückmeldung']) window.syncSecondAssignment(index);
+    else showToast(clean ? `${clean} als zweite Person eingetragen (${termin._zweitAufgabe}).${typeof window.syncSecondAssignment === 'function' ? ' Mit „Auftrag“ geht er an beide.' : ''}` : 'Zweite Person entfernt', 'success');
+}
+
+(function bindSecondDialog() {
+    const dialog = document.getElementById('secondDialog');
+    if (!dialog) return;
+    document.getElementById('secondDialogCancel').addEventListener('click', () => dialog.close());
+    document.getElementById('secondDialogRemove').addEventListener('click', () => { dialog.close(); setSecond(secondDialogIndex, '', '', ''); });
+    document.getElementById('secondDialogForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const termin = trackingData[secondDialogIndex];
+        const name = document.getElementById('secondDialogName').value.trim().replace(/\s+/g, ' ');
+        if (!name) { showToast('Bitte trag den Namen der zweiten Person ein.', 'error', { target: '#secondDialogName' }); return; }
+        if (termin && name.toLocaleLowerCase('de') === getAppointmentInterpreterName(termin).toLocaleLowerCase('de')) { showToast('Das ist schon die erste Person in diesem Auftrag. Bitte wähle eine andere Person.', 'error', { target: '#secondDialogName' }); return; }
+        dialog.close();
+        setSecond(secondDialogIndex, name, dialog.querySelector('input[name="secondRole"]:checked')?.value || 'Transport', document.getElementById('secondDialogCar').value);
     });
 })();
 

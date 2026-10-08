@@ -546,7 +546,7 @@
         meta.append(
             el('strong', null, [formatDay(date), visitTime(record) ? `${visitTime(record)} Uhr` : ''].filter(Boolean).join(' · ')),
             el('small', null, place || 'Ort nicht angegeben'),
-            el('small', null, `Dolmetscher/in: ${clean(record['Übersetzer']) || 'noch nicht eingeteilt'}`)
+            el('small', null, `Dolmetscher/in: ${clean(record['Übersetzer']) || 'noch nicht eingeteilt'}${clean(record._zweit) ? ` + ${clean(record._zweit)} (${clean(record._zweitAufgabe) || 'Transport'})` : ''}`)
         );
         row.append(pill(color, text), meta);
         return row;

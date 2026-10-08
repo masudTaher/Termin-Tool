@@ -818,6 +818,15 @@ if (!window.TerminContact) {
     const JOB_SKIP = [/^guten tag,?$/i, /^bitte übernimm den folgenden dolmetschauftrag:?$/i, /^bitte bestätige kurz den erhalt/i];
     // Feldnamen in den Abschnitten „Patientenkontakt“ und „Arzt / Praxis“
     const JOB_FIELD_LABEL = /^(?:Patientenadresse|Adresse|Telefon|Hinweis|Name)(?:\s|$)/i;
+    // Abschnitt „IM TEAM“ des Auftrags (zweite Person): { partner, partnerRole, ownRole, partnerCar, ownCar, phone } oder null.
+    function jobTeam(parsed) {
+        const section = parsed?.sections.find(item => /^IM TEAM$/.test(item.title));
+        if (!section) return null;
+        const field = label => section.fields.find(([name]) => name === label)?.[1] || '';
+        const partner = field('Mit dir');
+        return partner ? { partner, partnerRole: field('Aufgabe Kollege'), ownRole: field('Deine Aufgabe'), partnerCar: field('Fahrzeug Kollege'), ownCar: field('Dein Fahrzeug'), phone: field('Telefon Kollege') } : null;
+    }
+
     function parseJobMessage(text) {
         // Zeilenumbrüche innerhalb eines Feldes der Terminliste kommen als einzelnes CR an – wie ein normaler Umbruch lesen.
         const lines = TerminContact.normalizeLineBreaks(text).split('\n').map(line => line.trim());
@@ -848,6 +857,7 @@ if (!window.TerminContact) {
         phone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.500 1.500a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>',
         pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.200 7-11.500A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>',
         person: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+        team: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.500" r="3.200"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9.500" r="2.500"/><path d="M16 14.500a5 5 0 0 1 5 5"/></svg>',
         clinic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V6l8-3 8 3v15"/><path d="M9 21v-5h6v5"/><path d="M12 7v5M9.500 9.500h5"/></svg>',
         note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>',
         camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>',
@@ -1041,6 +1051,59 @@ if (!window.TerminContact) {
         renderHome();
         if (action === 'finish') maybeDayDone(item);
     }
+
+    // ---------- „Bist du schon losgefahren?“ – eine halbe und eine Viertelstunde vor dem Termin ----------
+    // Wer bis dahin nicht „Jetzt losfahren“ gedrückt hat, wird gefragt (einmal je Stufe und Auftrag). „Ja“ startet den Auftrag gleich.
+    const DEPART_KEY = 'terminTool.portal.departAsked';
+    let departAsking = false;
+    function departStage(item, now = new Date()) {
+        if (item.date !== TerminCloud.todayIso() || item.cancelled || jobStarted(item) || jobFinished(item) || jobClosed(item)) return 0;
+        const match = /^(\d{1,2}):(\d{2})/.exec(String(item.time || ''));
+        if (!match) return 0;
+        const at = new Date(now);
+        at.setHours(Number(match[1]), Number(match[2]), 0, 0);
+        const minutes = (at - now) / 60000;
+        return minutes <= 15 && minutes > -10 ? 15 : minutes <= 30 && minutes > 15 ? 30 : 0;
+    }
+    function departMemory() {
+        let asked = null;
+        try { asked = JSON.parse(localStorage.getItem(DEPART_KEY) || 'null'); } catch (error) { /* dann ohne Gedächtnis */ }
+        return asked && asked.date === TerminCloud.todayIso() ? asked : { date: TerminCloud.todayIso(), asked: {}, told: {} };
+    }
+    async function checkDeparture() {
+        if (departAsking || !profile?.active || profile.must_change_password || $('portalApp').hidden) return;
+        try { if (localStorage.getItem('terminTool.portal.departAsk') === 'aus') return; } catch (error) { /* ohne Speicher: fragen */ }
+        const memory = departMemory();
+        const save = () => { try { localStorage.setItem(DEPART_KEY, JSON.stringify(memory)); } catch (error) { /* gilt dann nur bis zum Neuladen */ } };
+        const waiting = jobsData.filter(item => departStage(item) && !runningJobBeside(item)).sort(jobOrder);
+        const info = item => { const text = homeJobText(item); return `${text.time ? `${text.time} Uhr – ` : ''}${text.place}`; };
+        // App im Hintergrund: eine Mitteilung des Handys (falls erlaubt) – die Frage selbst kommt, sobald die App wieder offen ist.
+        if (document.hidden) {
+            const item = waiting.find(job => (memory.told[job.id] || 99) > departStage(job));
+            if (!item || !('Notification' in window) || Notification.permission !== 'granted') return;
+            memory.told[item.id] = departStage(item);
+            save();
+            try { (await navigator.serviceWorker?.ready)?.showNotification('Bist du schon losgefahren?', { body: `${info(item)}. Bitte „Jetzt losfahren“ drücken.`, tag: `losfahren-${item.id}`, data: { url: 'portal.html' } }); } catch (error) { /* nur in der App */ }
+            return;
+        }
+        if (document.querySelector('dialog[open], .scan-cam, .scan-review, .scan-adjust')) return;      // nicht mitten in etwas anderes hinein
+        const due = waiting.find(job => (memory.asked[job.id] || 99) > departStage(job));
+        if (!due) return;
+        memory.asked[due.id] = departStage(due);
+        memory.told[due.id] = Math.min(memory.told[due.id] || 99, memory.asked[due.id]);
+        save();
+        departAsking = true;
+        try {
+            const yes = await askYesNo({
+                title: 'Bist du schon losgefahren?',
+                text: `${info(due)}\n\nBitte drücke beim Losfahren immer „Jetzt losfahren“ – dann sieht die Einsatzleitung, dass du unterwegs bist.`,
+                okLabel: 'Ja – Jetzt losfahren', cancelLabel: 'Noch nicht'
+            });
+            if (yes) await setJobProgress(due, 'start', el('button'));
+        } finally { departAsking = false; }
+    }
+    window.setInterval(checkDeparture, 20000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) window.setTimeout(checkDeparture, 800); });
 
     // ---------- Liegen gebliebene Aufträge nachträglich abschließen ----------
     // Ein Auftrag von einem früheren Tag, der weder gestartet noch beendet, abgesagt, ausgefallen oder zurückgezogen ist.
@@ -1356,6 +1419,22 @@ if (!window.TerminContact) {
         }
         if (tab && !tab.closed) { tab.opener = null; tab.location.replace(data.signedUrl); }
         else toast('Der Browser hat das neue Fenster blockiert.', 'info', null, { label: 'Anhang öffnen', run: () => { window.location.href = data.signedUrl; } });
+    }
+    // Zweite Person im Auftrag: wer mit dabei ist und wer welche Aufgabe hat (eine Person fährt, eine dolmetscht – oder zwei
+    // Fahrzeuge). Steht oben auf der Karte, nicht erst unter „Alle Angaben“.
+    function jobTeamBox(item) {
+        const team = jobTeam(parseJobMessage(item.message));
+        if (!team) return null;
+        const block = el('div', 'job-section job-team');
+        block.append(svgSpan('job-section-icon', JOB_ICONS.team));
+        const content = el('div', 'job-section-content');
+        content.append(el('span', 'job-section-title', 'Im Team – ihr seid zu zweit'), el('strong', 'job-team-name', team.partner));
+        if (team.partnerRole) content.append(el('span', 'job-chip', team.partnerRole));
+        if (team.partnerCar) content.append(el('span', 'job-chip', `Fahrzeug ${team.partnerCar}`));
+        if (team.ownRole) content.append(el('p', 'job-team-own', `Deine Aufgabe: ${team.ownRole}${team.ownCar ? ` · dein Fahrzeug ${team.ownCar}` : ''}`));
+        if (team.phone) content.append(jobField(`Telefon ${team.partner.split(' ')[0]}`, team.phone));
+        block.append(content);
+        return block;
     }
     function jobOfficeNote(item) {
         if (!item.office_note && !item.attachment_path) return null;
@@ -1701,6 +1780,8 @@ if (!window.TerminContact) {
         // Bemerkung der Einsatzleitung („CD mitnehmen“ …) und Anhang stehen ganz oben – das soll niemand übersehen.
         const officeNote = jobOfficeNote(item);
         if (officeNote) rest.append(officeNote);
+        const teamBox = jobTeamBox(item);
+        if (teamBox) rest.append(teamBox);
         rest.append(details, answer);
         // Zugesagt: frühere Unterlagen zum Patienten (Berichte der Kollegen, Arztberichte, Rezepte) – zur Vorbereitung.
         const prior = priorBox(item, place);
@@ -1711,7 +1792,8 @@ if (!window.TerminContact) {
             card.classList.add('is-foldable');
             const patientName = parsed?.facts['Patient/in'] || parsed?.facts['Hauptpatient/in'] || '';
             if (patientName) main.append(el('span', 'job-mini-patient', patientName));
-            if (item.office_note || item.attachment_path) main.append(el('span', 'job-mini-note', [item.office_note ? 'Hinweis der Einsatzleitung' : '', item.attachment_path ? 'Anhang' : ''].filter(Boolean).join(' · ')));
+            const miniTeam = jobTeam(parseJobMessage(item.message));
+            if (item.office_note || item.attachment_path || miniTeam) main.append(el('span', 'job-mini-note', [miniTeam ? `mit ${miniTeam.partner}` : '', item.office_note ? 'Hinweis der Einsatzleitung' : '', item.attachment_path ? 'Anhang' : ''].filter(Boolean).join(' · ')));
             if (jobStorno(item)) main.append(el('span', 'job-mini-state job-mini-storno', jobAlone(item) ? 'Abgeschlossen' : 'Fällt aus · abgeschlossen'));
             else if (declined) main.append(el('span', 'job-mini-state job-mini-storno', 'Abgeschlossen'));
             else if (finished) main.append(el('span', 'job-mini-state', item.finished_at ? `Beendet ${clock(item.finished_at)}` : 'Beendet'));
@@ -1846,6 +1928,7 @@ if (!window.TerminContact) {
             : 'Im Moment hast du keine Aufträge.';
         setBadge('jobs', open + lateJobs().length);
         renderLateJobs();
+        window.setTimeout(checkDeparture, 1200);
 
         // Hinweis, wenn seit dem letzten Laden ein neuer Auftrag dazugekommen ist.
         const ids = new Set(upcoming.map(item => item.id));
