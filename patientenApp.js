@@ -338,6 +338,36 @@
         return flat.length > length ? `${flat.slice(0, length).trimEnd()} …` : flat;
     };
 
+    // Übersicht der Akte: die aufgeklappte Unterlage – Vorschau der Datei (oder der Text des Berichts) und darunter dieselbe Zeile
+    // mit allen Knöpfen wie in den Reitern (Öffnen, Herunterladen, Drucken, Korrigieren …).
+    let chartOpenDoc = '';
+    let chartPreviewUrl = '';
+    function chartInline(doc) {
+        const box = el('div', 'chart-inline');
+        box.dataset.docId = doc.id;
+        const view = el('div', 'chart-preview');
+        if (chartPreviewUrl) { URL.revokeObjectURL(chartPreviewUrl); chartPreviewUrl = ''; }
+        if (isReport(doc) && clean(doc.body)) {
+            view.classList.add('is-text');
+            view.append(el('p', 'chart-preview-text', clean(doc.body)));
+        } else if (doc.file_path) {
+            view.append(el('p', 'field-hint', 'Die Vorschau wird geladen …'));
+            fetchFile(doc).then(file => {
+                if (chartOpenDoc !== doc.id || !view.isConnected) return;
+                const url = chartPreviewUrl = URL.createObjectURL(file);
+                const image = /^image\//.test(file.type) || /\.(jpe?g|png)$/i.test(doc.file_path);
+                const frame = el(image ? 'img' : 'iframe', 'chart-preview-frame');
+                if (image) frame.alt = docTitle(doc); else frame.title = `Vorschau: ${docTitle(doc)}`;
+                frame.src = image ? url : `${url}#toolbar=0&view=FitH`;
+                view.replaceChildren(frame);
+            }).catch(error => { if (view.isConnected) view.replaceChildren(el('p', 'field-hint', `Die Vorschau konnte nicht geladen werden: ${error.message}`)); });
+        } else view.append(el('p', 'field-hint', 'Zu diesem Eintrag gibt es keine Datei.'));
+        const list = el('ul', 'directory-list chart-inline-entry');
+        list.append(docEntry(doc, false));
+        box.append(view, list);
+        return box;
+    }
+
     function docEntry(doc, inList) {
         const row = el('li', 'vehicle-entry doc-entry');
         row.dataset.docId = doc.id;
@@ -559,10 +589,12 @@
     let chartViews = [];           // Abrufe der Akte durch Dolmetscher (tt_document_access), neueste zuerst
     let chartFor = '';
     // „Befunde“ und „Kosten“ kommen aus eingelesenen Papierakten – die Reiter erscheinen nur, wenn es dort etwas gibt.
-    const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['befunde', 'Befunde'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['kosten', 'Kosten'], ['sonstiges', 'Sonstiges']];
-    const CHART_EMPTY = { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', befunde: 'Keine Befunde (Labor, Bildgebung).',
+    const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['bild', 'Bildgebung'], ['befunde', 'Befunde'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['kosten', 'Kosten'], ['sonstiges', 'Sonstiges']];
+    const CHART_EMPTY = { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', bild: 'Keine Bildgebung (MRT, CT, Röntgen).', befunde: 'Keine Laborbefunde.',
         rezepte: 'Für diesen Patienten gibt es noch kein Rezept.', ueberweisung: 'Für diesen Patienten gibt es noch keine Überweisung.', kosten: 'Keine Rechnungen oder Kostenvoranschläge.', sonstiges: 'Keine sonstigen Unterlagen.' };
-    const isBefund = doc => !isReport(doc) && kindKey(doc.kind).startsWith('Befund');
+    // Bildgebung / Radiologie hat einen eigenen Reiter: Befunde der Bildgebung und die Blätter mit dem Zugang zu den Bildern (QR-Code).
+    const isBild = doc => !isReport(doc) && /Bildgebung/.test(kindKey(doc.kind));
+    const isBefund = doc => !isReport(doc) && kindKey(doc.kind).startsWith('Befund') && !isBild(doc);
     const isKosten = doc => !isReport(doc) && kindKey(doc.kind).startsWith('Kosten');
     // Ordnen innerhalb der Akte: nach Datum (neueste zuerst), nach Fachrichtung oder nach Arzt – die Wahl bleibt gemerkt.
     const CHART_ORDERS = [['datum', 'Datum'], ['fach', 'Fachrichtung'], ['arzt', 'Arzt']];
@@ -597,14 +629,14 @@
     function renderChart(patient) {
         const box = $('fileChart');
         const reports = documents.filter(doc => isReport(doc) && mentions(doc, patient));
-        const parts = { berichte: reports, arzt: patient.documents.filter(TYPE_TABS.arzt.test), befunde: patient.documents.filter(isBefund), rezepte: patient.documents.filter(TYPE_TABS.rezepte.test),
-            ueberweisung: patient.documents.filter(TYPE_TABS.ueberweisung.test), kosten: patient.documents.filter(isKosten), sonstiges: patient.documents.filter(doc => TYPE_TABS.sonstiges.test(doc) && !isBefund(doc) && !isKosten(doc)) };
-        if ((chartTab === 'befunde' || chartTab === 'kosten') && !parts[chartTab].length) chartTab = 'uebersicht';
+        const parts = { berichte: reports, arzt: patient.documents.filter(TYPE_TABS.arzt.test), bild: patient.documents.filter(isBild), befunde: patient.documents.filter(isBefund), rezepte: patient.documents.filter(TYPE_TABS.rezepte.test),
+            ueberweisung: patient.documents.filter(TYPE_TABS.ueberweisung.test), kosten: patient.documents.filter(isKosten), sonstiges: patient.documents.filter(doc => TYPE_TABS.sonstiges.test(doc) && !isBefund(doc) && !isBild(doc) && !isKosten(doc)) };
+        if ((chartTab === 'befunde' || chartTab === 'bild' || chartTab === 'kosten') && !parts[chartTab].length) chartTab = 'uebersicht';
         const today = isoDay(new Date());
         const visits = chartVisits || [];
         const reported = chartReported || [];
         const coming = [...visits.filter(visit => visit.date >= today).map(visit => `${visit.date} ${visitTime(visit.record)}`), ...reported.filter(item => item.date >= today).map(item => `${item.date} ${clean(item.time).slice(0, 5)}`)].sort()[0];
-        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, befunde: parts.befunde.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, kosten: parts.kosten.length, sonstiges: parts.sonstiges.length };
+        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, bild: parts.bild.length, befunde: parts.befunde.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, kosten: parts.kosten.length, sonstiges: parts.sonstiges.length };
 
         // Kopf
         const head = el('div', 'chart-head');
@@ -631,7 +663,7 @@
         const tabs = el('div', 'doc-type-tabs chart-tabs');
         tabs.setAttribute('role', 'tablist');
         CHART_TABS.forEach(([key, label]) => {
-            if ((key === 'befunde' || key === 'kosten') && !counts[key]) return;
+            if ((key === 'befunde' || key === 'bild' || key === 'kosten') && !counts[key]) return;
             const tab = button(key === chartTab ? 'is-active' : '', label, () => { chartTab = key; renderChart(patient); updateSelection(); });
             tab.setAttribute('role', 'tab');
             tab.setAttribute('aria-selected', String(key === chartTab));
@@ -657,8 +689,8 @@
             const events = [
                 ...visits.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
                 ...reported.map(item => ({ day: item.date, kind: 'Neuer Termin', tab: 'termine', text: [clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : '', clean(item.place), clean(item.description)].filter(Boolean).join(' · ') })),
-                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
-                    text: [lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status }))
+                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBild(doc) ? 'bild' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
+                    text: [lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status, doc }))
             ].sort((left, right) => String(right.day).localeCompare(String(left.day)));
             if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
             if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', 'In dieser Akte steht noch nichts.'));
@@ -669,11 +701,21 @@
                 if (year !== lastYear) { line.append(el('li', 'chart-year', year || 'Ohne Datum')); lastYear = year; }
                 const row = el('li', 'chart-event');
                 row.dataset.tab = event.tab;
-                const open = button('chart-event-button', '', () => { chartTab = event.tab; renderChart(patient); updateSelection(); });
+                // Eine Unterlage klappt an Ort und Stelle auf (Vorschau und alle Knöpfe) – die Übersicht bleibt stehen.
+                // Ein Termin führt wie bisher zum Reiter „Termine“.
+                const open = button('chart-event-button', '', event.doc
+                    ? () => { chartOpenDoc = chartOpenDoc === event.doc.id ? '' : event.doc.id; renderChart(patient); updateSelection(); }
+                    : () => { chartTab = event.tab; renderChart(patient); updateSelection(); });
                 open.append(el('span', 'chart-event-day', event.day ? `${event.day.slice(8, 10)}.${event.day.slice(5, 7)}.` : '–'), el('strong', null, event.kind), el('span', 'chart-event-text', event.text));
                 if (event.day > today) open.append(el('em', 'chip chip-brand', 'kommt noch'));
                 else if (event.status === 'neu') open.append(el('em', 'chip', 'neu'));
                 row.append(open);
+                if (event.doc) {
+                    const shown = chartOpenDoc === event.doc.id;
+                    open.setAttribute('aria-expanded', String(shown));
+                    open.append(el('span', 'chart-event-fold', shown ? 'zuklappen ▴' : 'ansehen ▾'));
+                    if (shown) row.append(chartInline(event.doc));
+                }
                 line.append(row);
             });
             body.append(line);
@@ -874,7 +916,7 @@
         const patient = patients.find(item => item.key === clean(key));
         if (!patient) { showToast('Zu diesem Patienten gibt es keine Unterlagen.', 'error'); return; }
         if (INBOX) { window.location.href = `patienten.html?akte=${encodeURIComponent(patient.key)}`; return; }
-        if (VIEW === 'archiv') { openKey = patient.key; chartTab = 'uebersicht'; render(); window.scrollTo({ top: 0 }); return; }
+        if (VIEW === 'archiv') { openKey = patient.key; chartTab = 'uebersicht'; chartOpenDoc = ''; render(); window.scrollTo({ top: 0 }); return; }
         const from = window.scrollY;
         openKey = patient.key;
         render();

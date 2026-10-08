@@ -32,6 +32,10 @@
     const HANDOVER_KEY = 'terminTool.akte.patient';      // aus der Patientenakte übergeben: { nr, name, birth }
     // Platz sparen: Reine Textseiten werden als „Dokument“ gespeichert (16 Töne, etwa ein Drittel so groß – siehe DocScan.compact).
     // Seiten mit Fotos, Farbflächen oder grauen Feldern haben diese Form nicht und bleiben immer JPEG. Die Wahl merkt sich der Browser.
+    const DUPLEX_KEY = 'terminTool.akte.duplex';        // „Vorder- und Rückseiten getrennt gescannt“ bleibt angekreuzt
+    const LEARN_KEY = 'terminTool.akteLearn.v1';        // Gelerntes (siehe AkteLogic.learn) – wird über cloudSettingsSync.js geteilt
+    let duplex = null;            // { sheets, printed, reversed } – wenn Vorder- und Rückseiten zusammengelegt wurden
+    const readLearned = () => { try { const list = JSON.parse(localStorage.getItem(LEARN_KEY) || '[]'); return Array.isArray(list) ? list : []; } catch (error) { return []; } };
     const COMPACT_KEY = 'terminTool.akte.compact';
     let compactOn = true;
     try { compactOn = localStorage.getItem(COMPACT_KEY) !== '0'; } catch (error) { /* bleibt eingeschaltet */ }
@@ -124,7 +128,8 @@
         if (!files.length) { showToast('Bitte zuerst die Scan-Datei auswählen.', 'error'); return; }
         patient = { nr, name: clean($('aktePatientName').value), birth };
         demo = false;
-        startReading(files);
+        try { localStorage.setItem(DUPLEX_KEY, $('akteDuplex').checked ? '1' : '0'); } catch (error) { /* gilt dann nur dieses Mal */ }
+        startReading(files, { duplex: $('akteDuplex').checked });
     });
     $('akteDemoButton').addEventListener('click', async () => {
         const button = $('akteDemoButton');
@@ -143,9 +148,9 @@
 
     // ---------- Schritt 2: Einlesen ----------
     const minutes = seconds => seconds == null ? '' : seconds < 50 ? 'noch weniger als eine Minute' : `noch etwa ${plural(Math.max(1, Math.round(seconds / 60)), 'Minute', 'Minuten')}`;
-    function startReading(list) {
+    function startReading(list, options = {}) {
         releasePages();
-        pages = []; docs = []; problems = []; confirmed.clear(); importId = uuid();
+        pages = []; docs = []; problems = []; confirmed.clear(); importId = uuid(); duplex = null;
         show(2);
         $('akteReadStrip').replaceChildren();
         $('akteProgressBar').style.width = '0%';
@@ -175,8 +180,9 @@
         run.done.then(result => {
             if (run !== mine) return;
             run = null;
-            pages = result.pages.map(page => ({ ...page, removed: false, url: page.url || (page.thumb ? URL.createObjectURL(page.thumb) : '') }));
+            pages = result.pages.map((page, at) => ({ ...page, scanAt: at, removed: false, url: page.url || (page.thumb ? URL.createObjectURL(page.thumb) : '') }));
             problems = result.problems;
+            if (options.duplex) applyDuplex(null);
             buildDocuments();
             show(3);
             renderCheck();
@@ -187,6 +193,19 @@
             if (error?.code !== 'cancelled') setStatus(error?.message || String(error), 'error');
         });
     }
+    $('akteDuplexFlip').addEventListener('click', async () => {
+        if (!duplex) return;
+        const touched = docs.some(doc => doc.checked || Object.keys(doc.manual).length);
+        if (touched && !(await confirmDialog('Die Rückseiten andersherum zuordnen?\n\nDie Schriftstücke werden neu sortiert – was du schon geprüft oder geändert hast, geht dabei verloren.', 'Neu zuordnen'))) return;
+        const reversed = !duplex.reversed;
+        problems = problems.filter(text => !/^Vorder- und Rückseiten/.test(text));
+        applyDuplex(reversed);
+        confirmed.clear();
+        buildDocuments();
+        renderCheck();
+        showToast(reversed ? 'Die Rückseiten sind jetzt in umgekehrter Reihenfolge zugeordnet.' : 'Rückseite 1 gehört jetzt wieder zu Vorderseite 1.', 'success');
+    });
+    try { $('akteDuplex').checked = localStorage.getItem(DUPLEX_KEY) === '1'; } catch (error) { /* bleibt aus */ }
     $('akteCancel').addEventListener('click', () => { $('akteCancel').disabled = true; $('akteProgressText').textContent = 'Wird abgebrochen …'; run?.cancel(); });
     function releasePages() {
         pages.forEach(page => { if (page.url) URL.revokeObjectURL(page.url); if (page.fullUrl) URL.revokeObjectURL(page.fullUrl); });
@@ -194,7 +213,45 @@
 
     // ---------- Schriftstücke aus den Seiten ----------
     const directory = () => { try { return window.ArztVerzeichnis ? ArztVerzeichnis.read() : []; } catch (error) { return []; } };
-    const pageInput = () => pages.map(page => ({ text: page.text || '', blank: Boolean(page.blank || page.removed || !page.blob) }));
+    const pageInput = () => pages.map(page => ({ text: page.text || '', blank: Boolean(page.blank || page.removed || !page.blob), qr: Boolean(page.qr), back: Boolean(page.back) }));
+
+    // Vorder- und Rückseiten getrennt gescannt: Blatt für Blatt zusammenlegen (Vorderseite 1, Rückseite 1, Vorderseite 2 …).
+    // reverse: null = selbst erkennen, sonst true/false. Passt die Zahl der Seiten nicht, bleibt die Reihenfolge des Scans.
+    function applyDuplex(reverse) {
+        const base = [...pages].sort((left, right) => left.scanAt - right.scanAt);
+        base.forEach((page, at) => { page.index = at; page.back = false; });
+        pages = base;
+        duplex = null;
+        const half = base.length / 2;
+        const names = [...new Set(base.map(page => page.file || ''))];
+        const fileSplit = names.length < 2 || (Number.isInteger(half) && base[half - 1].file !== base[half].file);
+        if (base.length < 2 || base.length % 2 || !fileSplit) {
+            const perFile = names.map(name => `„${name || 'Datei'}“: ${plural(base.filter(page => (page.file || '') === name).length, 'Seite', 'Seiten')}`).join(', ');
+            problems.push(`Vorder- und Rückseiten ließen sich nicht zusammenlegen: Es müssen gleich viele Vorder- und Rückseiten sein (${perFile || plural(base.length, 'Seite', 'Seiten')}). Die Seiten stehen in der Reihenfolge des Scans – bitte fehlende Seite nachscannen und neu einlesen.`);
+            return;
+        }
+        const found = AkteLogic.duplexOrder(base.map(page => ({ text: page.text || '', blank: Boolean(page.blank || !page.blob), qr: Boolean(page.qr) })), { reverse });
+        if (!found) return;
+        pages = found.order.map((from, at) => { const page = base[from]; page.index = at; page.back = found.backs.has(at); return page; });
+        duplex = { sheets: half, printed: pages.filter(page => page.back && !page.blank && page.blob).length, reversed: found.reversed };
+    }
+
+    // Gelerntes anwenden: Kennt das Büro den Kopf dieses Schriftstücks schon (bestätigt oder von Hand verbessert), gilt das wieder.
+    function applyLearned(doc) {
+        doc.learned = false;
+        const hit = AkteLogic.recall(pages[doc.pages[0]]?.text || '', readLearned());
+        if (!hit) return;
+        // Die Art gilt wieder, wenn das Programm selbst keine erkannt hat („Sonstiges“) – oder wenn das Büro sie bei diesem Kopf von Hand
+        // verbessert hat. Vordrucke (Rezept, Überweisung, Terminzettel) haben überall denselben Kopf: Dort entscheidet immer der Inhalt.
+        const form = key => AkteLogic.byKey(key).single;
+        if (!doc.manual.key && hit.key !== doc.key && AkteLogic.byKey(hit.key).key === hit.key && (doc.key === 'sonst' || (hit.fixed && !form(doc.key) && !form(hit.key)))) { doc.key = hit.key; doc.learned = true; }
+        if (!doc.manual.doctor && !doc.doctor && hit.doctor) { doc.doctor = hit.doctor; doc.learned = true; }
+        if (!doc.manual.specialty && !doc.specialty && hit.specialty) { doc.specialty = hit.specialty; doc.learned = true; }
+        if (doc.learned) {
+            if (doc.key !== 'sonst') doc.hints = doc.hints.filter(hint => hint !== 'Die Art wurde nicht sicher erkannt.');
+            if (!doc.manual.title) doc.title = AkteLogic.titleOf(doc);
+        }
+    }
 
     // Gehört das Schriftstück wirklich in diese Akte? Geprüft wird nur, was sich sicher sagen lässt:
     //   1. Steht ein Geburtsdatum darauf („geb. 02.05.1975“) und ist es ein anderes als das des Patienten? → deutlicher Hinweis.
@@ -242,8 +299,9 @@
         if (!doc.checked) doc.unsure = true;
     }
     function fromLogic(found) {
-        const doc = { id: uuid(), pages: [...found.pages], key: found.key, date: found.date, doctor: found.doctor, specialty: found.specialty, heading: found.heading || '', title: found.title, manual: {}, unsure: Boolean(found.unsure), hints: [...(found.hints || [])], checked: false, dropped: false };
+        const doc = { id: uuid(), pages: [...found.pages], key: found.key, date: found.date, doctor: found.doctor, specialty: found.specialty, heading: found.heading || '', title: found.title, manual: {}, unsure: Boolean(found.unsure), learned: false, hints: [...(found.hints || [])], checked: false, dropped: false };
         addPatientHint(doc);
+        applyLearned(doc);
         return doc;
     }
     function buildDocuments() {
@@ -263,6 +321,7 @@
         doc.unsure = found.unsure && !doc.checked;
         addPatientHint(doc);
         if (!doc.manual.title) doc.title = AkteLogic.titleOf(doc);
+        applyLearned(doc);
     }
     const kindOf = doc => AkteLogic.byKey(doc.key);
     const groupOf = doc => kindOf(doc).group;
@@ -293,6 +352,11 @@
         line.dataset.state = complete ? 'ok' : 'fehlt';
         line.textContent = `${plural(count.total, 'Seite', 'Seiten')} eingelesen = ${parts.join(' + ')}${complete ? ' ✓ – keine Seite fehlt' : ` – ${plural(Math.abs(count.rest), 'Seite ist', 'Seiten sind')} nicht zugeordnet!`}`;
 
+        $('akteDuplexInfo').hidden = !duplex;
+        if (duplex) $('akteDuplexText').textContent = `Vorder- und Rückseiten zusammengelegt: ${plural(duplex.sheets, 'Blatt', 'Blätter')}, davon ${duplex.printed} mit bedruckter Rückseite. ${duplex.reversed ? 'Die Rückseiten wurden in umgekehrter Reihenfolge zugeordnet (letzte Rückseite zur ersten Vorderseite).' : 'Rückseite 1 gehört zu Vorderseite 1, Rückseite 2 zu Vorderseite 2 …'} Stimmt das nicht?`;
+        const learnedCount = liveDocs().filter(doc => doc.learned).length;
+        $('akteLearnInfo').hidden = !learnedCount;
+        $('akteLearnInfo').textContent = learnedCount ? `${plural(learnedCount, 'Schriftstück wurde', 'Schriftstücke wurden')} wiedererkannt – so, wie du es bei früheren Akten bestätigt hast. Bitte trotzdem kurz prüfen.` : '';
         const box = $('akteProblems');
         box.hidden = !problems.length;
         box.replaceChildren(...problems.map(text => el('li', '', text)));
@@ -373,6 +437,7 @@
         const text = el('span', 'akte-card-text');
         text.append(el('strong', '', doc.title || kindOf(doc).label), el('span', 'akte-card-date', doc.date ? formatDay(doc.date) : 'ohne Datum'));
         const marks = el('span', 'akte-card-marks');
+        if (doc.learned) marks.append(el('em', 'chip chip-learned', 'wiedererkannt'));
         if (doc.checked) marks.append(el('em', 'chip chip-ok', 'geprüft ✓'));
         else if (doc.unsure) marks.append(el('em', 'chip chip-warn', 'bitte ansehen'));
         doc.hints.filter(hint => /fehl/i.test(hint)).forEach(hint => marks.append(el('em', 'chip chip-danger', hint.replace(/^Laut Seitenzähler /, '').replace(/\.$/, ''))));
@@ -753,6 +818,17 @@
         $('akteOpenChart').href = `patienten.html?akte=${encodeURIComponent(patient.nr)}`;
         $('akteSaveDone').hidden = false;
         step = 4;
+        // Anlernen: Was hier bestätigt wurde, gilt für die nächsten Akten (nur der Kopf des Schriftstücks – keine Patientendaten).
+        try {
+            let memory = readLearned();
+            const day = new Date().toISOString().slice(0, 10);
+            done.forEach(item => {
+                const doc = item.doc, text = pages[doc.pages[0]]?.text || '';
+                if (doc.key === 'sonst' && !doc.manual.key) return;      // nichts Sicheres zu lernen
+                memory = AkteLogic.learn(memory, { text, key: doc.key, doctor: doc.doctor || '', specialty: doc.specialty || '', fixed: Boolean(doc.manual.key), exclude: [patient.name], day });
+            });
+            localStorage.setItem(LEARN_KEY, JSON.stringify(memory));
+        } catch (error) { /* das Gelernte ist eine Hilfe – die Akte ist gespeichert */ }
         releasePages();
         pages = []; docs = [];
         loadSpace();
@@ -814,6 +890,6 @@
         if (step === 3) renderCheck();
     }
     // Für Tests und zum Nachsehen in der Konsole
-    window.AkteEinlesen = { state: () => ({ step, patient, pages, docs, confirmed: [...confirmed], order, demo, importId, saveQueue, space, compact: compactOn }), patientHint, refreshSpace: () => loadSpace() };
+    window.AkteEinlesen = { applyLearned, state: () => ({ step, patient, pages, docs, confirmed: [...confirmed], order, demo, importId, saveQueue, space, compact: compactOn }), patientHint, refreshSpace: () => loadSpace() };
     init();
 })();

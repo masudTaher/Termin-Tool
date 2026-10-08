@@ -21,7 +21,7 @@ window.PortalRecord = (() => {
     const isKind = (doc, test) => (typeof test === 'string' ? clean(doc.kind) === test : test.test(clean(doc.kind)));
     // Arten (wie die Reiter der Akte im Büro). „Sonstiges“ ist alles, was sonst nirgends passt.
     const GROUPS = [
-        ['arzt', 'Arztberichte', 'Arztbericht'], ['befund', 'Befunde', /^Befund/], ['rezept', 'Rezepte', /^Rezept/], ['ueberweisung', 'Überweisungen', /^Überweisung/],
+        ['arzt', 'Arztberichte', 'Arztbericht'], ['bild', 'Bildgebung', /Bildgebung/], ['befund', 'Befunde', /^Befund/], ['rezept', 'Rezepte', /^Rezept/], ['ueberweisung', 'Überweisungen', /^Überweisung/],
         ['dolm', 'Dolmetscherberichte', 'Dolmetscherbericht'], ['kosten', 'Kosten', /^Kosten/]
     ];
     const groupOf = doc => (GROUPS.find(([, , test]) => isKind(doc, test)) || ['sonst'])[0];

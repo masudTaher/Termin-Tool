@@ -253,7 +253,19 @@
             action.addEventListener('click', event => { event.stopPropagation(); remove(); options.onAction(); });
             toast.append(action);
         }
-        if (kind === 'error') {
+        // options.href: Meldung von außen (neue Nachricht, neuer Schaden …) – ein Klick führt zur passenden Seite.
+        if (options.href && kind !== 'error') {
+            toast.classList.add('has-target', 'toast-link');
+            toast.setAttribute('role', 'link');
+            toast.tabIndex = 0;
+            const hint = document.createElement('em');
+            hint.className = 'toast-jump';
+            hint.textContent = 'Öffnen';
+            toast.append(hint);
+            const go = () => { remove(); window.location.href = options.href; };
+            toast.addEventListener('click', go);
+            toast.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); go(); } });
+        } else if (kind === 'error') {
             const target = findProblem(options.target);
             if (target) {
                 toast.classList.add('has-target');

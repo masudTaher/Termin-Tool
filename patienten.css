@@ -162,3 +162,14 @@ body[data-view="archiv"] #patientList, body[data-view="archiv"] #patientResults 
 
 .doc-edited { color: #8a5a00; font-weight: 650; }
 :root[data-theme="dark"] .doc-edited { color: #f0c060; }
+
+/* Übersicht der Akte: Unterlage klappt an Ort und Stelle auf (Vorschau + Knöpfe) */
+.chart-event-fold { margin-left: auto; flex: 0 0 auto; color: var(--brand); font-size: .78rem; font-weight: 650; white-space: nowrap; }
+.chart-inline { margin: 6px 0 12px; padding: 10px; border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent); border-radius: 12px; background: var(--surface); }
+.chart-preview { display: grid; min-height: 120px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft, var(--surface-hover)); overflow: hidden; }
+.chart-preview > .field-hint { margin: 0; padding: 14px; }
+.chart-preview-frame { display: block; width: 100%; height: min(70vh, 760px); border: 0; background: #fff; }
+img.chart-preview-frame { height: auto; max-height: 80vh; object-fit: contain; }
+.chart-preview.is-text { padding: 12px 14px; }
+.chart-preview-text { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.chart-inline-entry { margin: 0; }

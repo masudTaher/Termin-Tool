@@ -203,3 +203,11 @@ html.scan-fix-open, html.scan-fix-open body { overflow: hidden; }
 .scan-fix-row[data-status="fehler"] .scan-fix-rowtext em { color: var(--danger); }
 .scan-fix-row[data-status="gespeichert"] .scan-fix-rowtext em { color: var(--ok); }
 .chart-fix { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--surface-soft); color: var(--ink-soft); font-size: .88rem; }
+
+/* Vorder- und Rückseiten getrennt gescannt · Gelerntes */
+.akte-duplex { margin: 10px 0 2px; }
+.akte-duplex-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--brand) 7%, var(--surface)); font-size: .92rem; }
+.akte-duplex-info[hidden] { display: none; }
+.akte-duplex-info button { min-height: 36px; padding: 5px 12px; font-size: .86rem; }
+.akte-learn-info { margin: 0 0 10px; }
+.chip.chip-learned { background: color-mix(in srgb, var(--brand) 14%, var(--surface)); color: var(--brand); }

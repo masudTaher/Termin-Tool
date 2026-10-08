@@ -297,6 +297,14 @@ if (!window.TerminContact) {
         if (!badge) return;
         badge.hidden = !value;
         badge.textContent = value ? String(value) : '';
+        updateAppBadge();
+    }
+    // Zahl am Symbol der App auf dem Handy (wie bei WhatsApp): ungelesene Nachrichten + Aufträge, die auf eine Antwort warten.
+    function updateAppBadge() {
+        try {
+            const total = ['jobsBadge', 'messagesBadge'].reduce((sum, id) => { const node = $(id); return sum + (node && !node.hidden ? Number(node.textContent) || 0 : 0); }, 0);
+            if (total > 0) navigator.setAppBadge?.(total)?.catch?.(() => null); else navigator.clearAppBadge?.()?.catch?.(() => null);
+        } catch (error) { /* nicht jedes Handy kann das */ }
     }
 
     function goTo(view) {
@@ -389,6 +397,7 @@ if (!window.TerminContact) {
         setBadge('statement', waiting ? '!' : '');
         $('messagesBadge').hidden = !unread;
         $('messagesBadge').textContent = unread ? String(unread) : '';
+        updateAppBadge();
         addPushNotice();
         refreshHomeBadge();
     }
@@ -3317,6 +3326,7 @@ if (!window.TerminContact) {
         const left = unreadMessages();
         $('messagesBadge').hidden = !left;
         $('messagesBadge').textContent = left ? String(left) : '';
+        updateAppBadge();
     }
     async function openMessages() {
         messagesShown = '';

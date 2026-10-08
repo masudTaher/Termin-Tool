@@ -7,7 +7,9 @@ const AkteLogic = (() => {
     const KINDS = [
         { key: 'arzt', kind: 'Arztbericht', group: 'arzt', label: 'Arztbericht', single: false },
         { key: 'labor', kind: 'Befund Labor', group: 'befund', label: 'Laborbefund', single: false },
-        { key: 'bild', kind: 'Befund Bildgebung', group: 'befund', label: 'Befund Bildgebung', single: false },
+        { key: 'bild', kind: 'Befund Bildgebung', group: 'bild', label: 'Befund Bildgebung', single: false },
+        // Blatt mit QR-Code oder Zugangscode, über den sich die Bilder (MRT, CT, Röntgen) im Internet ansehen lassen
+        { key: 'bild_code', kind: 'Befund Bildgebung Zugang', group: 'bild', label: 'Bilder-Zugang (QR-Code)', single: true },
         { key: 'rezept_med', kind: 'Rezept Medikamente', group: 'rezept', label: 'Rezept Medikamente', single: true },
         { key: 'rezept_physio', kind: 'Rezept Physiotherapie', group: 'rezept', label: 'Rezept Physiotherapie', single: true },
         { key: 'rezept_hilf', kind: 'Rezept Hilfsmittel', group: 'rezept', label: 'Rezept Hilfsmittel', single: true },
@@ -21,7 +23,7 @@ const AkteLogic = (() => {
         { key: 'sonst', kind: 'Sonstiges', group: 'sonstiges', label: 'Sonstiges', single: false }
     ];
     const GROUPS = [
-        ['arzt', 'Krankenhaus- und Arztberichte'], ['befund', 'Befunde (Labor, Bildgebung)'], ['rezept', 'Rezepte'], ['ueberweisung', 'Überweisungen'],
+        ['arzt', 'Krankenhaus- und Arztberichte'], ['bild', 'Bildgebung / Radiologie'], ['befund', 'Befunde (Labor)'], ['rezept', 'Rezepte'], ['ueberweisung', 'Überweisungen'],
         ['dolmetscher', 'Dolmetscherberichte'], ['kosten', 'Kosten (Rechnungen, Kostenvoranschläge)'], ['sonstiges', 'Sonstiges']
     ];
     const byKey = key => KINDS.find(item => item.key === key) || KINDS[KINDS.length - 1];
@@ -88,7 +90,7 @@ const AkteLogic = (() => {
             [/\bauftrag\s*:|mit-?\/?weiterbehandlung|mitbehandlung|konsiliaruntersuchung|zielauftrag|mitbeurteilung/g, 3, 1, true], [/verdachtsdiagnose/g, 2, 1]
         ],
         dolm: [
-            [/dolmetscherbericht|interpreter'?s report/g, 9, 1], [/bericht (des|der) dolmetscher|bericht uber die begleitung|einsatzbericht/g, 7, 1], [/dolmetscher(\/in|in)?\s*:/g, 4, 1],
+            [/dolmetscherbericht|interpreter'?s report/g, 9, 1], [/(^|\n)[^a-z\n]{0,3}(bericht uber (den |einen )?(termin|tag|arzttermin|arztbesuch|einsatz)|tagesbericht|terminbericht|begleitbericht|besuchsbericht)\b/g, 8, 1], [/bericht (des|der) dolmetscher|bericht uber die begleitung|einsatzbericht/g, 7, 1], [/dolmetscher(\/in|in)?\s*:/g, 4, 1],
             [/dolmetscherdienst/g, 4, 1], [/medical office|gesundheitsburo/g, 2, 1], [/begleitet durch\s*:/g, 3, 1],
             [/(habe ich|ich habe) [^.]{0,140}\bbegleitet|der patient wurde .{0,30}begleitet|begleit(et|ung) zum termin|zum termin [^.]{0,80}\bbegleitet/g, 4, 1],
             [/(^|\n)(gez\. )?[^\n]{0,40}\bdolmetscher(in)?\s*(\n|$)/g, 3, 1], [/nachster termin\s*:|dauer des einsatzes/g, 1.5, 2], [/ubersetz(t|ung)/g, 1, 1]
@@ -141,7 +143,7 @@ const AkteLogic = (() => {
     // Überschrift eines Schriftstücks als eigene, kurze Zeile oben auf dem Blatt („Laborbefund – Endbefund“, „Rechnung Nr. 4711“,
     // „LETTER OF GUARANTEE“). Sie entscheidet die Art am sichersten. Keine Zwischenüberschrift im Brief („Befund:“ endet mit Doppelpunkt).
     const TITLES = [
-        ['dolm', /dolmetscherbericht|bericht (des|der) dolmetscher(s|in)?|interpreter'?s report|bericht uber die begleitung|einsatzbericht/],
+        ['dolm', /dolmetscherbericht|bericht (des|der) dolmetscher(s|in)?|interpreter'?s report|bericht uber die begleitung|einsatzbericht|bericht uber (den |einen )?(termin|tag|arzttermin|arztbesuch|einsatz)|tagesbericht|terminbericht|begleitbericht|besuchsbericht/],
         ['kue', /kostenubernahme(erklarung|bestatigung|zusage)?|kostenzusage|kostengarantie|letter of guarantee|guarantee of payment/],
         ['kv', /kostenvoranschlag|kostenschatzung|kostenkalkulation|cost estimate|voraussichtliche behandlungskosten/],
         ['rechnung', /rechnung|honorarrechnung|privatliquidation|liquidation|invoice|mahnung|zahlungserinnerung/],
@@ -206,7 +208,13 @@ const AkteLogic = (() => {
 
     // Grußformel am Ende eines Briefs (auch wenn die Texterkennung das „ü“ nicht trifft: „GriBen“).
     const CLOSING = /mit (freundlichen|besten|kollegialen|herzlichen)( kollegialen)? gr[a-z]{2,6}\b|mit freundlichem gr|hochachtungsvoll|yours (sincerely|faithfully)|(kind|best) regards/;
-    function analysePage(text) {
+    // Zugang zu den Bildern einer Untersuchung: Blatt mit QR-Code oder Zugangscode („Ihre Bilder online ansehen“).
+    const CODE_CUES = [/qr-?code/, /zugangs(code|daten|schlussel|kennung|nummer)|access ?code|freigabecode|abrufcode/, /bild(er)?(betrachtung|portal|zugang|abruf|ubermittlung|daten ?abruf)|bilder (und befunde? )?(online|im internet|digital|abrufen|ansehen|einsehen|herunterladen)|bilddaten|aufnahmen (online|abrufen|ansehen|einsehen)/,
+        /(befund|patienten|zuweiser)portal|\bpacs\b|\bdicom\b|web-?viewer|bildviewer/, /scannen sie|code scannen|mit (der kamera|ihrem (smartphone|handy))|view your images|your images online/, /untersuchungs-?(id|nr|nummer)|passwort\s*:|kennwort\s*:|\bpin\s*:/];
+    function codeCues(folded) { return CODE_CUES.filter(pattern => pattern.test(folded)).length; }
+
+    // extra.qr: auf dem Blatt wurde ein QR-Code gefunden (akteImport.js).
+    function analysePage(text, extra = {}) {
         const lines = linesOf(text), folded = fold(lines.join('\n'));
         const letters = countOf(folded, /[a-z]/g);
         const counter = counterOf(text);
@@ -233,10 +241,15 @@ const AkteLogic = (() => {
             const target = referralTarget(lines.join('\n')), order = (folded.match(/\bauftrag\s*:?\s*([^\n]{0,80}(\n[^\n]{0,80})?)/) || [])[1] || '';
             key = target ? (/radiolog|nuklear/i.test(target) ? 'ueb_radio' : 'ueb_fach') : RADIO.test(order || folded) ? 'ueb_radio' : 'ueb_fach';
         }
+        // Blatt mit dem Zugang zu den Bildern: kurzes Blatt mit QR-Code und einem Bezug zur Bildgebung – oder mit zwei klaren Hinweisen
+        // auf einen Zugang. (Ein QR-Code allein reicht nicht: Auch E-Rezepte und Rechnungen tragen einen.)
+        const cues = codeCues(folded);
+        if (words <= 260 && !['rezept_med', 'rezept_physio', 'rezept_hilf', 'rechnung', 'labor'].includes(key)
+            && ((extra.qr && (cues >= 1 || RADIO.test(folded) || scores.bild >= 3)) || (cues >= 2 && (RADIO.test(folded) || /bild|aufnahme|images/.test(folded))))) { key = 'bild_code'; score = Math.max(score, 8); }
         const { start, follows } = startOf(lines, folded, counter);
         const closing = CLOSING.test(folded);
         const good = readable(folded);
-        return { key, score, scores, counter, start, follows, closing, open: endsOpen(lines), letters, lines: lines.length, words, good, unreadable: good < 12 && key === 'sonst', title, titleLine, headline, letterhead };
+        return { key, score, scores, counter, start, follows, closing, open: endsOpen(lines), letters, lines: lines.length, words, good, unreadable: good < 12 && key === 'sonst', title, titleLine, headline, letterhead, qr: Boolean(extra.qr) };
     }
 
     // ---------- Datum ----------
@@ -420,7 +433,7 @@ const AkteLogic = (() => {
         let specialty = (kind.group === 'ueberweisung' ? referralTarget(all) : '') || (fromDirectory && fold(fromDirectory.name).includes(fold(doctor?.name || '#')) ? fromDirectory.specialty : '') || fields[0]?.label || '';
         if (kind.key === 'ueb_radio' && !specialty) specialty = 'Radiologie';
         if (kind.key === 'labor' && !specialty) specialty = 'Labormedizin';
-        if (kind.key === 'bild' && !specialty) specialty = 'Radiologie';
+        if ((kind.key === 'bild' || kind.key === 'bild_code') && !specialty) specialty = 'Radiologie';
         const hints = [];
         const counters = pageFeatures.map(feature => feature.counter).filter(Boolean);
         const total = counters.find(counter => counter.total)?.total;
@@ -445,7 +458,7 @@ const AkteLogic = (() => {
     // date, doctor, specialty, title, unsure, hints: [] }], blanks: [Nummern], features: [je Seite] }
     function sortPages(pages, { today = new Date(), directory = [] } = {}) {
         const features = pages.map(page => page.blank ? { blank: true, key: 'sonst', score: 0, scores: {}, counter: null, start: 0, follows: 0, closing: false, letters: 0 }
-            : { ...analysePage(page.text), headDate: headDateOf(page.text, today) });
+            : { ...analysePage(page.text, { qr: page.qr }), headDate: headDateOf(page.text, today) });
         const groups = [], blanks = [];
         let current = null;
         const complete = group => group.closed || Boolean(group.lastCounter?.total && group.lastCounter.page >= group.lastCounter.total);
@@ -454,7 +467,12 @@ const AkteLogic = (() => {
             const kind = byKey(feature.key);
             const best = Math.max(0, ...Object.values(feature.scores));
             let fresh = !current, unsure = false, weak = false;
-            if (current) {
+            // Rückseite eines Blattes (Vorder- und Rückseiten wurden getrennt gescannt): Sie gehört zu ihrer Vorderseite – außer sie
+            // beginnt klar etwas Neues (Seitenzähler 1, eigener Briefkopf mit Anrede, ein Formular wie Rezept oder Überweisung).
+            const backOfSheet = Boolean(pages[index].back) && current && current.pages[current.pages.length - 1] === index - 1
+                && !(feature.counter && feature.counter.page === 1) && feature.start < 5 && !(kind.single && feature.score >= 5);
+            if (backOfSheet) fresh = false;
+            else if (current) {
                 const last = current.lastCounter, before = features[current.pages[current.pages.length - 1]];
                 const counted = feature.counter && feature.counter.page > 1 && (!last || feature.counter.page === last.page + 1 || feature.counter.page === last.page);
                 if (counted) fresh = false;                                                  // „Seite 2 von 3“ nach „Seite 1 von 3“
@@ -490,6 +508,83 @@ const AkteLogic = (() => {
         return { documents, blanks, features };
     }
 
+    // ---------- Vorder- und Rückseiten getrennt gescannt ----------
+    // Erst alle Vorderseiten, dann alle Rückseiten (gleich viele). Ergebnis: die Reihenfolge Blatt für Blatt – Vorderseite 1,
+    // Rückseite 1, Vorderseite 2 … Die Rückseiten liegen entweder in derselben Reihenfolge (Rückseite 17 gehört zu Vorderseite 17)
+    // oder umgekehrt (der Stapel wurde im Ganzen gewendet). reverse: true | false | null = selbst erkennen (Seitenzähler, Satz
+    // geht weiter, Grußformel und Unterschrift auf der Rückseite).
+    // pages: [{ text, blank }]. Ergebnis: { order: [Nummern], backs: Set der Rückseiten (Stelle in order), reversed, sure } oder null.
+    function duplexOrder(pages, { reverse = null } = {}) {
+        const total = pages.length, half = total / 2;
+        if (!total || total % 2) return null;
+        const features = pages.map(page => page.blank ? { blank: true } : analysePage(page.text, { qr: page.qr }));
+        const fit = backAt => {
+            let sum = 0;
+            for (let sheet = 0; sheet < half; sheet += 1) {
+                const front = features[sheet], back = features[half + backAt(sheet)];
+                if (front.blank || back.blank) continue;
+                if (front.counter && back.counter) sum += back.counter.page === front.counter.page + 1 && (!front.counter.total || !back.counter.total || front.counter.total === back.counter.total) ? 4 : -3;
+                if (front.open && back.follows) sum += 2;
+                if (!front.closing && back.closing && back.key === front.key) sum += 1;
+                if (back.key !== 'sonst' && back.key === front.key) sum += 0.5;
+            }
+            return sum;
+        };
+        const same = fit(sheet => sheet), turned = fit(sheet => half - 1 - sheet);
+        const reversed = reverse == null ? turned > same + 1.5 : Boolean(reverse);
+        const order = [], backs = new Set();
+        for (let sheet = 0; sheet < half; sheet += 1) { order.push(sheet); backs.add(order.length); order.push(half + (reversed ? half - 1 - sheet : sheet)); }
+        return { order, backs, reversed, sure: Math.abs(same - turned) > 1.5, scores: { same, turned } };
+    }
+
+    // ---------- Gelerntes: was das Büro bestätigt oder verbessert hat, gilt für die nächsten Akten ----------
+    // Merkmal eines Schriftstücks = die Wörter aus seinem Kopf (Name der Klinik oder Praxis, Überschrift des Formulars) – ohne Zahlen,
+    // ohne den Namen des Patienten (exclude) und ohne Allerweltswörter. Daran wird dieselbe Art von Schriftstück wiedererkannt.
+    const LEARN_STOP = new Set(['und', 'der', 'die', 'das', 'fur', 'von', 'mit', 'den', 'dem', 'des', 'im', 'in', 'am', 'an', 'zu', 'zur', 'zum', 'tel', 'telefon', 'fax', 'www', 'email', 'mail', 'herr', 'herrn', 'frau', 'geb', 'geboren', 'datum', 'seite', 'patient', 'patientin', 'name', 'vorname', 'strasse', 'str', 'de', 'com', 'http', 'https', 'the', 'and', 'of']);
+    function signatureOf(text, exclude = []) {
+        const skip = new Set((Array.isArray(exclude) ? exclude : [exclude]).flatMap(item => fold(item).split(/[^a-z]+/)).filter(word => word.length >= 3));
+        const words = [];
+        // Nur der Kopf des Blattes (Klinik, Praxis, Überschrift des Formulars) – keine Anschrift- oder Namenszeilen.
+        // Der Kopf endet an der ersten Zeile mit Angaben zur Person (Anschrift, „Patient:“, Geburtsdatum) – höchstens vier Zeilen.
+        const personal = line => /^\s*(herrn?|frau|patient(in)?|name|vorname|nachname|geb\.?|geboren|an|z\. ?hd\.?|familie|sehr geehrte|liebe[r]?)\b/i.test(line) || /geb\.|\d{4}/.test(line);
+        const head = [];
+        linesOf(text).slice(0, 8).some(line => { if (personal(line)) return head.length > 0; head.push(line); return head.length >= 4; });
+        head.forEach(line => {
+            fold(line).split(/[^a-z]+/).forEach(word => { if (word.length >= 4 && !LEARN_STOP.has(word) && !skip.has(word) && !words.includes(word)) words.push(word); });
+        });
+        return words.slice(0, 14);
+    }
+    // Bestes gelerntes Beispiel zum Kopf eines Schriftstücks: Anteil der gelernten Wörter, die wieder oben auf dem Blatt stehen.
+    // memory: [{ words: [], key, doctor, specialty, fixed, count }]. Ergebnis: das Beispiel (mit share) oder null.
+    function recall(text, memory, { least = 0.72 } = {}) {
+        const top = new Set(fold(linesOf(text).slice(0, 12).join(' ')).split(/[^a-z]+/).filter(word => word.length >= 4));
+        let best = null;
+        (Array.isArray(memory) ? memory : []).forEach(item => {
+            const words = Array.isArray(item?.words) ? item.words : [];
+            if (words.length < 3) return;
+            const share = words.filter(word => top.has(word)).length / words.length;
+            if (share >= least && (!best || share > best.share || (share === best.share && (item.count || 0) > (best.count || 0)))) best = { ...item, share };
+        });
+        return best;
+    }
+    // Ein bestätigtes Schriftstück ins Gedächtnis aufnehmen (ohne Daten des Patienten). Gleiche Köpfe werden zusammengelegt;
+    // es bleiben höchstens 300 Beispiele (die am längsten nicht mehr gesehenen fallen weg).
+    function learn(memory, { text, key, doctor = '', specialty = '', fixed = false, exclude = [], day = '' }) {
+        const list = (Array.isArray(memory) ? memory : []).filter(item => Array.isArray(item?.words));
+        const words = signatureOf(text, exclude);
+        if (words.length < 3 || !byKey(key) || byKey(key).key !== key) return list;
+        const same = list.find(item => item.words.filter(word => words.includes(word)).length / Math.max(item.words.length, words.length) >= 0.8);
+        if (same) {
+            // Hat das Büro die Art von Hand gesetzt, gilt das – eine bloße Bestätigung überschreibt keine Verbesserung von Hand.
+            if (fixed || !same.fixed || same.key === key) { same.key = key; same.fixed = Boolean(fixed || (same.fixed && same.key === key)); }
+            if (doctor) same.doctor = doctor;
+            if (specialty) same.specialty = specialty;
+            same.count = (same.count || 1) + 1;
+            same.day = day || same.day || '';
+        } else list.push({ words, key, doctor, specialty, fixed: Boolean(fixed), count: 1, day });
+        return list.sort((left, right) => String(right.day || '').localeCompare(String(left.day || ''))).slice(0, 300);
+    }
+
     // Überschrift, an der man das Schriftstück in der Akte erkennt: „Arztbericht · Prof. Dr. Goldbach · Neurochirurgie“.
     function titleOf(document) {
         const kind = byKey(document.key) || byKind(document.kind);
@@ -506,7 +601,7 @@ const AkteLogic = (() => {
             : by === 'arzt' ? text(left, right, item => surname(item.doctor)) || dated(left, right) : ((left.date ? 0 : 1) - (right.date ? 0 : 1)) || dated(left, right));
     }
 
-    return { KINDS, GROUPS, byKey, byKind, fold, counterOf, analysePage, datesOf, dateOf, appointmentOf, headDateOf, doctorsOf, specialtiesOf, headingOf, describe, sortPages, titleOf, sortDocuments, surname };
+    return { duplexOrder, signatureOf, recall, learn, codeCues, KINDS, GROUPS, byKey, byKind, fold, counterOf, analysePage, datesOf, dateOf, appointmentOf, headDateOf, doctorsOf, specialtiesOf, headingOf, describe, sortPages, titleOf, sortDocuments, surname };
 })();
 
 if (typeof window !== 'undefined') window.AkteLogic = AkteLogic;

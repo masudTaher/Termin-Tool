@@ -118,21 +118,28 @@
         try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); } catch (error) { /* erster Aufruf */ }
         const messages = [];
         if (seen) {
-            if (counts.alerts > seen.alerts) messages.push('Neue Meldung aus einem Fahrzeug');
-            if (counts.damages > seen.damages) messages.push('Neuer Schaden gemeldet');
-            if (counts.accounts > seen.accounts) messages.push('Ein Konto wartet: neue Anmeldung oder Passwort vergessen');
-            if (counts.payroll > (seen.payroll || 0)) messages.push('Abrechnung: neuer Beleg oder Einwand');
-            if ((counts.absences || 0) > (seen.absences || 0)) messages.push('Festangestellte: neuer Urlaubsantrag oder neue Krank-/Notfallmeldung');
-            if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push('Festangestellte: neue Überstunden oder Belege');
-            if ((counts.documents || 0) > (seen.documents || 0)) messages.push('Neue Unterlage eines Dolmetschers (Seiten „Neue Berichte“ / „Neue Rezepte“)');
-            if ((counts.requests || 0) > (seen.requests || 0)) messages.push('Ein angefordertes Foto ist da (Fuhrpark)');
-            if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push('Ein Dolmetscher hat einen neuen Termin gemeldet (Seite „Neue Termine“)');
+            // Jede Meldung führt mit einem Klick zur passenden Seite.
+            if (counts.alerts > seen.alerts) messages.push(['Neue Meldung aus einem Fahrzeug', 'fahrzeugakte.html']);
+            if (counts.damages > seen.damages) messages.push(['Neuer Schaden gemeldet', 'fahrzeugakte.html']);
+            if (counts.accounts > seen.accounts) messages.push(['Ein Konto wartet: neue Anmeldung oder Passwort vergessen', 'team.html']);
+            if (counts.payroll > (seen.payroll || 0)) messages.push(['Abrechnung: neuer Beleg oder Einwand', 'abrechnung.html']);
+            if ((counts.absences || 0) > (seen.absences || 0)) messages.push(['Festangestellte: neuer Urlaubsantrag oder neue Krank-/Notfallmeldung', 'festangestellte.html']);
+            if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push(['Festangestellte: neue Überstunden oder Belege', 'festangestellte.html']);
+            if ((counts.documents || 0) > (seen.documents || 0)) messages.push(['Neue Unterlage eines Dolmetschers', (counts.prescriptions || 0) > (seen.prescriptions || 0) ? 'neueRezepte.html' : 'neueBerichte.html']);
+            if ((counts.requests || 0) > (seen.requests || 0)) messages.push(['Ein angefordertes Foto ist da (Fuhrpark)', 'fahrzeugakte.html']);
+            if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push(['Ein Dolmetscher hat einen neuen Termin gemeldet', 'neueTermine.html']);
             // Auf der Seite „Nachrichten“ meldet der Chat neue Nachrichten selbst (mit Namen).
-            if ((counts.chat || 0) > (seen.chat || 0) && document.body.dataset.page !== 'nachrichten') messages.push('Neue Nachricht eines Dolmetschers (Seite „Nachrichten“)');
+            if ((counts.chat || 0) > (seen.chat || 0) && document.body.dataset.page !== 'nachrichten') messages.push(['Neue Nachricht eines Dolmetschers', 'nachrichten.html']);
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
-        messages.forEach(message => {
-            if (typeof showToast === 'function') showToast(message, 'info', { duration: 10000 });
+        // Zahl am Symbol der App (wie bei WhatsApp): alles, was gerade auf die Einsatzleitung wartet.
+        try {
+            const waitingTotal = ['payroll', 'damages', 'alerts', 'requests', 'accounts', 'fest', 'appointments', 'chat'].reduce((sum, key) => sum + (Number(counts[key]) || 0), 0) + (Number(counts.reports ?? counts.documents) || 0) + (Number(counts.prescriptions) || 0);
+            if (waitingTotal > 0) navigator.setAppBadge?.(waitingTotal)?.catch?.(() => null); else navigator.clearAppBadge?.()?.catch?.(() => null);
+        } catch (error) { /* nicht jeder Browser kann das */ }
+        messages.forEach(([message, href]) => {
+            // Wie eine Mitteilung auf dem Handy: erscheint oben, bleibt kurz stehen, ein Klick öffnet die Seite.
+            if (typeof showToast === 'function') showToast(message, 'info', { duration: 9000, keep: true, href });
             if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
                 try { new Notification('Medical Office Bonn', { body: message }); } catch (error) { /* manche Browser erlauben das nur mit Service Worker */ }
             }
@@ -142,7 +149,7 @@
     window.refreshCloudInbox = refreshCloudInbox;
     window.refreshCloudUsage = () => refreshUsage(true);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCloudInbox(); });
-    window.setInterval(refreshCloudInbox, 60000);
+    window.setInterval(refreshCloudInbox, 30000);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refreshCloudInbox);
     else refreshCloudInbox();
 })();

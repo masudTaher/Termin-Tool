@@ -2,7 +2,7 @@
 // Er hält nur die Programmdateien des Portals bereit, damit die App sofort startet.
 // Daten (Fahrzeuge, Aufträge, Abrechnung) kommen immer frisch aus der Datenbank
 // und werden hier nie gespeichert.
-const CACHE = 'botschaft-portal-v15';
+const CACHE = 'botschaft-portal-v16';
 const SHELL = ['portal.html', 'style.css', 'cloudConfig.js', 'cloudClient.js', 'carSketch.js', 'receiptReader.js', 'docScan.js', 'scanCam.js', 'docPdf.js', 'contactParse.js', 'portalApp.js', 'portalRecord.js', 'portalDocs.js', 'portalAppointments.js', 'portalRequests.js', 'absenceLogic.js', 'portalPlan.js', 'manifest.json', 'icon-192.png'];
 const SHELL_PATHS = new Set(SHELL.map(file => new URL(file, self.location.href).pathname));
 
@@ -53,6 +53,9 @@ self.addEventListener('push', event => {
         badge: 'icon-192.png',
         tag: payload.tag || undefined,
         data: { url: payload.url || 'portal.html' }
+    }).then(async () => {
+        // Zahl am Symbol der App: so viele Mitteilungen warten. Beim Öffnen setzt die App die genaue Zahl (Nachrichten + offene Aufträge).
+        try { const waiting = await self.registration.getNotifications(); await self.navigator.setAppBadge?.(Math.max(1, waiting.length)); } catch (error) { /* nicht jedes Handy kann das */ }
     }));
 });
 

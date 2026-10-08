@@ -46,6 +46,10 @@
                      <input id="akteFiles" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple>
                   </label>
                   <ul id="akteFileList" class="akte-file-list" hidden></ul>
+                  <label class="check-row akte-duplex" for="akteDuplex">
+                     <input type="checkbox" id="akteDuplex">
+                     <span><strong>Vorder- und Rückseiten getrennt gescannt</strong> – erst alle Vorderseiten, danach alle Rückseiten (gleich viele Seiten; als zwei Dateien oder in einer). Das Programm legt jede Rückseite hinter ihre Vorderseite, weiße Rückseiten fallen weg.</span>
+                  </label>
                   <p class="field-hint akte-privacy">Die Seiten werden auf diesem Rechner verarbeitet – nichts wird ins Internet geschickt, bevor du am Ende auf „Speichern“ tippst.</p>
                   <details class="akte-tips">
                      <summary>Tipps zum Einscannen am Büro-Scanner</summary>
@@ -53,6 +57,7 @@
                         <li>Am Scanner <strong>PDF</strong> wählen und die ganze Akte eines Patienten in <strong>eine</strong> Datei scannen.</li>
                         <li>Auflösung <strong>200 oder 300 dpi</strong>, Farbe oder Graustufen (nicht „Schwarz-Weiß / Text“ – Stempel und blasse Schrift gehen sonst verloren).</li>
                         <li>Bedruckte Rückseiten? <strong>Beidseitig (Duplex)</strong> einschalten. Leere Rückseiten sortiert das Programm von selbst aus.</li>
+                        <li>Kann der Scanner das nicht: erst <strong>alle Vorderseiten</strong> scannen, dann den Stapel wenden und <strong>alle Rückseiten</strong> scannen – und oben „Vorder- und Rückseiten getrennt gescannt“ ankreuzen.</li>
                         <li>Heftklammern entfernen und die Blätter in der Reihenfolge der Akte einlegen – schief oder auf dem Kopf liegende Seiten werden gerade gerückt.</li>
                         <li>Die Datei darf groß sein. Je 100 Seiten dauert das Einlesen einige Minuten; das Fenster bleibt so lange geöffnet.</li>
                      </ul>
@@ -96,6 +101,8 @@
                      <button type="button" id="akteSave" class="button-primary big-button" disabled>In die Akte speichern</button>
                   </div>
                </section>
+               <p id="akteDuplexInfo" class="akte-duplex-info" role="status" hidden><span id="akteDuplexText"></span> <button type="button" id="akteDuplexFlip" class="button-secondary">Rückseiten andersherum zuordnen</button></p>
+               <p id="akteLearnInfo" class="field-hint akte-learn-info" hidden></p>
                <ul id="akteProblems" class="akte-problems" hidden></ul>
                <div id="akteGroups" class="akte-groups"></div>
                <details id="akteTray" class="directory-card akte-tray" hidden>
@@ -178,6 +185,7 @@
       <script src="cloudConfig.js"></script>
       <script src="cloudClient.js"></script>
       <script src="cloudInbox.js"></script>
+      <script src="cloudSettingsSync.js"></script>
       <script src="docScan.js"></script>
       <script src="docPdf.js"></script>
       <script src="arztVerzeichnis.js"></script>

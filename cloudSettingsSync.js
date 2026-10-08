@@ -9,7 +9,9 @@
     const ITEMS = [
         { key: 'interpreterDirectory', storage: 'terminTool.interpreterDirectory.v1', label: 'Dolmetscherliste' },
         { key: 'filterRules', storage: 'terminTool.filterRules.v1', label: 'Filterregeln' },
-        { key: 'doctorDirectory', storage: 'terminTool.doctorDirectory.v1', label: 'Ärzteverzeichnis' }
+        { key: 'doctorDirectory', storage: 'terminTool.doctorDirectory.v1', label: 'Ärzteverzeichnis' },
+        // Papierakte: was das Büro beim Einlesen bestätigt hat (Kopf eines Schriftstücks → Art, Arzt, Fachrichtung) – ohne Patientendaten
+        { key: 'akteLearn', storage: 'terminTool.akteLearn.v1', label: 'Gelerntes zur Papierakte' }
     ];
     let busy = false;
     let staff = null;

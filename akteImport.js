@@ -19,6 +19,77 @@ const AkteImport = (() => {
     const PDF_WASM = 'vendor/pdfjs/wasm/';
     const PDF_FONTS = 'vendor/pdfjs/standard_fonts/';
     const OCR_LIBRARY = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    // ---------- QR-Code auf dem Blatt? ----------
+    // Gesucht werden die drei Eck-Quadrate eines QR-Codes (dunkel–hell–dunkel–hell–dunkel im Verhältnis 1:1:3:1:1, waagerecht und
+    // senkrecht), die zusammen ein rechtwinkliges Dreieck bilden. Der Code wird nicht gelesen – es zählt nur, dass einer da ist
+    // (Blatt mit dem Zugang zu den Bildern einer Untersuchung).
+    function hasQr(canvas) {
+        try {
+            const scale = Math.min(1, 1500 / Math.max(canvas.width, canvas.height));
+            const w = Math.max(1, Math.round(canvas.width * scale)), h = Math.max(1, Math.round(canvas.height * scale));
+            const small = document.createElement('canvas');
+            small.width = w; small.height = h;
+            const context = small.getContext('2d', { willReadFrequently: true });
+            context.drawImage(canvas, 0, 0, w, h);
+            const data = context.getImageData(0, 0, w, h).data;
+            const dark = new Uint8Array(w * h);
+            for (let i = 0, p = 0; i < dark.length; i += 1, p += 4) dark[i] = (data[p] * 3 + data[p + 1] * 6 + data[p + 2]) < 1150 ? 1 : 0;      // dunkler als ≈ 115 von 255
+            // Fünf Läufe ab einer Stelle prüfen: 1:1:3:1:1 (Abweichung bis zur Hälfte eines Moduls)
+            const ratio = runs => {
+                const total = runs[0] + runs[1] + runs[2] + runs[3] + runs[4];
+                if (total < 14) return 0;
+                const unit = total / 7, slack = unit * 0.6;
+                return Math.abs(runs[0] - unit) < slack && Math.abs(runs[1] - unit) < slack && Math.abs(runs[2] - 3 * unit) < slack * 1.6 && Math.abs(runs[3] - unit) < slack && Math.abs(runs[4] - unit) < slack ? unit : 0;
+            };
+            // senkrecht durch die Mitte nachmessen
+            const upright = (x, y, unit) => {
+                if (!dark[y * w + x]) return 0;
+                let top = y, bottom = y;
+                while (top > 0 && dark[(top - 1) * w + x]) top -= 1;
+                while (bottom < h - 1 && dark[(bottom + 1) * w + x]) bottom += 1;
+                const core = bottom - top + 1;
+                if (Math.abs(core - 3 * unit) > unit * 1.2) return 0;
+                const walk = (from, step, want) => { let count = 0, at = from; while (at >= 0 && at < h && dark[at * w + x] === want && count < unit * 3) { count += 1; at += step; } return [count, at]; };
+                const [lightUp, a] = walk(top - 1, -1, 0), [darkUp] = walk(a, -1, 1);
+                const [lightDown, b] = walk(bottom + 1, 1, 0), [darkDown] = walk(b, 1, 1);
+                const fits = value => Math.abs(value - unit) < unit * 0.7;
+                return fits(lightUp) && fits(darkUp) && fits(lightDown) && fits(darkDown) ? (top + bottom) / 2 : 0;
+            };
+            const found = [];      // { x, y, unit, hits }
+            for (let y = 2; y < h - 2; y += 2) {
+                const row = y * w;
+                const runs = [];      // [Farbe, Länge, Anfang]
+                let start = 0;
+                for (let x = 1; x <= w; x += 1) {
+                    if (x === w || dark[row + x] !== dark[row + x - 1]) { runs.push([dark[row + x - 1], x - start, start]); start = x; }
+                }
+                for (let i = 0; i + 4 < runs.length; i += 1) {
+                    if (!runs[i][0]) continue;
+                    const unit = ratio([runs[i][1], runs[i + 1][1], runs[i + 2][1], runs[i + 3][1], runs[i + 4][1]]);
+                    if (!unit) continue;
+                    const cx = Math.round(runs[i + 2][2] + runs[i + 2][1] / 2);
+                    const cy = upright(cx, y, unit);
+                    if (!cy) continue;
+                    const near = found.find(item => Math.abs(item.x - cx) < unit * 2.5 && Math.abs(item.y - cy) < unit * 2.5);
+                    if (near) near.hits += 1; else found.push({ x: cx, y: cy, unit, hits: 1 });
+                }
+            }
+            const marks = found.filter(item => item.hits >= 2);
+            // Drei Ecken: zwei gleich lange Seiten im rechten Winkel, gleich große Module
+            for (let a = 0; a < marks.length; a += 1) for (let b = 0; b < marks.length; b += 1) for (let c = b + 1; c < marks.length; c += 1) {
+                if (a === b || a === c) continue;
+                const A = marks[a], B = marks[b], C = marks[c];
+                const units = [A.unit, B.unit, C.unit], unit = (units[0] + units[1] + units[2]) / 3;
+                if (Math.max(...units) > Math.min(...units) * 1.6) continue;
+                const ab = Math.hypot(B.x - A.x, B.y - A.y), ac = Math.hypot(C.x - A.x, C.y - A.y);
+                if (ab < unit * 12 || ab > unit * 180 || Math.abs(ab - ac) > Math.max(ab, ac) * 0.14) continue;
+                const cosine = ((B.x - A.x) * (C.x - A.x) + (B.y - A.y) * (C.y - A.y)) / (ab * ac);
+                if (Math.abs(cosine) < 0.16) return true;
+            }
+            return false;
+        } catch (error) { return false; }
+    }
+
     const LIMITS = {
         side: 2200,             // längere Seite der gespeicherten Seite (A4 ≈ 190 dpi)
         photoSide: 3000,        // so groß wird ein Foto geladen (das Blatt füllt es selten ganz)
@@ -263,6 +334,7 @@ const AkteImport = (() => {
             }
             info.width = sheet.width;
             info.height = sheet.height;
+            info.qr = !info.blank && hasQr(sheet);
             [info.blob, info.thumb, info.compact] = await Promise.all([toBlob(sheet, LIMITS.quality), thumbOf(sheet), DocScan.compact ? DocScan.compact(sheet) : null]);
             return info;
         }
@@ -351,7 +423,7 @@ const AkteImport = (() => {
         try { return await (api.ocrFactory || defaultOcr)(Math.max(1, count)); } catch (error) { return null; }
     }
 
-    const api = { start, openPdf, loadPdf, goodWords, looksClean, textOf, createReader, LIMITS, ocrFactory: null };
+    const api = { hasQr, start, openPdf, loadPdf, goodWords, looksClean, textOf, createReader, LIMITS, ocrFactory: null };
     return api;
 })();
 
