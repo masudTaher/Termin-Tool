@@ -17,12 +17,20 @@
     const DAY_RANGE = 120;                      // Termine der letzten 120 Tage
     const ORGANISATION = 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher';
     const SIGNATURE = 'Medical Office Bonn · Transport und Dolmetscher';
-    const DOC_STATUS = { neu: ['offen', 'Neu'], 'geprüft': ['in Arbeit', 'Geprüft'], weitergeleitet: ['erledigt', 'Weitergeleitet'] };
+    // „archiv“: aus einer eingelesenen Papierakte – steht nur in der Akte, nicht im Eingang.
+    const DOC_STATUS = { neu: ['offen', 'Neu'], 'geprüft': ['in Arbeit', 'Geprüft'], weitergeleitet: ['erledigt', 'Weitergeleitet'], archiv: ['bekannt', 'Papierakte'] };
+    // Geladen wird ohne den erkannten Text (text_content): Mit ganzen Papierakten wäre er für alle Unterlagen zusammen zu groß –
+    // die Suche im Text läuft dann in der Datenbank (Update 29). Kennt die Datenbank die Spalten der Papierakte noch nicht,
+    // wird wie früher alles geladen (fullText) und hier auf der Seite gesucht.
+    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, file_bytes, warnings, uploader_id, uploader_name, status, checked_at, checked_by, forwarded_at, forwarded_to, forwarded_by, replaced_by, edited_at, title, specialty, import_id, original_path, enhanced_at';
+    const ORDER_KEY = 'terminTool.akte.order';
+    const HANDOVER_KEY = 'terminTool.akte.patient';      // Übergabe an „Papierakte einlesen“ (bleibt in diesem Tab, steht nicht in der Adresse)
     const VISIT_STATUS = { offen: ['bekannt', 'offen'], losgefahren: ['in Arbeit', 'unterwegs'], beendet: ['erledigt', 'beendet'], alleine: ['erledigt', 'Patient ging alleine'], storniert: ['offen', 'storniert'] };
     let profile = null;
     let documents = [];
     let patients = [];
     let recipients = [];
+    let fullText = false;          // true: Die Datenbank kennt Update 29 noch nicht – der Text der Unterlagen ist mitgeladen.
     // Vier Ansichten derselben Daten:
     //   berichte – Seite „Neue Berichte“ (Dolmetscher- und Krankenhausberichte): prüfen, weiterleiten
     //   rezepte  – Seite „Neue Rezepte“ (Rezepte, Überweisungen, Sonstiges – nach Kategorie)
@@ -58,10 +66,33 @@
         return match ? `${match[3]}.${match[2]}.${match[1]}` : '';
     };
     const formatStamp = value => value ? new Date(value).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-    const docDay = doc => clean(doc.date).slice(0, 10) || (doc.created_at ? isoDay(new Date(doc.created_at)) : '');
+    // Tag einer Unterlage: ihr Datum – sonst der Tag, an dem sie hochgeladen wurde. Ein Schriftstück aus der Papierakte ohne Datum
+    // hat keinen Tag (der Tag des Einlesens sagt nichts über das Schriftstück).
+    const docDay = doc => clean(doc.date).slice(0, 10) || (doc.status === 'archiv' || doc.import_id ? '' : doc.created_at ? isoDay(new Date(doc.created_at)) : '');
     // Patienten erkennt die Seite an der Nummer; fehlt sie, am Namen.
     const patientKey = doc => clean(doc.patient_nr) || (clean(doc.patient_name) ? `name:${lower(doc.patient_name)}` : '');
     const patientLabel = doc => [clean(doc.patient_nr) ? `Patient ${clean(doc.patient_nr)}` : '', clean(doc.patient_name)].filter(Boolean).join(' · ');
+    // Überschrift einer Unterlage: aus der Papierakte „Arztbericht · Prof. Dr. Goldbach · Neurochirurgie“, sonst die Art.
+    const docTitle = doc => clean(doc.title) || doc.kind || 'Sonstiges';
+    const isImported = doc => doc.status === 'archiv' || Boolean(doc.import_id);
+    const isPdf = doc => !doc.file_path || /\.pdf$/i.test(clean(doc.file_path));
+    // Vom Handy fotografiert und noch nicht nachträglich aufbereitet („Scan verbessern“ ist möglich)
+    const canFix = doc => Boolean(window.ScanFix) && !fullText && Boolean(doc.file_path) && !doc.replaced_by && !isImported(doc) && !doc.original_path;
+    const kindLabel = kind => (window.AkteLogic ? AkteLogic.byKind(kindKey(kind))?.label : '') || kindKey(kind);
+    // Überschrift, wie sie von selbst entsteht: Art · Arzt · Fachrichtung.
+    function autoTitle({ kind, doctor, specialty }) {
+        const label = kindLabel(kind) || 'Unterlage';
+        return [label, clean(doctor), clean(specialty) && !label.includes(clean(specialty)) ? clean(specialty) : ''].filter(Boolean).join(' · ');
+    }
+    // Fachrichtung: wie eingetragen – sonst aus dem Ärzteverzeichnis, wenn der Arzt dort mit Fachrichtung steht.
+    let directoryCache = null;
+    function specialtyOf(doc) {
+        if (clean(doc.specialty)) return clean(doc.specialty);
+        if (!window.ArztVerzeichnis || !clean(doc.doctor)) return '';
+        try { directoryCache = directoryCache || ArztVerzeichnis.read(); return clean(ArztVerzeichnis.find(doc.doctor, '', directoryCache)?.specialty); } catch (error) { return ''; }
+    }
+    const surname = doctor => lower(doctor).replace(/\b(prof|dr|med|dent|pd)\b\.?/g, ' ').replace(/[,/].*$/, '').trim().split(/\s+/).pop() || '';
+    const byDay = (left, right) => docDay(right).localeCompare(docDay(left)) || String(right.created_at).localeCompare(String(left.created_at));
 
     function setStatus(message, kind = 'info') {
         const status = $('patientStatus');
@@ -96,14 +127,21 @@
     // ---------- Laden ----------
     // Alle Unterlagen, neueste zuerst – in Blöcken, weil die Datenbank höchstens 1000 Zeilen auf einmal liefert.
     async function loadDocuments() {
-        const rows = [];
-        for (let from = 0; ; from += PAGE_SIZE) {
-            const { data, error } = await client.from('tt_documents').select('*')
-                .order('created_at', { ascending: false }).order('id').range(from, from + PAGE_SIZE - 1);
-            if (error) return { error };
-            rows.push(...data);
-            if (data.length < PAGE_SIZE) return { data: rows };
+        for (const columns of [COLUMNS, '*']) {
+            const rows = [];
+            let failed = null;
+            for (let from = 0; ; from += PAGE_SIZE) {
+                const { data, error } = await client.from('tt_documents').select(columns)
+                    .order('created_at', { ascending: false }).order('id').range(from, from + PAGE_SIZE - 1);
+                if (error) { failed = error; break; }
+                rows.push(...data);
+                if (data.length < PAGE_SIZE) break;
+            }
+            if (!failed) { fullText = columns === '*'; return { data: rows }; }
+            // Spalten der Papierakte fehlen noch (Update 29)? Dann wie früher alles laden.
+            if (columns === '*' || !/column|schema cache/i.test(String(failed.message || ''))) return { error: failed };
         }
+        return { error: new Error('Die Unterlagen konnten nicht geladen werden.') };
     }
 
     // Gespeicherte Empfänger (tt_settings, Schlüssel „document_recipients“). null = Liste nicht lesbar.
@@ -148,6 +186,8 @@
             return;
         }
         documents = result.data;
+        directoryCache = null;
+        textQuery = ''; textHits = null;
         recipients = recipientList;
         patients = buildPatients();
         const ids = new Set(documents.map(doc => doc.id));
@@ -312,8 +352,9 @@
         const meta = el('span', 'doc-meta');
         const head = el('span', 'doc-head');
         const [statusColor, statusText] = DOC_STATUS[doc.status] || ['bekannt', doc.status || '–'];
-        head.append(el('strong', null, doc.kind || 'Sonstiges'), pill(statusColor, statusText));
+        head.append(el('strong', null, docTitle(doc)), pill(statusColor, statusText));
         if (doc.replaced_by) head.append(pill('bekannt', 'ersetzt durch neue Aufnahme'));
+        if (doc.enhanced_at) head.append(pill('erledigt', 'Scan verbessert'));
         const requestPill = window.PhotoRequest?.pill(doc.id);
         if (requestPill) head.append(requestPill);
         meta.append(head);
@@ -324,10 +365,19 @@
             link.title = 'Akte öffnen';
             meta.append(link);
         }
-        const visit = [doc.date ? `${isReport(doc) ? 'Bericht vom' : 'Termin'} ${formatDay(doc.date)}` : '', clean(doc.doctor)].filter(Boolean).join(' · ');
+        // Zweite Zeile: Art (wenn die Überschrift sie nicht nennt), Datum, Arzt und Fachrichtung (wenn sie nicht schon in der Überschrift stehen).
+        const imported = isImported(doc);
+        const title = lower(docTitle(doc));
+        const said = text => !clean(text) || title.includes(lower(text));
+        const visit = [
+            clean(doc.title) && !said(doc.kind) && !said(kindLabel(doc.kind)) ? kindLabel(doc.kind) : '',
+            doc.date ? `${imported ? 'Schriftstück vom' : isReport(doc) ? 'Bericht vom' : 'Termin'} ${formatDay(doc.date)}` : (imported ? 'ohne Datum' : ''),
+            said(doc.doctor) ? '' : clean(doc.doctor), said(specialtyOf(doc)) ? '' : specialtyOf(doc)
+        ].filter(Boolean).join(' · ');
         if (visit) meta.append(el('small', null, visit));
         meta.append(el('small', null, [
-            `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`,
+            imported ? `Aus der Papierakte · eingelesen von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`
+                : `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`,
             doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''
         ].filter(Boolean).join(' · ')));
         if (isReport(doc) && clean(doc.body)) meta.append(el('span', 'doc-note', excerpt(doc.body, 200)));
@@ -339,7 +389,8 @@
             meta.append(wrap);
         }
         if (doc.edited_at) meta.append(el('small', 'doc-edited', `Vom Dolmetscher geändert am ${formatStamp(doc.edited_at)}`));
-        if (doc.checked_at) meta.append(el('small', null, `Geprüft am ${formatStamp(doc.checked_at)}${clean(doc.checked_by) ? ` von ${clean(doc.checked_by)}` : ''}`));
+        // Aus der Papierakte: geprüft wurde beim Einlesen – das steht schon in der Zeile darüber.
+        if (doc.checked_at && !imported) meta.append(el('small', null, `Geprüft am ${formatStamp(doc.checked_at)}${clean(doc.checked_by) ? ` von ${clean(doc.checked_by)}` : ''}`));
         if (doc.forwarded_at) meta.append(el('small', null, `Weitergeleitet am ${formatStamp(doc.forwarded_at)}${clean(doc.forwarded_to) ? ` an ${clean(doc.forwarded_to)}` : ''}${clean(doc.forwarded_by) ? ` (${clean(doc.forwarded_by)})` : ''}`));
 
         const actions = el('span', 'vehicle-entry-actions');
@@ -347,11 +398,12 @@
             button('button-secondary fleet-end-button', 'Öffnen', node => openDocument(doc, node)),
             button('button-secondary fleet-end-button', 'Herunterladen', node => downloadDocument(doc, node))
         );
-        if (isReport(doc)) actions.append(button('button-secondary fleet-end-button doc-print', 'Drucken', node => printDocument(doc, node)));
+        // Drucken: Berichte der Dolmetscher (auch ohne Datei) und alles aus der Papierakte.
+        if (isReport(doc) || (imported && doc.file_path && isPdf(doc))) actions.append(button('button-secondary fleet-end-button doc-print', 'Drucken', node => printDocument(doc, node)));
         if (doc.status === 'neu') actions.append(button('button-primary fleet-end-button', 'Geprüft ✓', node => markChecked(doc, node)));
         actions.append(button(`${doc.status === 'geprüft' ? 'button-primary' : 'button-secondary'} fleet-end-button`, 'Weiterleiten', () => startForward([doc])));
         // Unscharf, zu dunkel, Seite fehlt? Die Person, die fotografiert hat, um eine neue Aufnahme bitten.
-        if (window.PhotoRequest && !isReport(doc) && doc.file_path && doc.uploader_id) {
+        if (window.PhotoRequest && !isReport(doc) && !imported && doc.file_path && doc.uploader_id) {
             actions.append(PhotoRequest.button({
                 kind: 'unterlage', refId: doc.id, profileId: doc.uploader_id, profileName: clean(doc.uploader_name), bucket: 'dokumente', paths: [doc.file_path],
                 title: [doc.kind, patientLabel(doc)].filter(Boolean).join(' · '),
@@ -359,6 +411,9 @@
                 context: { patient_nr: clean(doc.patient_nr), patient_name: clean(doc.patient_name), doctor: clean(doc.doctor), date: doc.date || '', kind: doc.kind || '', assignment_id: doc.assignment_id || null, appointment_id: doc.appointment_id || null }
             }, render));
         }
+        // Fotografierte Unterlagen nachträglich aufbereiten (zuschneiden, gerade rücken, weißes Papier) – das Original bleibt erhalten.
+        if (window.ScanFix && !fullText && doc.file_path && !doc.replaced_by && doc.original_path) actions.append(button('button-quiet doc-restore', 'Original wiederherstellen', node => restoreOriginal(doc, node)));
+        else if (canFix(doc)) actions.append(button('button-quiet doc-fix', 'Scan verbessern', () => ScanFix.open(doc, { profile, fileName: fileName(doc), onDone: refresh })));
         actions.append(button('button-quiet', 'Korrigieren', () => editDocument(doc)), button('button-quiet-danger', 'Löschen', node => deleteDocument(doc, node)));
         row.append(check, meta, actions);
         return row;
@@ -430,16 +485,37 @@
         return hits.sort((left, right) => left.rank - right.rank || left.patient.nr.localeCompare(right.patient.nr, 'de', { numeric: true }));
     }
 
+    // Treffer im erkannten Text der Unterlagen: Die Datenbank sucht (Update 29) und nennt die Patienten; hier steht das letzte Ergebnis.
+    let textQuery = '';            // Suchtext, zu dem textHits gehört
+    let textHits = null;           // Patienten (Schlüssel) mit Treffer im Text
+    let textTimer = 0;
+    let textRun = 0;
+    function searchInText(phrase) {
+        window.clearTimeout(textTimer);
+        const run = ++textRun;
+        textTimer = window.setTimeout(async () => {
+            let rows = [];
+            try { const { data, error } = await client.rpc('tt_document_search', { p_query: phrase }); rows = error ? [] : data || []; } catch (error) { rows = []; }
+            if (run !== textRun || lower($('patientSearch').value) !== phrase) return;      // inzwischen wurde weitergetippt
+            textQuery = phrase;
+            textHits = new Set(rows.map(row => clean(row.patient_nr) || (clean(row.patient_name) ? `name:${lower(row.patient_name)}` : '')).filter(Boolean));
+            renderSearch();
+        }, 350);
+    }
+    const textPending = phrase => !fullText && phrase.length >= 3 && textQuery !== phrase;
+
     function searchPatients(query) {
         const dated = searchByDate(query);
         if (dated) return dated;
         const phrase = lower(query);
         const words = phrase.split(/\s+/).filter(Boolean);
         const hits = [];
+        const inText = patient => phrase.length >= 3 && ([...patient.documents, ...patient.reports].some(doc => lower(doc.text_content).includes(phrase) || lower(doc.body).includes(phrase) || lower(doc.title).includes(phrase) || lower(doc.specialty).includes(phrase))
+            || (textQuery === phrase && Boolean(textHits?.has(patient.key))));
         patients.forEach(patient => {
             const own = [lower(patient.nr), ...patient.names].join(' ');
             if (words.every(word => own.includes(word))) hits.push({ patient, rank: lower(patient.nr) === phrase ? 0 : lower(patient.nr).startsWith(phrase) ? 1 : 2, inText: false });
-            else if (phrase.length >= 3 && [...patient.documents, ...patient.reports].some(doc => lower(doc.text_content).includes(phrase) || lower(doc.body).includes(phrase))) hits.push({ patient, rank: 3, inText: true });
+            else if (inText(patient)) hits.push({ patient, rank: 3, inText: true });
         });
         return hits.sort((left, right) => left.rank - right.rank);
     }
@@ -453,8 +529,11 @@
             return;
         }
         const hits = searchPatients(query);
-        $('searchInfo').textContent = !hits.length ? 'Kein Patient gefunden. Prüfe die Nummer oder die Schreibweise.'
-            : `${hits.length} Treffer${hits.length > 30 ? ' – die ersten 30 werden gezeigt. Tippe mehr Zeichen ein.' : ''}`;
+        // Der Text der Unterlagen wird in der Datenbank durchsucht – das Ergebnis kommt einen Augenblick später dazu.
+        const waiting = !searchByDate(query) && textPending(lower(query));
+        if (waiting) searchInText(lower(query));
+        $('searchInfo').textContent = !hits.length ? (waiting ? 'Der Text der Unterlagen wird durchsucht …' : 'Kein Patient gefunden. Prüfe die Nummer oder die Schreibweise.')
+            : `${hits.length} Treffer${hits.length > 30 ? ' – die ersten 30 werden gezeigt. Tippe mehr Zeichen ein.' : ''}${waiting ? ' · der Text der Unterlagen wird noch durchsucht …' : ''}`;
         $('patientResults').replaceChildren(...hits.slice(0, 30).map(hit => patientCard(hit.patient, hit.hint || (hit.inText ? 'Treffer im Text' : ''))));
     }
 
@@ -477,17 +556,55 @@
     let chartTab = 'uebersicht';
     let chartVisits = null;        // Termine der offenen Akte (null = lädt noch)
     let chartReported = null;      // von Dolmetschern gemeldete neue Termine
+    let chartViews = [];           // Abrufe der Akte durch Dolmetscher (tt_document_access), neueste zuerst
     let chartFor = '';
-    const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['sonstiges', 'Sonstiges']];
+    // „Befunde“ und „Kosten“ kommen aus eingelesenen Papierakten – die Reiter erscheinen nur, wenn es dort etwas gibt.
+    const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['befunde', 'Befunde'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['kosten', 'Kosten'], ['sonstiges', 'Sonstiges']];
+    const CHART_EMPTY = { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', befunde: 'Keine Befunde (Labor, Bildgebung).',
+        rezepte: 'Für diesen Patienten gibt es noch kein Rezept.', ueberweisung: 'Für diesen Patienten gibt es noch keine Überweisung.', kosten: 'Keine Rechnungen oder Kostenvoranschläge.', sonstiges: 'Keine sonstigen Unterlagen.' };
+    const isBefund = doc => !isReport(doc) && kindKey(doc.kind).startsWith('Befund');
+    const isKosten = doc => !isReport(doc) && kindKey(doc.kind).startsWith('Kosten');
+    // Ordnen innerhalb der Akte: nach Datum (neueste zuerst), nach Fachrichtung oder nach Arzt – die Wahl bleibt gemerkt.
+    const CHART_ORDERS = [['datum', 'Datum'], ['fach', 'Fachrichtung'], ['arzt', 'Arzt']];
+    let chartOrder = (() => { try { const saved = localStorage.getItem(ORDER_KEY); return CHART_ORDERS.some(([key]) => key === saved) ? saved : 'datum'; } catch (error) { return 'datum'; } })();
+    // Unterlagen eines Reiters in Abschnitten: [{ title, docs }] – je nach Ordnung nach Kategorie, Fachrichtung oder Arzt.
+    function chartSections(docs, prefix) {
+        const sorted = [...docs].sort(byDay);
+        const grouped = (pick, missing, compare) => {
+            const map = new Map();
+            sorted.forEach(doc => { const key = pick(doc) || missing; if (!map.has(key)) map.set(key, []); map.get(key).push(doc); });
+            return [...map.keys()].sort((left, right) => (left === missing) - (right === missing) || compare(left, right)).map(key => ({ title: `${key} (${map.get(key).length})`, docs: map.get(key) }));
+        };
+        if (chartOrder === 'fach') return grouped(specialtyOf, 'Ohne Fachrichtung', (left, right) => left.localeCompare(right, 'de'));
+        if (chartOrder === 'arzt') return grouped(doc => clean(doc.doctor), 'Ohne Arzt', (left, right) => surname(left).localeCompare(surname(right), 'de') || left.localeCompare(right, 'de'));
+        // nach Datum: Rezepte, Überweisungen, Befunde und Kosten bleiben nach Kategorie getrennt (Medikamente, Physiotherapie …)
+        if (prefix && new Set(sorted.map(doc => kindKey(doc.kind))).size > 1) return grouped(doc => kindKey(doc.kind).slice(prefix.length).trim() || kindKey(doc.kind), 'Sonstiges', (left, right) => left.localeCompare(right, 'de'));
+        if (prefix && sorted.length) return [{ title: `${kindKey(sorted[0].kind).slice(prefix.length).trim() || kindKey(sorted[0].kind)} (${sorted.length})`, docs: sorted }];
+        return [{ title: '', docs: sorted }];
+    }
+    // Eingelesene Papierakten dieses Patienten: je Einlesen eine Zeile (lässt sich im Ganzen zurücknehmen).
+    function importsOf(patient) {
+        const map = new Map();
+        [...patient.documents, ...patient.reports].forEach(doc => {
+            if (!doc.import_id) return;
+            const item = map.get(doc.import_id) || { id: doc.import_id, docs: [], pages: 0, at: doc.created_at, by: clean(doc.uploader_name) };
+            item.docs.push(doc); item.pages += Number(doc.pages || 0);
+            if (String(doc.created_at) < String(item.at)) item.at = doc.created_at;
+            map.set(doc.import_id, item);
+        });
+        return [...map.values()].sort((left, right) => String(right.at).localeCompare(String(left.at)));
+    }
     function renderChart(patient) {
         const box = $('fileChart');
         const reports = documents.filter(doc => isReport(doc) && mentions(doc, patient));
-        const parts = { berichte: reports, arzt: patient.documents.filter(TYPE_TABS.arzt.test), rezepte: patient.documents.filter(TYPE_TABS.rezepte.test), ueberweisung: patient.documents.filter(TYPE_TABS.ueberweisung.test), sonstiges: patient.documents.filter(TYPE_TABS.sonstiges.test) };
+        const parts = { berichte: reports, arzt: patient.documents.filter(TYPE_TABS.arzt.test), befunde: patient.documents.filter(isBefund), rezepte: patient.documents.filter(TYPE_TABS.rezepte.test),
+            ueberweisung: patient.documents.filter(TYPE_TABS.ueberweisung.test), kosten: patient.documents.filter(isKosten), sonstiges: patient.documents.filter(doc => TYPE_TABS.sonstiges.test(doc) && !isBefund(doc) && !isKosten(doc)) };
+        if ((chartTab === 'befunde' || chartTab === 'kosten') && !parts[chartTab].length) chartTab = 'uebersicht';
         const today = isoDay(new Date());
         const visits = chartVisits || [];
         const reported = chartReported || [];
         const coming = [...visits.filter(visit => visit.date >= today).map(visit => `${visit.date} ${visitTime(visit.record)}`), ...reported.filter(item => item.date >= today).map(item => `${item.date} ${clean(item.time).slice(0, 5)}`)].sort()[0];
-        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, sonstiges: parts.sonstiges.length };
+        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, befunde: parts.befunde.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, kosten: parts.kosten.length, sonstiges: parts.sonstiges.length };
 
         // Kopf
         const head = el('div', 'chart-head');
@@ -502,11 +619,19 @@
         fact('Unterlagen', String(patient.documents.length));
         fact('Berichte', String(reports.length));
         head.append(el('i', 'patient-avatar chart-avatar', initials), id, facts);
+        // Papierakte dieses Patienten einlesen: Nummer, Name und Geburtsdatum gehen mit (im Speicher dieses Tabs, nicht in der Adresse).
+        const importButton = button('button-secondary chart-import', 'Papierakte einlesen', () => {
+            try { sessionStorage.setItem(HANDOVER_KEY, JSON.stringify({ nr: patient.nr, name: patient.name, birth: patient.birth })); } catch (error) { /* dann eben von Hand eintragen */ }
+            window.location.href = 'akteEinlesen.html';
+        });
+        importButton.title = 'Die Papierakte dieses Patienten als Scan-Datei einlesen und sortiert in diese Akte legen';
+        head.append(importButton);
 
         // Reiter
         const tabs = el('div', 'doc-type-tabs chart-tabs');
         tabs.setAttribute('role', 'tablist');
         CHART_TABS.forEach(([key, label]) => {
+            if ((key === 'befunde' || key === 'kosten') && !counts[key]) return;
             const tab = button(key === chartTab ? 'is-active' : '', label, () => { chartTab = key; renderChart(patient); updateSelection(); });
             tab.setAttribute('role', 'tab');
             tab.setAttribute('aria-selected', String(key === chartTab));
@@ -532,8 +657,8 @@
             const events = [
                 ...visits.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
                 ...reported.map(item => ({ day: item.date, kind: 'Neuer Termin', tab: 'termine', text: [clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : '', clean(item.place), clean(item.description)].filter(Boolean).join(' · ') })),
-                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: doc.kind || 'Sonstiges', tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : 'sonstiges',
-                    text: [clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status }))
+                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
+                    text: [lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status }))
             ].sort((left, right) => String(right.day).localeCompare(String(left.day)));
             if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
             if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', 'In dieser Akte steht noch nichts.'));
@@ -552,6 +677,33 @@
                 line.append(row);
             });
             body.append(line);
+            // Fotografierte Unterlagen dieser Akte auf einmal aufbereiten (zuschneiden, aufhellen) – die Originale bleiben.
+            const fixable = [...patient.documents, ...patient.reports].filter(canFix);
+            if (fixable.length) {
+                const row = el('div', 'chart-fix');
+                row.append(el('span', null, `${plural(fixable.length, 'fotografierte Unterlage', 'fotografierte Unterlagen')} in dieser Akte ${fixable.length === 1 ? 'lässt' : 'lassen'} sich wie in einer Scan-App aufbereiten.`),
+                    button('button-secondary chart-fix-button', `Scans dieser Akte verbessern (${fixable.length})`, () => ScanFix.batch(fixable, { label: [patient.nr ? `Patient ${patient.nr}` : '', patient.name].filter(Boolean).join(' · '), onDone: refresh })));
+                body.append(row);
+            }
+            // Eingelesene Papierakten: wann, von wem, wie viel – und der Weg, ein Einlesen im Ganzen zurückzunehmen.
+            const imports = importsOf(patient);
+            if (imports.length) {
+                const list = el('ul', 'chart-imports');
+                imports.forEach(item => {
+                    const row = el('li');
+                    row.dataset.importId = item.id;
+                    row.append(el('span', null, `Papierakte eingelesen am ${formatStamp(item.at)}${item.by ? ` von ${item.by}` : ''} · ${plural(item.docs.length, 'Schriftstück', 'Schriftstücke')} · ${plural(item.pages, 'Seite', 'Seiten')}`),
+                        button('button-quiet-danger', 'Einlesen zurücknehmen', node => undoImport(patient, item, node)));
+                    list.append(row);
+                });
+                body.append(el('h4', 'file-date', 'Eingelesene Papierakten'), list);
+            }
+            // Abrufe: welcher Dolmetscher hat die Akte wann geöffnet (zur Vorbereitung auf einen zugesagten Auftrag)?
+            if (chartViews.length) {
+                const list = el('ul', 'chart-imports chart-views');
+                chartViews.forEach(view => list.append(el('li', null, `${formatStamp(view.at)} · ${clean(view.viewer_name) || 'unbekannt'} · ${plural(Number(view.documents || 0), 'Unterlage', 'Unterlagen')}`)));
+                body.append(el('h4', 'file-date', 'Abrufe durch Dolmetscher'), list);
+            }
         } else if (chartTab === 'termine') {
             if (!patient.nr) body.append(el('p', 'directory-empty', 'Ohne Patientennummer lassen sich keine Termine zuordnen.'));
             else if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
@@ -561,17 +713,29 @@
                 node.append(...(visits.length ? visits.map(visitEntry) : [el('li', 'directory-empty', `In den letzten ${DAY_RANGE} Tagen gibt es keine Termine für diesen Patienten.`)]));
                 body.append(el('h4', 'file-date', 'Termine aus dem Tagesplan'), node);
             }
-        } else if (chartTab === 'rezepte' || chartTab === 'ueberweisung') {
-            // Nach Kategorie geordnet (Medikamente, Physiotherapie, Hilfsmittel …)
-            const docs = parts[chartTab];
-            const prefix = TYPE_TABS[chartTab].prefix;
-            if (!docs.length) body.append(el('p', 'directory-empty', chartTab === 'rezepte' ? 'Für diesen Patienten gibt es noch kein Rezept.' : 'Für diesen Patienten gibt es noch keine Überweisung.'));
-            [...new Set(docs.map(doc => kindKey(doc.kind)))].sort((left, right) => left.localeCompare(right, 'de')).forEach(kind => {
-                const group = docs.filter(doc => kindKey(doc.kind) === kind);
-                body.append(el('h4', 'file-date', `${kind.slice(prefix.length).trim() || kind} (${group.length})`), list(group, ''));
-            });
         } else {
-            body.append(list(parts[chartTab], { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', sonstiges: 'Keine sonstigen Unterlagen.' }[chartTab]));
+            // Unterlagen dieses Reiters – geordnet nach Datum, Fachrichtung oder Arzt.
+            const docs = parts[chartTab];
+            if (docs.length > 1) {
+                const tools = el('div', 'chart-tools');
+                const order = el('div', 'akte-order');
+                order.setAttribute('role', 'group');
+                order.setAttribute('aria-label', 'Ordnen nach');
+                CHART_ORDERS.forEach(([key, label]) => {
+                    const choice = button('', label, () => { chartOrder = key; try { localStorage.setItem(ORDER_KEY, key); } catch (error) { /* gilt dann bis zum Neuladen */ } renderChart(patient); updateSelection(); });
+                    choice.dataset.chartOrder = key;
+                    choice.setAttribute('aria-pressed', String(key === chartOrder));
+                    order.append(choice);
+                });
+                tools.append(el('span', 'chart-tools-label', 'Ordnen nach'), order);
+                body.append(tools);
+            }
+            const prefix = { rezepte: 'Rezept', ueberweisung: 'Überweisung', befunde: 'Befund', kosten: 'Kosten' }[chartTab] || '';
+            if (!docs.length) body.append(prefix ? el('p', 'directory-empty', CHART_EMPTY[chartTab]) : list([], CHART_EMPTY[chartTab]));
+            else chartSections(docs, prefix).forEach(section => {
+                if (section.title) body.append(el('h4', 'file-date', section.title));
+                body.append(list(section.docs, ''));
+            });
         }
         box.replaceChildren(head, tabs, body);
         box.hidden = false;
@@ -579,12 +743,15 @@
     // Termine und gemeldete Termine der Akte laden (einmal je geöffneter Akte).
     async function loadChart(patient) {
         if (chartFor === patient.key && chartVisits != null) return;
-        chartFor = patient.key; chartVisits = null; chartReported = null;
-        const [loaded, reported] = await Promise.all([patient.nr ? loadDays() : null,
-            patient.nr ? Promise.resolve(client.from('tt_new_appointments').select('*').eq('patient_nr', patient.nr).order('date', { ascending: false })).then(result => result.error ? [] : result.data || [], () => []) : []]);
+        chartFor = patient.key; chartVisits = null; chartReported = null; chartViews = [];
+        const [loaded, reported, views] = await Promise.all([patient.nr ? loadDays() : null,
+            patient.nr ? Promise.resolve(client.from('tt_new_appointments').select('*').eq('patient_nr', patient.nr).order('date', { ascending: false })).then(result => result.error ? [] : result.data || [], () => []) : [],
+            // Wer hat die Akte zur Vorbereitung auf einen Auftrag abgerufen? (Die Datenbank hält jeden Abruf fest.)
+            patient.nr ? Promise.resolve(client.from('tt_document_access').select('at, viewer_name, documents').eq('patient_nr', patient.nr).order('at', { ascending: false }).limit(12)).then(result => result.error ? [] : result.data || [], () => []) : []]);
         if (chartFor !== patient.key) return;
         chartVisits = loaded ? visitsFor(loaded, patient.nr) : [];
         chartReported = reported;
+        chartViews = views;
         if (openKey === patient.key) { renderChart(patient); updateSelection(); }
     }
 
@@ -592,6 +759,13 @@
         const patient = patients.find(item => item.key === openKey);
         $('patientFile').hidden = !patient;
         $('patientApp').classList.toggle('has-file', Boolean(patient));
+        // In der offenen Akte steht der Knopf „Papierakte einlesen“ im Kopf der Akte (für genau diesen Patienten).
+        if (VIEW === 'archiv') {
+            $('akteImportLink').hidden = Boolean(patient);
+            const fixable = documents.filter(canFix);
+            $('fixAllButton').hidden = Boolean(patient) || !fixable.length;
+            $('fixAllButton').textContent = `Alle Scans verbessern (${fixable.length})`;
+        }
         if (!patient) { openKey = ''; return; }
         if (VIEW === 'archiv') {
             $('fileTitle').textContent = 'Patientenakte';
@@ -847,8 +1021,9 @@
         const what = [`„${doc.kind || 'Unterlage'}“`, patientLabel(doc)].filter(Boolean).join(' · ');
         if (!await confirmDialog(`${what} endgültig löschen? Eintrag und Datei lassen sich danach nicht wiederherstellen.`, 'Löschen')) return;
         node.disabled = true;
-        if (doc.file_path) {
-            const { error } = await client.storage.from(BUCKET).remove([doc.file_path]);
+        const paths = [doc.file_path, doc.original_path].map(clean).filter(Boolean);      // auch das aufbewahrte Original („Scan verbessern“)
+        if (paths.length) {
+            const { error } = await client.storage.from(BUCKET).remove(paths);
             if (error) { node.disabled = false; showToast(`Die Datei konnte nicht gelöscht werden: ${TerminCloud.germanError(error)}`, 'error'); return; }
         }
         const { error } = await client.from('tt_documents').delete().eq('id', doc.id);
@@ -858,15 +1033,56 @@
         await refresh();
     }
 
+    // Ein ganzes Einlesen zurücknehmen: alle Schriftstücke dieser Papierakte samt Dateien. Erst die Dateien, dann die Einträge –
+    // schlägt etwas fehl, bleiben die Einträge sichtbar und das Zurücknehmen lässt sich wiederholen.
+    async function undoImport(patient, item, node) {
+        const count = item.docs.length;
+        const label = [patient.nr ? `Patient ${patient.nr}` : '', patient.name].filter(Boolean).join(' · ');
+        if (!await confirmDialog(`Das Einlesen vom ${formatStamp(item.at)} zurücknehmen?\n\n${plural(count, 'Schriftstück', 'Schriftstücke')} mit ${plural(item.pages, 'Seite', 'Seiten')} aus der Papierakte von ${label || 'diesem Patienten'} werden endgültig gelöscht – Einträge und Dateien. Was die Dolmetscher selbst hochgeladen haben, bleibt.`, 'Endgültig löschen', 'Abbrechen')) return;
+        node.disabled = true;
+        const paths = item.docs.flatMap(doc => [doc.file_path, doc.original_path]).map(clean).filter(Boolean);
+        for (let from = 0; from < paths.length; from += 100) {
+            const { error } = await client.storage.from(BUCKET).remove(paths.slice(from, from + 100));
+            if (error) { node.disabled = false; showToast(`Die Dateien konnten nicht gelöscht werden: ${TerminCloud.germanError(error)}`, 'error'); return; }
+        }
+        const { error } = await client.from('tt_documents').delete().eq('import_id', item.id);
+        if (error) { node.disabled = false; showToast(TerminCloud.germanError(error), 'error'); return; }
+        item.docs.forEach(doc => selected.delete(doc.id));
+        showToast(`Einlesen zurückgenommen: ${plural(count, 'Schriftstück', 'Schriftstücke')} gelöscht`, 'success');
+        await refresh();
+    }
+
+    // „Scan verbessern“ zurücknehmen: Die frühere Datei gilt wieder, die verbesserte wird gelöscht.
+    async function restoreOriginal(doc, node) {
+        if (!await confirmDialog(`Den verbesserten Scan von „${docTitle(doc)}“ verwerfen und das Original wiederherstellen?`, 'Original wiederherstellen', 'Abbrechen')) return;
+        node.disabled = true;
+        const improved = doc.file_path;
+        const { data, error } = await client.from('tt_documents').update({ file_path: doc.original_path, original_path: null, enhanced_at: null, file_bytes: null }).eq('id', doc.id).eq('file_path', improved).select();
+        if (error || !data?.length) { node.disabled = false; showToast(error ? TerminCloud.germanError(error) : 'Die Unterlage wurde inzwischen geändert. Bitte die Seite aktualisieren.', 'error'); return; }
+        if (improved) await client.storage.from(BUCKET).remove([improved]);      // bleibt die Datei liegen, stört sie nicht – der Eintrag zeigt schon auf das Original
+        showToast('Das Original ist wiederhergestellt', 'success');
+        await refresh();
+    }
+
     // ---------- Angaben einer Unterlage korrigieren (falsche Art, falscher Patient, falsches Datum …) ----------
     let editedDoc = null;
     function editDocument(doc) {
         editedDoc = doc;
-        const kinds = isReport(doc) ? [REPORT_KIND] : [...new Set([...ALL_KINDS.filter(kind => kind !== REPORT_KIND), kindKey(doc.kind) || 'Sonstiges'])];
+        // Arten: die der Dolmetscher-App und die der Papierakte (Befund Labor, Kosten Rechnung, Terminzettel …).
+        const paperKinds = window.AkteLogic && !fullText ? AkteLogic.KINDS.map(item => item.kind) : [];
+        const kinds = isReport(doc) && !isImported(doc) ? [REPORT_KIND] : [...new Set([...ALL_KINDS.filter(kind => kind !== REPORT_KIND), ...paperKinds, kindKey(doc.kind) || 'Sonstiges'])];
         $('docEditKind').replaceChildren(...kinds.map(kind => { const option = el('option', null, kind); option.value = kind; return option; }));
         $('docEditKind').value = isReport(doc) ? REPORT_KIND : kindKey(doc.kind) || 'Sonstiges';
-        $('docEditKind').disabled = isReport(doc);
-        $('docEditInfo').textContent = `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`;
+        $('docEditKind').disabled = isReport(doc) && !isImported(doc);
+        $('docEditInfo').textContent = isImported(doc) ? `Aus der Papierakte · eingelesen von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`
+            : `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`;
+        $('docEditDateLabel').textContent = isImported(doc) ? 'Datum des Schriftstücks' : 'Datum des Termins';
+        // Überschrift und Fachrichtung gibt es erst mit Update 29.
+        ['docEditHeading', 'docEditSpecialty'].forEach(id => { $(id).hidden = fullText; document.querySelector(`label[for="${id}"]`).hidden = fullText; });
+        $('docEditHeading').value = clean(doc.title);
+        $('docEditSpecialty').value = clean(doc.specialty);
+        $('docEditStatus').querySelector('option[value="archiv"]').hidden = fullText;
+        if (!fullText) $('docEditSpecialtyList').replaceChildren(...[...new Set(documents.map(specialtyOf).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'de')).map(value => { const option = el('option'); option.value = value; return option; }));
         $('docEditNr').value = clean(doc.patient_nr);
         $('docEditName').value = clean(doc.patient_name);
         $('docEditDate').value = clean(doc.date).slice(0, 10);
@@ -886,6 +1102,13 @@
             kind: $('docEditKind').value, patient_nr: clean($('docEditNr').value), patient_name: clean($('docEditName').value).replace(/\s+/g, ' '),
             date: $('docEditDate').value || null, doctor: clean($('docEditDoctor').value), note: clean($('docEditNote').value), status
         };
+        if (!fullText) {
+            // Überschrift: leer oder unverändert die selbst entstandene → sie folgt der neuen Art, dem Arzt und der Fachrichtung.
+            const typed = clean($('docEditHeading').value);
+            changes.specialty = clean($('docEditSpecialty').value);
+            const fresh = autoTitle({ kind: changes.kind, doctor: changes.doctor, specialty: changes.specialty });
+            changes.title = !typed ? (isImported(doc) || status === 'archiv' ? fresh : '') : typed === autoTitle(doc) ? fresh : typed;
+        }
         // Stand zurückgesetzt: die Vermerke „geprüft“ / „weitergeleitet“ passen dann nicht mehr.
         if (status === 'neu') Object.assign(changes, { checked_at: null, checked_by: '', forwarded_at: null, forwarded_to: '', forwarded_by: '' });
         else if (status === 'geprüft') Object.assign(changes, { checked_at: doc.checked_at || new Date().toISOString(), checked_by: doc.checked_by || profile.full_name || '', forwarded_at: null, forwarded_to: '', forwarded_by: '' });
@@ -978,20 +1201,20 @@
         const lines = ['Guten Tag,', '', nr || name ? 'anbei die Unterlagen zu folgendem Patienten:' : 'anbei die folgenden Unterlagen:', ''];
         if (nr) lines.push(`Patientennummer: ${nr}`);
         if (name) lines.push(`Patient/in: ${name}`);
-        if (sameVisit) lines.push(`${docs.every(isReport) ? 'Datum' : 'Termin'}: ${sameVisit}`);
+        if (sameVisit) lines.push(`${docs.every(doc => isReport(doc) || isImported(doc)) ? 'Datum' : 'Termin'}: ${sameVisit}`);
         if (nr || name || sameVisit) lines.push('');
         docs.forEach((doc, index) => {
             const link = forwardLinks.get(doc.id);
-            if (short) { lines.push(`${index + 1}) ${doc.kind}: ${link}`); return; }
+            if (short) { lines.push(`${index + 1}) ${docTitle(doc)}: ${link}`); return; }
             if (index) lines.push('');
-            lines.push(`${index + 1}) ${doc.kind}${doc.pages ? ` (${plural(doc.pages, 'Seite', 'Seiten')})` : ''}`);
-            if (!sameVisit && visitText(doc)) lines.push(`   ${isReport(doc) ? 'Datum' : 'Termin'}: ${visitText(doc)}`);
+            lines.push(`${index + 1}) ${docTitle(doc)}${doc.pages ? ` (${plural(doc.pages, 'Seite', 'Seiten')})` : ''}`);
+            if (!sameVisit && visitText(doc)) lines.push(`   ${isReport(doc) || isImported(doc) ? 'Datum' : 'Termin'}: ${visitText(doc)}`);
             if (clean(doc.note)) lines.push(`   Hinweis: ${clean(doc.note)}`);
             if (link) lines.push(`   PDF (7 Tage gültig): ${link}`);
             else if (clean(doc.body)) lines.push(...clean(doc.body).split(/\r?\n/).map(line => `   ${line}`.trimEnd()));
         });
         lines.push('');
-        const uploaders = [...new Set(docs.map(doc => clean(doc.uploader_name)).filter(Boolean))];
+        const uploaders = [...new Set(docs.filter(doc => !isImported(doc)).map(doc => clean(doc.uploader_name)).filter(Boolean))];
         if (!short && uploaders.length) lines.push(`${docs.every(isReport) ? 'Geschrieben' : 'Fotografiert'} von: ${uploaders.join(', ')}`, '');
         lines.push(...['Mit freundlichen Grüßen', clean(profile.full_name), SIGNATURE].filter(Boolean));
         return lines.join('\n');
@@ -1168,7 +1391,7 @@
         $('forwardTitle').textContent = forwardDocs.length === 1 ? 'Unterlage weiterleiten' : `${forwardDocs.length} Unterlagen weiterleiten`;
         $('forwardItems').replaceChildren(...forwardDocs.map((doc, index) => {
             const row = el('li');
-            row.append(el('strong', null, `${index + 1}) ${doc.kind}`), el('span', null, [patientLabel(doc), doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''].filter(Boolean).join(' · ')));
+            row.append(el('strong', null, `${index + 1}) ${docTitle(doc)}`), el('span', null, [patientLabel(doc), doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''].filter(Boolean).join(' · ')));
             (Array.isArray(doc.warnings) ? doc.warnings : []).map(clean).filter(Boolean).forEach(text => row.append(warningPill(text)));
             return row;
         }));
@@ -1218,9 +1441,13 @@
     async function askForwarded(target) {
         const docs = forwardDocs;
         if (!await confirmDialog('Wurde die Nachricht gesendet? Dann markiere ich die Unterlagen als weitergeleitet.', 'Ja, weitergeleitet', 'Noch nicht')) return;
-        const { error } = await client.from('tt_documents')
-            .update({ status: 'weitergeleitet', forwarded_at: new Date().toISOString(), forwarded_to: target, forwarded_by: profile.full_name || '' })
-            .in('id', docs.map(doc => doc.id));
+        // Unterlagen aus der Papierakte bleiben in der Akte („archiv“) – vermerkt wird nur, wann und an wen sie gingen.
+        const mark = { forwarded_at: new Date().toISOString(), forwarded_to: target, forwarded_by: profile.full_name || '' };
+        const inbox = docs.filter(doc => doc.status !== 'archiv').map(doc => doc.id);
+        const paper = docs.filter(doc => doc.status === 'archiv').map(doc => doc.id);
+        let error = null;
+        if (inbox.length) ({ error } = await client.from('tt_documents').update({ status: 'weitergeleitet', ...mark }).in('id', inbox));
+        if (!error && paper.length) ({ error } = await client.from('tt_documents').update(mark).in('id', paper));
         if (error) { dialogStatus('forwardStatus', TerminCloud.germanError(error), 'error'); return; }
         docs.forEach(doc => selected.delete(doc.id));
         if ($('forwardDialog').open) $('forwardDialog').close();
@@ -1295,6 +1522,7 @@
         if (docs.length) startForward(docs);
     }));
     $('fileClose').addEventListener('click', closePatient);
+    $('fixAllButton').addEventListener('click', () => { const fixable = documents.filter(canFix); if (fixable.length) ScanFix.batch(fixable, { label: 'alle Patientenakten', onDone: refresh }); });
     $('patientReload').addEventListener('click', () => { daysPromise = null; refresh(); });
     // Zurück im Tab: neue Unterlagen holen – aber nicht, solange ein Dialog offen ist.
     document.addEventListener('visibilitychange', () => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(); });
@@ -1336,7 +1564,7 @@
         alles: ['ONLINE · PATIENTEN', 'Patienten und Unterlagen', 'Arztberichte, Rezepte, Überweisungen und Berichte der Dolmetscher – nach Patient geordnet.']
     };
     if (HEADINGS[VIEW] && $('viewTitle')) { $('viewKicker').textContent = HEADINGS[VIEW][0]; $('viewTitle').textContent = HEADINGS[VIEW][1]; $('viewLead').textContent = HEADINGS[VIEW][2]; }
-    if (VIEW === 'archiv') { $('docTitle').textContent = 'Alle Patientenakten'; $('searchTitle').textContent = 'Patientenakte suchen'; }
+    if (VIEW === 'archiv') { $('docTitle').textContent = 'Alle Patientenakten'; $('searchTitle').textContent = 'Patientenakte suchen'; $('akteImportLink').hidden = false; }
     if (VIEW === 'rezepte') $('docTitle').textContent = 'Rezepte und Überweisungen';
     if (VIEW === 'berichte') $('docTitle').textContent = 'Berichte';
     // Sprung aus „Neue Berichte“ / „Neue Rezepte“: patienten.html?akte=4103 öffnet gleich die Akte.

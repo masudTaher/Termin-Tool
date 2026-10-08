@@ -33,6 +33,9 @@
                <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
             </button>
             <span class="portal-header-actions" id="portalHeaderActions" hidden>
+               <a class="icon-button switch-office" id="switchToOffice" href="index.html" aria-label="Zur Einsatzleitung wechseln" title="Zur Einsatzleitung wechseln" hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>
+               </a>
                <button type="button" class="icon-button" id="openMessages" aria-label="Nachrichten">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.500 2 6.500H4c0-1 2-2 2-6.500z"/><path d="M10 19.500a2 2 0 0 0 4 0"/></svg>
                   <em id="messagesBadge" class="tab-badge" hidden></em>
@@ -388,10 +391,6 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.500" width="16" height="14" rx="2"/><path d="M4 10h16M8.500 3.500v4M15.500 3.500v4"/><path d="M12 12.500v4M10 14.500h4"/></svg>
                         <strong>Neuen Termin melden</strong><small>mit Terminzettel als Nachweis</small>
                      </button>
-                     <button type="button" class="action-tile" data-go="receipts">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.500h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.500h6M9 12.500h6"/></svg>
-                        <strong>Parkticket / Beleg</strong><small>Betrag wird automatisch gelesen</small>
-                     </button>
                   </div>
                </section>
                <section class="directory-card" aria-labelledby="docListTitle">
@@ -433,7 +432,7 @@
 
                <div data-doc-step="3" hidden>
                   <h2 class="wizard-title">Seiten scannen</h2>
-                  <p class="wizard-hint">Leg das Blatt auf einen dunklen, glatten Untergrund. Die Kamera öffnet sich hier in der App: Blatt in den Rahmen, „Scannen“ tippen. Jede Seite einzeln – am Ende wird daraus ein PDF.</p>
+                  <p class="wizard-hint">Die Kamera öffnet sich hier in der App: Das Blatt wird gelb markiert und von selbst aufgenommen. Danach siehst du die Seite groß und kannst sie vergrößern und prüfen. Jede Seite einzeln – am Ende wird daraus ein PDF.</p>
                   <div class="doc-capture">
                      <label class="button-primary big-button doc-capture-button" for="docCamera">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
@@ -550,7 +549,17 @@
                      </div>
                      <p id="apptSlipState" class="scan-status" role="status" hidden></p>
                      <p id="apptSlipKept" class="field-hint" hidden>Der schon gesendete Terminzettel bleibt erhalten. Scanne nur neu, wenn er falsch war.</p>
-                     <div id="apptSlipPreview" class="receipt-preview" hidden><img id="apptSlipImage" alt="Gescannter Terminzettel"><span id="apptSlipInfo"></span></div>
+                     <div id="apptSlipPreview" class="receipt-preview scan-slot" hidden>
+                        <button type="button" id="apptSlipOpen" class="scan-slot-thumb" aria-label="Terminzettel groß ansehen"><img id="apptSlipImage" alt="Gescannter Terminzettel"></button>
+                        <div class="scan-slot-body">
+                           <span id="apptSlipInfo"></span>
+                           <div class="scan-slot-actions">
+                              <button type="button" id="apptSlipView" class="button-secondary">Ansehen</button>
+                              <button type="button" id="apptSlipRetake" class="button-secondary">Neu scannen</button>
+                              <button type="button" id="apptSlipRemove" class="button-quiet-danger">Löschen</button>
+                           </div>
+                        </div>
+                     </div>
                      <label class="check-row"><input id="apptNoSlip" type="checkbox"> <span>Es gibt keinen Terminzettel (z. B. telefonisch vereinbart)</span></label>
                      <div id="apptChangeBox" class="appt-change-box" hidden>
                         <label for="apptChangeNote">Was hat sich geändert? <span class="optional-label">freiwillig</span></label>
@@ -707,7 +716,17 @@
                      <label class="button-secondary doc-gallery-button" for="receiptPhoto">Foto aus der Galerie wählen</label>
                      <input id="receiptPhoto" class="visually-hidden" type="file" accept="image/*">
                   </div>
-                  <div id="receiptPreview" class="receipt-preview" hidden><img id="receiptPreviewImage" alt="Gescannter Beleg"><span id="receiptPreviewInfo"></span></div>
+                  <div id="receiptPreview" class="receipt-preview scan-slot" hidden>
+                     <button type="button" id="receiptPreviewOpen" class="scan-slot-thumb" aria-label="Beleg groß ansehen"><img id="receiptPreviewImage" alt="Gescannter Beleg"></button>
+                     <div class="scan-slot-body">
+                        <span id="receiptPreviewInfo"></span>
+                        <div class="scan-slot-actions">
+                           <button type="button" id="receiptView" class="button-secondary">Ansehen</button>
+                           <button type="button" id="receiptRetake" class="button-secondary">Neu scannen</button>
+                           <button type="button" id="receiptRemove" class="button-quiet-danger">Löschen</button>
+                        </div>
+                     </div>
+                  </div>
                   <p id="receiptScan" class="scan-status" role="status" hidden></p>
                   <span class="field-label" id="receiptKindLabel"><b class="step-dot">2</b> Angaben prüfen</span>
                   <div class="segmented" role="radiogroup" aria-labelledby="receiptKindLabel">
@@ -746,6 +765,11 @@
                   <button type="button" class="back-button" id="accountBack">← Zurück</button>
                   <h2 id="accountTitle" class="wizard-title">Mein Konto</h2>
                   <dl id="accountInfo" class="vehicle-state"></dl>
+               </section>
+               <section class="directory-card" aria-labelledby="officeTitle" id="officeCard" hidden>
+                  <h2 id="officeTitle" class="card-title">Einsatzleitung</h2>
+                  <p class="portal-text">Du bist als Admin angemeldet und siehst hier die App so, wie die Dolmetscher sie sehen.</p>
+                  <a class="button-primary big-button" id="accountToOffice" href="index.html">Zur Einsatzleitung wechseln</a>
                </section>
                <section class="directory-card" aria-labelledby="pushTitle">
                   <h2 id="pushTitle" class="card-title">Mitteilungen aufs Handy</h2>
@@ -848,6 +872,7 @@
       <script src="scanCam.js"></script>
       <script src="docPdf.js"></script>
       <script src="contactParse.js"></script>
+      <script src="portalRecord.js"></script>
       <script src="portalApp.js"></script>
       <script src="portalDocs.js"></script>
       <script src="portalAppointments.js"></script>

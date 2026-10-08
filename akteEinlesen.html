@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Papierakte einlesen · Medical Office Bonn</title>
+      <link rel="stylesheet" href="style.css">
+      <link rel="stylesheet" href="patienten.css">
+      <link rel="stylesheet" href="akte.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="patienten" data-view="einlesen">
+      <main class="container akte-page">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · PATIENTEN</p><h1>Papierakte einlesen</h1>
+               <p>Die ganze Papierakte eines Patienten als eine Scan-Datei. Jede Seite wird wie von einem guten Scanner aufbereitet, die Schriftstücke werden erkannt und sortiert. Du prüfst jede Kategorie – erst dann wird gespeichert.</p></div>
+            <div class="fleet-heading-actions"><a class="button-secondary" href="patienten.html">← Patientenakten</a></div>
+         </div>
+         <p id="akteStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="akteApp" hidden>
+            <ol class="akte-steps" aria-label="Ablauf">
+               <li data-step="1" aria-current="step"><b>1</b> Patient und Datei</li>
+               <li data-step="2"><b>2</b> Einlesen</li>
+               <li data-step="3"><b>3</b> Prüfen und bestätigen</li>
+               <li data-step="4"><b>4</b> In die Akte speichern</li>
+            </ol>
+            <p id="akteDemo" class="akte-demo" hidden><strong>Beispielakte</strong> – alle Namen und Befunde sind erfunden. Zum Ausprobieren; Speichern ist hier ausgeschaltet.</p>
+
+            <!-- ===== Schritt 1: Patient und Datei ===== -->
+            <section class="directory-card" data-akte-step="1" aria-labelledby="akteStartTitle">
+               <div class="directory-card-heading"><span class="directory-step">01</span><div><h2 id="akteStartTitle">Zu welchem Patienten gehört die Akte?</h2><p>Alles, was du jetzt einliest, kommt in die Akte dieses einen Patienten.</p></div></div>
+               <form id="akteStartForm" class="fleet-form" novalidate>
+                  <div class="akte-patient-grid">
+                     <label for="aktePatientNr">Patienten-Nr. (Aktennummer)<input id="aktePatientNr" type="text" maxlength="40" autocomplete="off" list="aktePatientList" required placeholder="z. B. 4103"></label>
+                     <label for="aktePatientName">Name<input id="aktePatientName" type="text" maxlength="120" autocomplete="off" placeholder="Nachname, Vorname"></label>
+                     <label for="aktePatientBirth"><span>Geburtsdatum <span class="optional-label">optional</span></span><input id="aktePatientBirth" type="text" maxlength="10" autocomplete="off" inputmode="numeric" placeholder="TT.MM.JJJJ"></label>
+                  </div>
+                  <datalist id="aktePatientList"></datalist>
+                  <p id="aktePatientHint" class="field-hint" role="status" aria-live="polite"></p>
+
+                  <label for="akteFiles" class="akte-drop" id="akteDrop">
+                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+                     <strong>Scan-Datei hierher ziehen oder auswählen</strong>
+                     <span>Eine PDF-Datei mit der ganzen Akte – sie darf sehr groß sein. Auch mehrere Dateien oder Fotos (JPG, PNG) gehen.</span>
+                     <input id="akteFiles" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple>
+                  </label>
+                  <ul id="akteFileList" class="akte-file-list" hidden></ul>
+                  <p class="field-hint akte-privacy">Die Seiten werden auf diesem Rechner verarbeitet – nichts wird ins Internet geschickt, bevor du am Ende auf „Speichern“ tippst.</p>
+                  <details class="akte-tips">
+                     <summary>Tipps zum Einscannen am Büro-Scanner</summary>
+                     <ul>
+                        <li>Am Scanner <strong>PDF</strong> wählen und die ganze Akte eines Patienten in <strong>eine</strong> Datei scannen.</li>
+                        <li>Auflösung <strong>200 oder 300 dpi</strong>, Farbe oder Graustufen (nicht „Schwarz-Weiß / Text“ – Stempel und blasse Schrift gehen sonst verloren).</li>
+                        <li>Bedruckte Rückseiten? <strong>Beidseitig (Duplex)</strong> einschalten. Leere Rückseiten sortiert das Programm von selbst aus.</li>
+                        <li>Heftklammern entfernen und die Blätter in der Reihenfolge der Akte einlegen – schief oder auf dem Kopf liegende Seiten werden gerade gerückt.</li>
+                        <li>Die Datei darf groß sein. Je 100 Seiten dauert das Einlesen einige Minuten; das Fenster bleibt so lange geöffnet.</li>
+                     </ul>
+                  </details>
+                  <div class="akte-start-actions">
+                     <button type="submit" id="akteStart" class="button-primary big-button" disabled>Einlesen starten</button>
+                     <button type="button" id="akteDemoButton" class="link-button">Erst ausprobieren: Beispielakte mit erfundenen Daten laden</button>
+                  </div>
+               </form>
+            </section>
+
+            <!-- ===== Schritt 2: Einlesen ===== -->
+            <section class="directory-card" data-akte-step="2" aria-labelledby="akteReadTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step directory-step-teal">02</span><div><h2 id="akteReadTitle">Die Akte wird eingelesen</h2><p id="akteReadLead">Bitte dieses Fenster geöffnet lassen.</p></div></div>
+               <div class="akte-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="akteProgress"><i id="akteProgressBar"></i></div>
+               <p id="akteProgressText" class="akte-progress-text" role="status" aria-live="polite">Die Datei wird geöffnet …</p>
+               <div id="akteReadStrip" class="akte-strip" aria-label="Eingelesene Seiten"></div>
+               <button type="button" id="akteCancel" class="button-secondary">Abbrechen</button>
+            </section>
+
+            <!-- ===== Schritt 3: Prüfen ===== -->
+            <div data-akte-step="3" hidden>
+               <section class="directory-card akte-summary" aria-labelledby="akteCheckTitle">
+                  <div class="akte-summary-main">
+                     <h2 id="akteCheckTitle">Prüfen und bestätigen</h2>
+                     <p id="aktePatientLine" class="akte-patient-line"></p>
+                     <p id="aktePageCount" class="akte-count" role="status" aria-live="polite"></p>
+                  </div>
+                  <div class="akte-summary-side">
+                     <div class="akte-order" role="group" aria-label="Ordnen nach">
+                        <button type="button" data-akte-order="datum" aria-pressed="true">Datum</button>
+                        <button type="button" data-akte-order="fach" aria-pressed="false">Fachrichtung</button>
+                        <button type="button" data-akte-order="arzt" aria-pressed="false">Arzt</button>
+                     </div>
+                     <p id="akteConfirmState" class="field-hint"></p>
+                     <p id="akteSpace" class="field-hint akte-space" role="status" aria-live="polite" hidden></p>
+                     <label id="akteCompactRow" class="check-row akte-compact" for="akteCompact" hidden>
+                        <input type="checkbox" id="akteCompact" checked>
+                        <span><strong>Platz sparen</strong> – Textseiten klein und gestochen scharf speichern (etwa ein Drittel der Größe). <small id="akteCompactInfo"></small></span>
+                     </label>
+                     <button type="button" id="akteSave" class="button-primary big-button" disabled>In die Akte speichern</button>
+                  </div>
+               </section>
+               <ul id="akteProblems" class="akte-problems" hidden></ul>
+               <div id="akteGroups" class="akte-groups"></div>
+               <details id="akteTray" class="directory-card akte-tray" hidden>
+                  <summary id="akteTrayTitle">Leere und entfernte Seiten</summary>
+                  <p class="field-hint">Diese Seiten werden nicht gespeichert. Ist eine doch nicht leer? Ein Tipp holt sie zurück.</p>
+                  <div id="akteTrayList" class="akte-strip akte-tray-list"></div>
+               </details>
+               <p class="akte-restart"><button type="button" id="akteRestart" class="link-button">Abbrechen und von vorn beginnen</button></p>
+            </div>
+
+            <!-- ===== Schritt 4: Speichern ===== -->
+            <section class="directory-card" data-akte-step="4" aria-labelledby="akteSaveTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step">04</span><div><h2 id="akteSaveTitle">Die Akte wird gespeichert</h2><p id="akteSaveLead">Bitte dieses Fenster geöffnet lassen.</p></div></div>
+               <div class="akte-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="akteSaveProgress"><i id="akteSaveBar"></i></div>
+               <p id="akteSaveText" class="akte-progress-text" role="status" aria-live="polite"></p>
+               <ul id="akteSaveProblems" class="akte-problems" hidden></ul>
+               <div id="akteSaveDone" class="akte-done" hidden>
+                  <svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l8 8 14-16"/></svg>
+                  <strong id="akteDoneTitle"></strong>
+                  <span id="akteDoneText"></span>
+                  <div class="akte-done-actions"><a id="akteOpenChart" class="button-primary" href="patienten.html">Akte öffnen</a><button type="button" id="akteAgain" class="button-secondary">Weitere Papierakte einlesen</button></div>
+               </div>
+               <div id="akteSaveRetry" class="akte-done-actions" hidden><button type="button" id="akteRetry" class="button-primary">Fehlende noch einmal speichern</button><button type="button" id="akteBackToCheck" class="button-secondary">Zurück zum Prüfen</button></div>
+            </section>
+         </div>
+      </main>
+
+      <!-- Ein Schriftstück ansehen und berichtigen -->
+      <dialog id="akteDoc" class="akte-doc" aria-labelledby="akteDocTitle">
+         <header class="akte-doc-head">
+            <div><span id="akteDocPos" class="akte-doc-pos"></span><h2 id="akteDocTitle"></h2></div>
+            <button type="button" id="akteDocClose" class="akte-close" aria-label="Schließen">×</button>
+         </header>
+         <div class="akte-doc-body">
+            <div class="akte-view">
+               <div class="akte-view-bar">
+                  <button type="button" id="akteViewPrev" class="button-secondary" aria-label="Vorige Seite">‹</button>
+                  <span id="akteViewPos" role="status" aria-live="polite"></span>
+                  <button type="button" id="akteViewNext" class="button-secondary" aria-label="Nächste Seite">›</button>
+                  <button type="button" id="akteViewZoom" class="button-secondary">Größer</button>
+               </div>
+               <div id="akteViewFrame" class="akte-view-frame"><img id="akteViewImage" alt=""></div>
+               <div id="akteViewPages" class="akte-strip akte-view-pages" aria-label="Seiten dieses Schriftstücks"></div>
+            </div>
+            <form id="akteDocForm" class="fleet-form akte-doc-form" novalidate>
+               <ul id="akteDocHints" class="akte-hints" hidden></ul>
+               <label for="akteDocKind">Art</label>
+               <select id="akteDocKind"></select>
+               <label for="akteDocDate">Datum des Schriftstücks</label>
+               <input id="akteDocDate" type="date">
+               <label for="akteDocDoctor">Arzt / Aussteller</label>
+               <input id="akteDocDoctor" type="text" maxlength="120" autocomplete="off" list="akteDoctorList" placeholder="z. B. Prof. Dr. Goldbach">
+               <datalist id="akteDoctorList"></datalist>
+               <label for="akteDocSpecialty">Fachrichtung</label>
+               <input id="akteDocSpecialty" type="text" maxlength="120" autocomplete="off" list="akteSpecialtyList" placeholder="z. B. Neurochirurgie">
+               <datalist id="akteSpecialtyList"></datalist>
+               <label for="akteDocName">Überschrift in der Akte</label>
+               <input id="akteDocName" type="text" maxlength="200" autocomplete="off">
+               <p class="field-hint">Die Überschrift entsteht von selbst aus Art, Arzt und Fachrichtung – du kannst sie überschreiben.</p>
+               <fieldset class="akte-page-tools">
+                  <legend>Diese Seite</legend>
+                  <button type="button" id="aktePageSplit" class="button-secondary">Ab hier neues Schriftstück</button>
+                  <button type="button" id="aktePageTurn" class="button-secondary">Drehen ↻</button>
+                  <button type="button" id="aktePageRemove" class="button-quiet-danger">Seite entfernen</button>
+               </fieldset>
+               <fieldset class="akte-page-tools">
+                  <legend>Ganzes Schriftstück</legend>
+                  <button type="button" id="akteDocMerge" class="button-secondary">Mit dem vorherigen verbinden</button>
+                  <button type="button" id="akteDocDrop" class="button-quiet-danger">Nicht übernehmen</button>
+               </fieldset>
+               <div class="akte-doc-nav">
+                  <button type="button" id="akteDocPrev" class="button-secondary">← Voriges</button>
+                  <button type="submit" id="akteDocOk" class="button-primary">Stimmt ✓ – weiter</button>
+               </div>
+            </form>
+         </div>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="docScan.js"></script>
+      <script src="docPdf.js"></script>
+      <script src="arztVerzeichnis.js"></script>
+      <script src="akteLogic.js"></script>
+      <script src="akteImport.js"></script>
+      <script src="akteEinlesenApp.js"></script>
+   </body>
+</html>

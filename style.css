@@ -2588,3 +2588,161 @@ dialog.day-done::backdrop { background: var(--bg); }
 .day-done-row button { flex: 0 0 auto; min-height: 42px; padding: 8px 14px; }
 .day-done-inner > .big-button { margin-top: auto; }
 .yesno-dialog h2 { margin: 0 0 10px; font-size: 1.15rem; }
+
+/* ==========================================================================
+   72. Scannen wie in einer Scan-App: gelbe Markierung, Vorschau mit „Vergrößern“, Ecken anpassen
+   ========================================================================== */
+.scan-cam-outline { fill: rgba(255, 212, 0, .26); stroke: #ffd400; stroke-width: 3.5; stroke-linejoin: round; transition: fill .25s; }
+.scan-cam[data-state="ruhig"] .scan-cam-outline { fill: rgba(255, 212, 0, .46); }
+.scan-cam[data-state="offen"] .scan-cam-outline, .scan-cam[data-state="klein"] .scan-cam-outline { fill: rgba(255, 212, 0, .16); stroke-dasharray: 10 8; }
+.scan-cam[data-state="fertig"] .scan-cam-outline { fill: rgba(46, 204, 113, .2); stroke: #2ecc71; }
+.scan-cam-dot { fill: #ffd400; stroke: #1b1b1b; stroke-width: 1.5; }
+.scan-cam[data-state="fertig"] .scan-cam-dot { fill: #2ecc71; }
+.scan-cam[data-found="ja"] .scan-cam-frame { display: none; }
+.scan-cam[data-found="ja"] .scan-cam-status { background: rgba(0, 0, 0, .72); }
+.scan-cam[data-state="ruhig"] .scan-cam-status, .scan-cam[data-state="bereit"] .scan-cam-status { background: #ffd400; color: #1b1b1b; }
+.scan-cam[data-state="fertig"] .scan-cam-status { background: rgba(24, 121, 78, .94); }
+.scan-cam-working { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: rgba(0, 0, 0, .58); color: #fff; font-size: 1.05rem; font-weight: 700; }
+.scan-cam-working[hidden] { display: none; }
+
+.scan-review, .scan-adjust { position: fixed; inset: 0; z-index: 4100; display: flex; flex-direction: column; background: #0d1117; color: #fff; }
+.scan-adjust { z-index: 4200; }
+.scan-review button, .scan-adjust button, :root[data-theme="dark"] .scan-review button, :root[data-theme="dark"] .scan-adjust button { border: 0; box-shadow: none; }
+.scan-review-top { display: flex; flex-direction: column; gap: 2px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 64px 10px 16px; }
+.scan-review-top strong { font-size: 1.05rem; }
+.scan-review-top small { min-height: 1.2em; color: #c9d4e3; font-size: .82rem; line-height: 1.35; }
+.scan-review:not([data-issues=""]) .scan-review-note { color: #ffd98a; font-weight: 650; }
+.scan-review button.scan-review-close { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 10px; width: 44px; min-height: 44px; height: 44px; padding: 0; border-radius: 50%; background: rgba(255, 255, 255, .14); color: #fff; font-size: 1.5rem; line-height: 1; }
+.scan-review button.scan-review-close:hover { background: rgba(255, 255, 255, .26); }
+.scan-review-stage { position: relative; display: grid; flex: 1 1 auto; min-height: 0; place-items: center; overflow: hidden; background: #05070a; cursor: zoom-in; touch-action: none; }
+.scan-review[data-zoomed="ja"] .scan-review-stage { cursor: grab; }
+.scan-review-image { position: absolute; top: 50%; left: 50%; display: block; max-width: none; max-height: none; background: #fff; box-shadow: 0 6px 28px rgba(0, 0, 0, .6); transform: translate(-50%, -50%); user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+.scan-review-busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(5, 7, 10, .62); font-weight: 700; }
+.scan-review-busy[hidden] { display: none; }
+.scan-review-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 4px; }
+.scan-review button.scan-review-zoom { min-height: 44px; padding: 8px 18px; border-radius: 999px; background: #ffd400; color: #1b1b1b; font-weight: 800; }
+.scan-review button.scan-review-zoom:hover { background: #ffe24d; color: #1b1b1b; }
+.scan-review button.scan-review-step { width: 44px; min-height: 44px; height: 44px; padding: 0; border-radius: 50%; background: rgba(255, 255, 255, .16); color: #fff; font-size: 1.3rem; font-weight: 800; line-height: 1; }
+.scan-review button.scan-review-step:hover { background: rgba(255, 255, 255, .28); }
+.scan-review button.scan-review-step:disabled { background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .35); }
+.scan-review-modes { display: inline-flex; margin-left: auto; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .12); }
+.scan-review button.scan-review-mode { min-height: 38px; padding: 6px 13px; border-radius: 999px; background: transparent; color: #dfe7f2; font-size: .88rem; font-weight: 700; }
+.scan-review button.scan-review-mode:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.scan-review button.scan-review-mode[aria-pressed="true"] { background: #fff; color: #10243a; }
+.scan-review button.scan-review-mode:disabled { opacity: .55; }
+.scan-review-bottom { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 6px; padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 14px); }
+.scan-review button.scan-review-button, .scan-adjust button.scan-review-button { min-width: 0; min-height: 54px; padding: 8px 4px; border-radius: 14px; background: rgba(255, 255, 255, .14); color: #fff; font-size: .86rem; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.scan-review button.scan-review-button:hover, .scan-adjust button.scan-review-button:hover { background: rgba(255, 255, 255, .26); color: #fff; }
+.scan-review button.scan-review-button.is-main, .scan-adjust button.scan-review-button.is-main { background: #1f8f5f; }
+.scan-review button.scan-review-button.is-main:hover, .scan-adjust button.scan-review-button.is-main:hover { background: #24a56d; }
+.scan-review button.scan-review-button:disabled, .scan-adjust button.scan-review-button:disabled { background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .4); }
+.scan-review-button[hidden] { display: none; }
+.scan-review[data-issues~="rand"] button.scan-review-button.is-edit { background: #ffd400; color: #1b1b1b; }
+.scan-review[data-issues~="rand"] button.scan-review-button.is-edit:hover { background: #ffe24d; color: #1b1b1b; }
+
+.scan-adjust-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #05070a; touch-action: none; }
+.scan-adjust-photo { position: absolute; }
+.scan-adjust-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.scan-adjust-shade { fill: rgba(0, 0, 0, .52); fill-rule: evenodd; }
+.scan-adjust-outline { fill: rgba(255, 212, 0, .1); stroke: #ffd400; stroke-width: 2.5; stroke-linejoin: round; }
+.scan-adjust[data-valid="nein"] .scan-adjust-outline { fill: rgba(255, 107, 107, .14); stroke: #ff6b6b; }
+.scan-adjust button.scan-adjust-handle { position: absolute; width: 52px; min-height: 52px; height: 52px; margin: -26px 0 0 -26px; padding: 0; border-radius: 50%; background: transparent; cursor: grab; touch-action: none; }
+.scan-adjust button.scan-adjust-handle:hover, .scan-adjust button.scan-adjust-handle:active { background: transparent; transform: none; }
+.scan-adjust-handle::after { position: absolute; inset: 13px; border: 3px solid #1b1b1b; border-radius: 50%; background: #ffd400; box-shadow: 0 0 0 2px #fff; content: ""; }
+.scan-adjust-handle.is-held::after { inset: 20px; background: #fff; }
+.scan-adjust-loupe { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 6px 20px rgba(0, 0, 0, .6); pointer-events: none; }
+.scan-adjust-loupe[hidden] { display: none; }
+.scan-adjust-hint { min-height: 1.7em; margin: 0; padding: 6px 16px 0; color: #ffd98a; font-size: .86rem; text-align: center; }
+.scan-adjust .scan-review-bottom { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.scan-adjust button.scan-review-button { min-height: 48px; }
+@media (max-width: 380px) { .scan-review button.scan-review-button { font-size: .8rem; } .scan-review button.scan-review-mode { padding: 6px 10px; } }
+.doc-page-thumb { cursor: zoom-in; }
+button.doc-page-thumb, :root[data-theme="dark"] button.doc-page-thumb { min-height: 84px; padding: 0; border: 1px solid var(--line); background: #fff; box-shadow: none; }
+button.doc-page-thumb:hover, :root[data-theme="dark"] button.doc-page-thumb:hover { border-color: var(--brand); background: #fff; }
+
+/* =====================================================================
+   73. Dolmetscher-App: die ganze Akte des Patienten – suchen, ordnen, ansehen, speichern, weiterleiten, drucken
+   ===================================================================== */
+html.record-open, html.record-open body { overflow: hidden; }
+.record-sheet { position: fixed; inset: 0; z-index: 1100; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.record-top { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.record-sheet button.record-close, :root[data-theme="dark"] .record-sheet button.record-close { min-height: 42px; flex: 0 0 auto; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--surface); color: var(--ink); font-size: .9rem; font-weight: 700; box-shadow: none; }
+.record-titles { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.record-titles strong { overflow: hidden; font-size: 1.05rem; text-overflow: ellipsis; white-space: nowrap; }
+.record-titles span { color: var(--muted); font-size: .76rem; line-height: 1.3; }
+.record-tools { display: flex; flex: 0 0 auto; flex-direction: column; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.record-sheet input.record-search { width: 100%; min-height: 44px; margin: 0; }
+.record-groups { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.record-groups::-webkit-scrollbar { display: none; }
+.record-sheet button.record-chip, :root[data-theme="dark"] .record-sheet button.record-chip { min-height: 36px; flex: 0 0 auto; padding: 5px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: .86rem; font-weight: 650; white-space: nowrap; box-shadow: none; }
+.record-chip b { margin-left: 2px; color: var(--muted); font-weight: 700; }
+.record-sheet button.record-chip[aria-pressed="true"], :root[data-theme="dark"] .record-sheet button.record-chip[aria-pressed="true"] { border-color: var(--brand); background: var(--brand); color: #fff; }
+.record-chip[aria-pressed="true"] b { color: #fff; }
+.record-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.record-line-label { color: var(--muted); font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.record-orders { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+.record-sheet .record-orders button, :root[data-theme="dark"] .record-sheet .record-orders button { min-height: 34px; padding: 4px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); font-size: .84rem; font-weight: 650; box-shadow: none; }
+.record-sheet .record-orders button[aria-pressed="true"], :root[data-theme="dark"] .record-sheet .record-orders button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.record-count { margin-left: auto; color: var(--muted); font-size: .8rem; font-weight: 650; }
+.record-sheet button.record-pick { min-height: 34px; margin: 0; padding: 4px 8px; font-size: .84rem; }
+.record-list { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 6px; margin: 0; overflow-y: auto; padding: 10px 14px calc(18px + env(safe-area-inset-bottom, 0px)); list-style: none; -webkit-overflow-scrolling: touch; }
+.record-section { margin: 8px 2px 0; color: var(--muted); font-size: .74rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.record-section:first-child { margin-top: 0; }
+.record-empty { padding: 26px 10px; color: var(--muted); text-align: center; }
+.record-entry { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.record-entry[data-open="true"] { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); box-shadow: var(--shadow-sm); }
+.record-sheet button.record-head, :root[data-theme="dark"] .record-sheet button.record-head { display: flex; width: 100%; min-height: 56px; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--ink); font-weight: 400; text-align: left; box-shadow: none; }
+.record-sheet button.record-head:disabled { opacity: .55; }
+.record-text { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 2px; }
+.record-text strong { font-size: .95rem; font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
+.record-sub { color: var(--muted); font-size: .8rem; line-height: 1.35; }
+.record-text .chip { align-self: flex-start; }
+.record-arrow { flex: 0 0 auto; }
+.record-arrow svg { display: block; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.record-entry[data-open="true"] .record-arrow svg { transform: rotate(180deg); }
+.record-check { width: 24px; height: 24px; flex: 0 0 auto; border: 2px solid var(--line-strong); border-radius: 7px; background: var(--surface); }
+.record-check[data-on="true"] { border-color: var(--brand); background: var(--brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.500l4.500 4.500L19 7.500'/%3E%3C/svg%3E") center / 16px no-repeat; }
+.record-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
+.record-note { margin: 0; color: var(--ink-soft); font-size: .86rem; line-height: 1.4; }
+.record-report { margin: 0; font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.record-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.record-sheet button.record-action, :root[data-theme="dark"] .record-sheet button.record-action { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--surface); color: var(--ink); font-size: .92rem; font-weight: 700; box-shadow: none; }
+.record-action svg { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.record-sheet button.record-action.is-main, :root[data-theme="dark"] .record-sheet button.record-action.is-main { border-color: var(--brand); background: var(--brand); color: #fff; }
+.record-sheet button.record-action[data-busy="ja"] { opacity: .6; }
+.record-sheet button.record-action:disabled { opacity: .5; }
+.record-bar { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -6px 18px rgba(15, 23, 42, .08); }
+.record-bar[hidden] { display: none; }
+.record-bar-count { min-width: 0; flex: 1 1 auto; color: var(--ink-soft); font-size: .86rem; font-weight: 650; }
+.record-sheet .record-bar button.record-action { min-height: 44px; flex: 0 0 auto; padding: 6px 12px; }
+.record-sheet button.record-all { min-height: 40px; margin: 0; }
+button.job-record-open, :root[data-theme="dark"] button.job-record-open { align-self: flex-start; min-height: 44px; border-color: var(--brand); color: var(--brand); font-weight: 750; }
+:root[data-theme="dark"] button.job-record-open { background: var(--surface); }
+.job-prior-rest { margin-top: 2px; }
+@media (min-width: 620px) {
+  .record-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .record-top, .record-tools, .record-list, .record-bar { padding-right: max(14px, calc((100vw - 860px) / 2)); padding-left: max(14px, calc((100vw - 860px) / 2)); }
+}
+
+/* ===== 74. Nach dem Scan: ansehen, neu scannen, löschen (Beleg, Terminzettel) · Fotos groß ansehen ===== */
+.receipt-preview.scan-slot { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px 12px; }
+.receipt-preview.scan-slot[hidden] { display: none; }
+button.scan-slot-thumb, :root[data-theme="dark"] button.scan-slot-thumb { display: grid; flex: 0 0 auto; width: 92px; min-height: 92px; place-items: center; padding: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; box-shadow: none; cursor: zoom-in; }
+.receipt-preview button.scan-slot-thumb img { display: block; width: 100%; max-height: 150px; border: 0; border-radius: 0; object-fit: contain; }
+.scan-slot-body { display: contents; }
+.scan-slot-actions { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.scan-slot-actions button, :root[data-theme="dark"] .scan-slot-actions button { min-width: 0; min-height: 46px; padding: 6px 4px; border: 1px solid var(--line-strong); background: var(--surface); font-size: .9rem; }
+.scan-slot-actions button.button-quiet-danger, :root[data-theme="dark"] .scan-slot-actions button.button-quiet-danger { border-color: color-mix(in srgb, var(--danger, #c0392b) 45%, transparent); }
+button.request-thumb-open, :root[data-theme="dark"] button.request-thumb-open { display: block; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; cursor: zoom-in; }
+.pick-photos { margin: 8px 0 4px; }
+.scan-look-stage { display: grid; flex: 1 1 auto; min-height: 0; place-items: center; overflow: auto; background: #05070a; -webkit-overflow-scrolling: touch; }
+.scan-look-image { display: block; max-width: 100%; max-height: 100%; background: #fff; cursor: zoom-in; }
+.scan-look[data-zoomed="ja"] .scan-look-stage { place-items: start; }
+.scan-look[data-zoomed="ja"] .scan-look-image { width: 250%; max-width: none; max-height: none; cursor: zoom-out; }
+.scan-review button.scan-review-button.is-danger { background: rgba(214, 69, 69, .85); }
+.scan-review button.scan-review-button.is-danger:hover { background: #d64545; }
+a.icon-button { display: inline-grid; place-items: center; text-decoration: none; }
+a.icon-button.switch-office, :root[data-theme="dark"] a.icon-button.switch-office { border-color: var(--brand); color: var(--brand); }
+a.big-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+a.start-switch { display: inline-flex; align-items: center; margin-top: 10px; text-decoration: none; }
+.app-nav-switch, :root[data-theme="dark"] .app-nav-switch { flex: 0 0 auto; margin: 0 0 8px; border: 1px solid rgba(255, 255, 255, .28); }

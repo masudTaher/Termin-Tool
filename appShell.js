@@ -45,6 +45,7 @@
 
     const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
     const ICONS = {
+        swap: icon('<path d="M7 7h12l-3-3M17 17H5l3 3"/>'),
         pin: icon('<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
         filter: icon('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
         tracking: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
@@ -106,6 +107,7 @@
                 <span class="app-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 12.5h4l2-4.5 3.2 8.6 2.6-6.4 1.4 2.3H21"/></svg></span>
                 <span class="app-brand-copy"><strong>Medical Office Bonn</strong><small>Transport und Dolmetscher</small></span>
             </a>
+            <a class="app-nav-link app-nav-switch" id="switchToPortal" data-admin-switch href="portal.html" title="Zur App der Dolmetscher wechseln (nur für Admins sichtbar)" hidden>${ICONS.swap}<span>Zur Dolmetscher-App</span></a>
             <nav aria-label="Hauptnavigation">
                 ${NAV.map(section => `
                     ${section.group ? `<p class="app-nav-group">${section.group}</p>` : ''}
@@ -203,8 +205,31 @@
         return true;
     };
 
+    // Die Anzeige wohnt in <body>. Ist ein Dialog offen (showModal), nimmt der Browser außerhalb davon keine Klicks an –
+    // „Rückgängig“ oder „Zur Stelle“ blieben tot. Deshalb zieht die Anzeige in den obersten offenen Dialog um und kehrt
+    // zurück, sobald er sich schließt (auch wenn der Dialog dabei ganz von der Seite verschwindet).
+    let toastRegion = null;
+    const raiseToasts = region => {
+        // Oberste Ebene des Browsers: so liegt die Anzeige auch über einem geöffneten Dialog.
+        if (typeof region.showPopover !== 'function') return;
+        try { if (region.matches(':popover-open')) region.hidePopover(); region.showPopover(); } catch (error) { /* ältere Browser: normale Ebene */ }
+    };
+    function placeToasts() {
+        const region = toastRegion || (toastRegion = document.getElementById('toastRegion'));
+        if (!region) return null;
+        let modal = null;
+        try { modal = [...document.querySelectorAll('dialog[open]')].filter(node => node.matches(':modal')).pop() || null; } catch (error) { modal = null; }
+        const home = modal || document.body;
+        if (region.parentElement !== home) {
+            try { if (region.matches(':popover-open')) region.hidePopover(); } catch (error) { /* ältere Browser */ }
+            home.append(region);
+            if (modal) modal.addEventListener('close', () => window.setTimeout(() => { if (placeToasts()?.children.length) raiseToasts(toastRegion); }, 0), { once: true });
+        }
+        return region;
+    }
+
     window.showToast = function (message, kind = 'info', options = {}) {
-        const region = document.getElementById('toastRegion');
+        const region = placeToasts();
         if (!region) return;
         const toast = document.createElement('div');
         toast.className = 'toast';
@@ -252,10 +277,7 @@
         region.append(toast);
         const limit = region.querySelector('.toast[data-keep]') ? 5 : 3;
         while (region.children.length > limit) region.firstElementChild.remove();
-        // Oberste Ebene des Browsers: so liegt die Anzeige auch über einem geöffneten Dialog.
-        if (typeof region.showPopover === 'function') {
-            try { if (region.matches(':popover-open')) region.hidePopover(); region.showPopover(); } catch (error) { /* ältere Browser: normale Ebene */ }
-        }
+        raiseToasts(region);
         window.setTimeout(remove, duration);
     };
 

@@ -94,11 +94,18 @@ window.PortalRequests = (function () {
             const image = el('img');
             image.src = photo.url;
             image.alt = `Neues Foto ${index + 1}`;
+            const drop = () => { const at = photos.indexOf(photo); if (at < 0) return; URL.revokeObjectURL(photo.url); photos.splice(at, 1); renderNew(); };
+            // Tipp auf das Foto: groß ansehen (und dort bei Bedarf entfernen).
+            const open = el('button', 'request-thumb-open');
+            open.type = 'button';
+            open.setAttribute('aria-label', `Neues Foto ${index + 1} groß ansehen`);
+            open.addEventListener('click', async () => { if (await window.ScanCam?.look?.({ url: photo.url, title: `Neues Foto ${index + 1}`, removeLabel: 'Entfernen' }) === 'remove') drop(); });
+            open.append(image);
             const remove = el('button', 'request-thumb-remove', '×');
             remove.type = 'button';
             remove.setAttribute('aria-label', `Neues Foto ${index + 1} entfernen`);
-            remove.addEventListener('click', () => { URL.revokeObjectURL(photo.url); photos.splice(index, 1); renderNew(); });
-            wrap.append(image, remove);
+            remove.addEventListener('click', drop);
+            wrap.append(open, remove);
             return wrap;
         }));
         $('requestSend').disabled = !photos.length || sending;

@@ -50,7 +50,9 @@ const ReceiptReader = (() => {
         }
 
         // Datum: TT.MM.JJJJ, TT.MM.JJ oder JJJJ-MM-TT – nicht in der Zukunft, höchstens ein Jahr alt.
-        const limit = today || new Date().toISOString().slice(0, 10);
+        // „Heute“ nach der Uhr des Handys (nicht nach Weltzeit – sonst gälte ein Beleg von kurz nach Mitternacht als „in der Zukunft“).
+        const now = new Date();
+        const limit = today || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const oldest = `${Number(limit.slice(0, 4)) - 1}${limit.slice(4)}`;
         const dates = [];
         const joined = lines.join('\n');

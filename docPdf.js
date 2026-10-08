@@ -177,13 +177,50 @@ window.DocPdf = (function () {
         return new Uint8Array(await jpeg.arrayBuffer());
     }
 
-    // Legt das Foto im PDF ab. JPEG bleibt dabei unverändert (wird weder entpackt noch neu gerechnet).
+    // PNG mit Farbtabelle (so speichert DocScan.compact() eine Textseite): Die gepackten Bilddaten kommen unverändert ins PDF –
+    // nichts wird entpackt oder neu gerechnet, die Seite bleibt so klein wie die PNG-Datei. Ergebnis: { ref, width, height } oder
+    // null, wenn es kein solches PNG ist (dann legt pdf-lib das Bild auf dem üblichen Weg ab).
+    function embedIndexedPng(pdf, bytes) {
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        let width = 0, height = 0, depth = 0, palette = null;
+        const data = [];
+        for (let pos = 8; pos + 12 <= bytes.length;) {
+            const length = view.getUint32(pos), type = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]), start = pos + 8;
+            if (start + length + 4 > bytes.length) return null;
+            if (type === 'IHDR') {
+                width = view.getUint32(start); height = view.getUint32(start + 4); depth = bytes[start + 8];
+                // nur Farbtabelle (Typ 3), übliche Packung, nicht verschachtelt
+                if (bytes[start + 9] !== 3 || bytes[start + 10] !== 0 || bytes[start + 11] !== 0 || bytes[start + 12] !== 0) return null;
+            } else if (type === 'PLTE') palette = bytes.subarray(start, start + length);
+            else if (type === 'tRNS') return null;                                     // durchsichtige Stellen: der übliche Weg
+            else if (type === 'IDAT') data.push(bytes.subarray(start, start + length));
+            else if (type === 'IEND') break;
+            pos = start + length + 4;
+        }
+        if (!(width > 0 && height > 0) || ![1, 2, 4, 8].includes(depth) || !palette || palette.length < 3 || palette.length % 3 || !data.length) return null;
+        const packed = new Uint8Array(data.reduce((sum, part) => sum + part.length, 0));
+        let at = 0;
+        for (const part of data) { packed.set(part, at); at += part.length; }
+        const P = window.PDFLib;
+        const table = Array.from(palette, value => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+        const stream = pdf.context.stream(packed, {
+            Type: 'XObject', Subtype: 'Image', Width: width, Height: height, BitsPerComponent: depth,
+            ColorSpace: ['Indexed', 'DeviceRGB', palette.length / 3 - 1, P.PDFHexString.of(table)],
+            Filter: 'FlateDecode', DecodeParms: { Predictor: 15, Colors: 1, BitsPerComponent: depth, Columns: width }
+        });
+        return { ref: pdf.context.register(stream), width, height };
+    }
+
+    // Legt das Foto im PDF ab. JPEG bleibt dabei unverändert (wird weder entpackt noch neu gerechnet) – ebenso ein PNG mit Farbtabelle.
     async function embedPicture(pdf, blob) {
         const bytes = new Uint8Array(await blob.arrayBuffer());
         const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
         const jpeg = bytes[0] === 0xFF && bytes[1] === 0xD8;
-        const image = png ? await pdf.embedPng(bytes) : await pdf.embedJpg(jpeg ? bytes : await asJpeg(blob));
-        await image.embed();      // sofort ins PDF schreiben – Zwischenstände (z. B. das entpackte PNG) werden gleich wieder frei
+        let image = png ? embedIndexedPng(pdf, bytes) : null;
+        if (!image) {
+            image = png ? await pdf.embedPng(bytes) : await pdf.embedJpg(jpeg ? bytes : await asJpeg(blob));
+            await image.embed();      // sofort ins PDF schreiben – Zwischenstände (z. B. das entpackte PNG) werden gleich wieder frei
+        }
         const turn = jpeg ? orientation(bytes) : 1;
         const [width, height] = turn > 4 ? [image.height, image.width] : [image.width, image.height];
         if (!(width > 0 && height > 0)) throw new Error('Das Bild hat keine Größe.');

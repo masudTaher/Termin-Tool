@@ -23,6 +23,8 @@
 
     // ---------- Anmeldestatus ----------
     function renderState(profile) {
+        // Wechsel zur App der Dolmetscher: nur für Admins (sie testen und betreuen beide Seiten).
+        document.querySelectorAll('[data-admin-switch]').forEach(node => { node.hidden = !(profile && TerminCloud.isAdmin(profile)); });
         const state = document.getElementById('navCloudState');
         if (!state) return;
         const text = state.querySelector('span');

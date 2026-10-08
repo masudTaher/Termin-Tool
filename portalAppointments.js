@@ -424,20 +424,30 @@ window.PortalAppointments = (function () {
     }
     $('apptNoSlip').addEventListener('change', showSlipState);
 
-    async function useSlipFile(original) {
+    // ready = schon aufbereitet und in der Vorschau bestätigt (Kamera in der App); ein Foto aus der Galerie zeigt hier die Vorschau.
+    async function useSlipFile(original, ready = null, settings = null) {
         clearSlip();
         $('apptSlipState').hidden = false;
         $('apptSlipState').dataset.kind = 'busy';
         $('apptSlipState').textContent = 'Terminzettel wird zugeschnitten …';
         try {
-            const scanned = window.DocScan ? await DocScan.process(original) : null;
+            let scanned = ready;
+            if (!scanned && window.ScanCam?.prepareFull && window.DocScan) {
+                const prepared = await ScanCam.prepareFull(original, { title: 'Terminzettel – Vorschau' });
+                if (!prepared) { $('apptSlipState').hidden = true; showSlipState(); return; }      // Vorschau geschlossen: nichts übernehmen
+                scanned = prepared.result;
+                settings = prepared.settings;
+            } else if (!scanned && window.DocScan) scanned = await DocScan.process(original);
             if (scanned?.blob) slip = { blob: scanned.blob, width: scanned.width, height: scanned.height, cropped: Boolean(scanned.cropped) };
+            window.DocScan?.release?.(scanned);
         } catch (error) { /* weiter mit dem Foto */ }
         if (!slip) {
             const size = await new Promise(resolve => { const image = new Image(); image.onload = () => resolve([image.naturalWidth, image.naturalHeight]); image.onerror = () => resolve(null); image.src = URL.createObjectURL(original); });
             if (!size) { $('apptSlipState').dataset.kind = 'warn'; $('apptSlipState').textContent = 'Das Foto konnte nicht geöffnet werden. Bitte noch einmal scannen.'; return; }
             slip = { blob: original, width: size[0], height: size[1], cropped: false };
         }
+        slip.source = original;
+        slip.settings = settings;
         $('apptSlipImage').src = URL.createObjectURL(slip.blob);
         $('apptSlipInfo').textContent = slip.cropped ? 'Terminzettel erkannt und zugeschnitten – wird als PDF mitgeschickt.' : 'Ganzes Foto – wird als PDF mitgeschickt.';
         $('apptSlipPreview').hidden = false;
@@ -447,9 +457,41 @@ window.PortalAppointments = (function () {
         $('apptNoSlip').checked = false;
         showSlipState();
     }
+    function removeSlip() {
+        clearSlip();
+        $('apptSlipState').hidden = true;
+        $('apptSlipKept').hidden = !(editing && editing.file_path);
+        showSlipState();
+        toast('Terminzettel gelöscht. Du kannst neu scannen.', 'info');
+        $('apptSlipScan').focus({ preventScroll: true });
+    }
+    // „Ansehen“: der Terminzettel groß – zum Vergrößern, Ecken anpassen, Drehen, neu aufnehmen.
+    let slipViewing = false;
+    async function viewSlip() {
+        const page = slip;
+        if (!page || slipViewing) return;
+        slipViewing = true;
+        try {
+            if (!window.ScanCam?.review || !window.DocScan || !page.source) {
+                if (await window.ScanCam?.look?.({ blob: page.blob, title: 'Terminzettel', removeLabel: 'Löschen' }) === 'remove' && slip === page) removeSlip();
+                return;
+            }
+            const answer = await ScanCam.review({ file: page.source, settings: page.settings, title: 'Terminzettel', okLabel: 'Übernehmen' });
+            if (slip !== page) { if (answer.action === 'ok') window.DocScan?.release?.(answer.result); return; }
+            if (answer.action === 'retake') { $('apptSlipScan').click(); return; }
+            if (answer.action !== 'ok') return;
+            if (page.settings && JSON.stringify(answer.settings) === JSON.stringify(page.settings)) { window.DocScan?.release?.(answer.result); return; }
+            await useSlipFile(page.source, answer.result, answer.settings);
+        } finally { slipViewing = false; }
+    }
+    $('apptSlipOpen').addEventListener('click', viewSlip);
+    $('apptSlipView').addEventListener('click', viewSlip);
+    $('apptSlipRetake').addEventListener('click', () => $('apptSlipScan').click());
+    $('apptSlipRemove').addEventListener('click', removeSlip);
+
     $('apptSlipScan').addEventListener('click', async () => {
         if (!window.ScanCam?.supported()) { $('apptSlipFile').click(); return; }
-        const result = await ScanCam.open({ title: 'Terminzettel scannen', single: true, onCapture: file => useSlipFile(file) });
+        const result = await ScanCam.open({ title: 'Terminzettel scannen', single: true, onCapture: (file, info) => useSlipFile(file, info?.result, info?.settings) });
         if (result.reason === 'galerie') $('apptSlipFile').click();
         else if (result.reason === 'fehler') { toast(`${result.error || 'Die Kamera konnte nicht gestartet werden.'} Wähle das Foto aus der Galerie oder nimm die Foto-App.`, 'info'); $('apptSlipFile').click(); }
     });

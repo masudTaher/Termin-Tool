@@ -46,7 +46,7 @@ window.PortalDocs = (function () {
         'Überweisung Radiologie': 'MRT, CT, Röntgen'
     };
     const STATUS = { neu: ['in Arbeit', 'gesendet'], 'geprüft': ['erledigt', 'geprüft'], weitergeleitet: ['erledigt', 'weitergeleitet'] };
-    const ISSUE_SHORT = { dunkel: 'ist zu dunkel', hell: 'ist überbelichtet', unscharf: 'ist unscharf', klein: 'ist sehr klein', kontrast: 'hat kaum erkennbare Schrift' };
+    const ISSUE_SHORT = { dunkel: 'ist zu dunkel', hell: 'ist überbelichtet', unscharf: 'ist unscharf', klein: 'ist sehr klein', kontrast: 'hat kaum erkennbare Schrift', rand: 'ist nicht zugeschnitten (Rand nicht erkannt)' };
 
     // ---------- Liste „Zuletzt gesendet“ ----------
     async function load() {
@@ -69,7 +69,9 @@ window.PortalDocs = (function () {
 
     function renderList() {
         const list = $('docList');
-        const todayCount = documents.filter(item => String(item.created_at).slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+        // „Heute“ nach der Uhr des Handys – nicht nach Weltzeit (die springt in Deutschland erst um 1 oder 2 Uhr nachts auf den neuen Tag).
+        const localDay = value => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`; };
+        const todayCount = documents.filter(item => localDay(item.created_at) === localDay(Date.now())).length;
         $('docsSummary').textContent = todayCount
             ? `Heute hast du ${todayCount} ${todayCount === 1 ? 'Unterlage' : 'Unterlagen'} gesendet.`
             : 'Arztbericht, Rezept oder Überweisung scannen – daraus wird automatisch ein PDF für das Büro.';
@@ -336,8 +338,11 @@ window.PortalDocs = (function () {
         return small;
     }
 
-    function applyResult(page, result) {
-        Object.assign(page, { blob: result.blob, width: result.width, height: result.height, cropped: Boolean(result.cropped),
+    // settings = was für diese Seite gilt (Ecken von Hand, ganzes Foto, Art der Aufbereitung, Drehung) – damit „Ansehen“ sie später
+    // genauso wieder aufbauen kann.
+    function applyResult(page, result, settings = null) {
+        Object.assign(page, { blob: result.blob, width: result.width, height: result.height, cropped: Boolean(result.cropped), manual: Boolean(result.manual),
+            settings: settings ? Object.assign({}, settings) : (page.settings || null),
             issues: result.issues || [], thumb: thumbnail(result.canvas), text: '', words: [], counter: null });
     }
 
@@ -347,27 +352,52 @@ window.PortalDocs = (function () {
         $('docPagesNext').disabled = busy > 0 || !draft?.pages.length;
     }
 
-    async function addFiles(fileList) {
+    // Eine fertige Seite in die Liste: neu angehängt – oder an die Stelle der Seite, die neu aufgenommen wird.
+    function placePage(file, result, settings) {
+        const replacing = replaceId ? draft.pages.find(page => page.id === replaceId) : null;
+        replaceId = null;
+        if (!replacing && draft.pages.length >= MAX_PAGES) { toast(`Mehr als ${MAX_PAGES} Seiten passen nicht in ein PDF. Bitte sende den Rest als zweite Unterlage.`, 'error'); return null; }
+        const page = replacing || { id: ++pageCounter };
+        page.file = file;
+        page.settings = null;
+        applyResult(page, result, settings);
+        DocScan.release?.(result);      // die großen Zwischenbilder werden nicht mehr gebraucht
+        if (!replacing) draft.pages.push(page);
+        queueOcr(page);
+        return page;
+    }
+
+    // Aus der Kamera in der App: Die Seite ist dort schon aufbereitet und in der Vorschau bestätigt.
+    async function addScanned(file, info = {}) {
+        if (!draft) return;
+        if (!info.result) { await addFiles([file], { review: false }); return; }
+        placePage(file, info.result, info.settings);
+        renderPages();
+    }
+
+    // Fotos aus der Galerie oder der Foto-App des Handys: zuschneiden und aufbereiten. Ein einzelnes Foto zeigt danach die Vorschau
+    // (ansehen, vergrößern, Ecken anpassen) – mehrere landen gleich in der Liste, dort hat jede Seite „Ansehen“.
+    async function addFiles(fileList, { review = true } = {}) {
         const files = [...(fileList || [])].filter(file => /^image\//.test(file.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(file.name || ''));
         if (!files.length || !draft) return;
-        const target = replaceId;
-        replaceId = null;
         const session = draft;
         for (const [index, file] of files.entries()) {
             if (draft !== session) return;      // der Ablauf wurde inzwischen verlassen
-            const replacing = index === 0 && target ? draft.pages.find(page => page.id === target) : null;
-            if (!replacing && draft.pages.length >= MAX_PAGES) { toast(`Mehr als ${MAX_PAGES} Seiten passen nicht in ein PDF. Bitte sende den Rest als zweite Unterlage.`, 'error'); break; }
+            if (index > 0) replaceId = null;
+            if (!replaceId && draft.pages.length >= MAX_PAGES) { toast(`Mehr als ${MAX_PAGES} Seiten passen nicht in ein PDF. Bitte sende den Rest als zweite Unterlage.`, 'error'); break; }
             busy += 1;
-            setBusy(files.length > 1 ? `Foto ${index + 1} von ${files.length} wird geprüft …` : 'Foto wird geprüft …');
+            setBusy(files.length > 1 ? `Foto ${index + 1} von ${files.length} wird aufbereitet …` : 'Foto wird aufbereitet …');
             try {
-                const result = await DocScan.process(file);
+                let result = await DocScan.process(file), settings = null;
                 if (draft !== session) return;
-                const page = replacing || { id: ++pageCounter, canCrop: false };
-                page.file = file;
-                page.canCrop = Boolean(result.cropped);
-                applyResult(page, result);
-                if (!replacing) draft.pages.push(page);
-                queueOcr(page);
+                if (review && files.length === 1 && window.ScanCam?.review) {
+                    const answer = await ScanCam.review({ file, result, title: 'Vorschau', canRetake: false });
+                    if (draft !== session) return;
+                    if (answer.action !== 'ok') { replaceId = null; continue; }      // (die Vorschau hat den Speicher schon freigegeben)
+                    result = answer.result;
+                    settings = answer.settings;
+                }
+                placePage(file, result, settings);
             } catch (error) {
                 toast(error?.message || 'Das Foto konnte nicht geöffnet werden.', 'error', '#docCamera');
             } finally {
@@ -381,8 +411,8 @@ window.PortalDocs = (function () {
         if (bad && files.length === 1) toast(bad.issues[0].text, 'error', `#docPage${bad.id}`);
     }
 
-    // Scannen mit der Kamera in der App (Rahmen, erkannte Kanten, Knopf „Scannen“). Geht das auf dem Gerät nicht
-    // (keine Erlaubnis, sehr alter Browser), öffnet sich wie früher die Foto-App des Handys.
+    // Scannen mit der Kamera in der App (das Blatt wird gelb markiert und von selbst aufgenommen, danach die Vorschau). Geht das
+    // auf dem Gerät nicht (keine Erlaubnis, sehr alter Browser), öffnet sich wie früher die Foto-App des Handys.
     let cameraOpen = false;
     async function openCamera() {
         if (cameraOpen) return;
@@ -393,19 +423,39 @@ window.PortalDocs = (function () {
             const result = await ScanCam.open({
                 title: replacing ? 'Seite neu scannen' : 'Unterlage scannen', single: replacing,
                 count: replacing ? 0 : (draft?.pages.length || 0),
-                onCapture: file => addFiles([file])
+                onCapture: (file, info) => addScanned(file, info)
             });
             if (result.reason === 'galerie') { $('docGallery').click(); return; }
             if (result.reason === 'fehler') {
                 toast(`${result.error || 'Die Kamera konnte nicht gestartet werden.'} Es öffnet sich die Foto-App.`, 'info');
                 $('docCamera').click();
+                return;
             }
+            if (!result.captured) replaceId = null;      // „Neu aufnehmen“ abgebrochen: Die alte Seite bleibt.
         } finally { cameraOpen = false; }
     }
     document.querySelector('label[for="docCamera"]')?.addEventListener('click', event => { event.preventDefault(); openCamera(); });
 
     $('docCamera').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; addFiles(files); });
-    $('docGallery').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; replaceId = null; addFiles(files); });
+    $('docGallery').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; addFiles(files); });
+
+    // „Ansehen“: die Seite groß, zum Vergrößern – dort lassen sich auch die Ecken anpassen, die Art wählen und die Seite drehen.
+    let reviewing = false;
+    async function openReview(page) {
+        if (reviewing || busy > 0 || !window.ScanCam?.review) return;
+        reviewing = true;
+        try {
+            const index = draft.pages.indexOf(page);
+            const answer = await ScanCam.review({ file: page.file, settings: page.settings, title: `Seite ${index + 1}`, okLabel: 'Übernehmen' });
+            if (!draft?.pages.includes(page)) return;
+            if (answer.action === 'retake') { replaceId = page.id; openCamera(); return; }
+            if (answer.action !== 'ok') return;
+            applyResult(page, answer.result, answer.settings);
+            DocScan.release?.(answer.result);
+            queueOcr(page);
+            renderPages();
+        } finally { reviewing = false; }
+    }
 
     // Eine Vierteldrehung nach rechts (wenn das Blatt quer oder auf dem Kopf fotografiert wurde).
     async function rotatePage(page) {
@@ -423,25 +473,11 @@ window.PortalDocs = (function () {
             bitmap.close?.();
             const blob = await DocScan.toBlob(canvas);
             Object.assign(page, { blob, width: canvas.width, height: canvas.height, thumb: thumbnail(canvas), text: '', words: [], counter: null });
+            page.settings = Object.assign({}, page.settings, { turns: ((page.settings?.turns || 0) + 1) % 4 });      // „Ansehen“ baut die Seite genauso gedreht wieder auf
+            canvas.width = 0;
             queueOcr(page);
         } catch (error) {
             toast('Die Seite konnte nicht gedreht werden.', 'error');
-        } finally {
-            busy -= 1;
-            setBusy('');
-            renderPages();
-        }
-    }
-
-    // Zuschnitt aus/an: Wenn der erkannte Rand nicht stimmt, lässt sich das ganze Foto verwenden.
-    async function toggleCrop(page) {
-        busy += 1;
-        setBusy('Foto wird neu geprüft …');
-        try {
-            applyResult(page, await DocScan.process(page.file, { crop: !page.cropped }));
-            queueOcr(page);
-        } catch (error) {
-            toast(error?.message || 'Das Foto konnte nicht geöffnet werden.', 'error');
         } finally {
             busy -= 1;
             setBusy('');
@@ -471,7 +507,10 @@ window.PortalDocs = (function () {
         list.replaceChildren(...pages.map((page, index) => {
             const item = el('li', `doc-page${page.issues.length ? ' has-issue' : ''}`);
             item.id = `docPage${page.id}`;
-            const picture = el('span', 'doc-page-thumb');
+            const picture = el('button', 'doc-page-thumb');
+            picture.type = 'button';
+            picture.setAttribute('aria-label', `Seite ${index + 1} ansehen und vergrößern`);
+            picture.addEventListener('click', () => openReview(page));
             picture.append(page.thumb);
             const body = el('div', 'doc-page-body');
             const head = el('div', 'doc-page-head');
@@ -481,13 +520,13 @@ window.PortalDocs = (function () {
             head.append(good);
             body.append(head);
             page.issues.forEach(issue => body.append(el('p', 'doc-page-issue', issue.text)));
-            const facts = [page.cropped ? 'Rand erkannt und begradigt' : 'ganzes Foto',
+            const facts = [page.cropped ? (page.manual ? 'Ecken von Hand gesetzt' : 'Rand erkannt und begradigt') : 'ganzes Foto',
                 page.ocr === 'läuft' ? 'Text wird erkannt …' : page.ocr === 'wartet' ? 'Texterkennung wartet' : page.ocr === 'fertig' ? (page.counter?.total ? `Seite ${page.counter.page} von ${page.counter.total} erkannt` : 'Text erkannt') : ''];
             body.append(el('small', 'doc-page-facts', facts.filter(Boolean).join(' · ')));
             const actions = el('div', 'doc-page-actions');
-            actions.append(pageAction('Neu aufnehmen', () => { replaceId = page.id; openCamera(); }, page.issues.length ? 'button-secondary' : 'button-quiet'),
+            actions.append(pageAction('Ansehen', () => openReview(page), page.issues.length ? 'button-secondary' : 'button-quiet', `Seite ${index + 1} ansehen, vergrößern, Ecken anpassen`),
+                pageAction('Neu aufnehmen', () => { replaceId = page.id; openCamera(); }),
                 pageAction('Drehen', () => rotatePage(page)));
-            if (page.canCrop) actions.append(pageAction(page.cropped ? 'Ganzes Foto' : 'Zuschneiden', () => toggleCrop(page)));
             if (pages.length > 1) {
                 if (index > 0) actions.append(pageAction('↑', () => movePage(page, -1), 'button-quiet', `Seite ${index + 1} nach oben`));
                 if (index < pages.length - 1) actions.append(pageAction('↓', () => movePage(page, 1), 'button-quiet', `Seite ${index + 1} nach unten`));

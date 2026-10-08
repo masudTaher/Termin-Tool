@@ -72,7 +72,6 @@ if (!window.TerminContact) {
     let firstStart = true;
     let workedMonth = '';
     let overtimeMonth = '';
-    let receiptOrigin = '';
     let fuelCards = [];
 
     // Anzeige oben: grün = gespeichert oder gesendet (5 Sekunden), rot = Problem (bleibt länger).
@@ -218,6 +217,8 @@ if (!window.TerminContact) {
         }
         if (!profile) { show('auth'); $('portalUser').textContent = DEFAULT_USER_LINE; return; }
         $('portalUser').textContent = [profile.full_name || profile.email, isFest() ? 'fest angestellt' : ''].filter(Boolean).join(' · ');
+        // Admins können zwischen der App der Dolmetscher und der Einsatzleitung wechseln.
+        $('switchToOffice').hidden = $('officeCard').hidden = !TerminCloud.isAdmin(profile);
         $('accountInitials').textContent = String(profile.full_name || profile.email || '?').split(/\s+/).map(part => part[0]).slice(0, 2).join('').toLocaleUpperCase('de-DE');
         if (!profile.active) { show('pending'); return; }
         if (profile.must_change_password) { show('password'); return; }
@@ -307,11 +308,9 @@ if (!window.TerminContact) {
         if (view === 'take' && myHandover) view = 'vehicle';
         clearErrors();
         if (!['messages', 'account', 'receipts'].includes(view)) previousView = view;
-        // Der Beleg (Parkticket) lässt sich auch aus „Unterlagen“ öffnen – „Zurück“ führt dann dorthin.
-        if (view === 'receipts') receiptOrigin = currentView === 'docs' ? 'docs' : '';
         currentView = view;
         rememberView(view);
-        const activeTab = view === 'receipts' ? (receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')) : TAB_OF[view];
+        const activeTab = view === 'receipts' ? (isFest() ? 'receiptsHome' : 'statement') : TAB_OF[view];
         document.querySelectorAll('#portalTabbar button').forEach(button => {
             const active = button.dataset.view === activeTab;
             button.classList.toggle('is-active', active);
@@ -359,7 +358,7 @@ if (!window.TerminContact) {
     showTheme();
     $('messagesBack').addEventListener('click', () => goTo(previousView));
     $('accountBack').addEventListener('click', () => goTo(previousView));
-    $('receiptBack').addEventListener('click', () => goTo(receiptOrigin || (isFest() ? 'receiptsHome' : 'statement')));
+    $('receiptBack').addEventListener('click', () => goTo(isFest() ? 'receiptsHome' : 'statement'));
 
     // ---------- Startseite (Fahrzeug) ----------
     function renderHome() {
@@ -1381,10 +1380,14 @@ if (!window.TerminContact) {
     const PRIOR_GROUPS = [
         ['Berichte der Dolmetscher', kind => kind === 'Dolmetscherbericht'],
         ['Arzt- und Krankenhausberichte', kind => kind === 'Arztbericht'],
+        ['Befunde', kind => /^Befund/.test(kind)],
         ['Rezepte', kind => /^Rezept/.test(kind)],
         ['Überweisungen', kind => /^Überweisung/.test(kind)],
+        ['Kosten', kind => /^Kosten/.test(kind)],
         ['Sonstiges', () => true]
     ];
+    const PRIOR_INLINE = 12;          // bis zu so vielen Unterlagen steht die ganze Liste gleich in der Auftragskarte
+    const PRIOR_NEWEST = 5;           // bei einer großen Akte: nur die neuesten – alles Weitere unter „Ganze Akte öffnen“
     const foldText = text => String(text || '').toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
     const priorWanted = item => ['zugesagt', 'vorbehalt'].includes(item.response) && !item.cancelled && !jobClosed(item);
     async function openStoredFile(path, button, failText) {
@@ -1401,12 +1404,14 @@ if (!window.TerminContact) {
         const entry = el('li', 'job-prior-entry');
         entry.dataset.kind = doc.kind || 'Sonstiges';
         const head = el('span', 'job-prior-head');
-        const day = doc.date || String(doc.created_at || '').slice(0, 10);
-        head.append(el('strong', '', doc.kind || 'Unterlage'), el('span', '', day ? new Date(`${day}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''));
+        // Aus einer eingelesenen Papierakte: Überschrift („Arztbericht · Prof. Dr. … · Neurochirurgie“) und das Datum des Schriftstücks.
+        const day = doc.date || (doc.status === 'archiv' ? '' : String(doc.created_at || '').slice(0, 10));
+        const heading = String(doc.title || '').trim() || doc.kind || 'Unterlage';
+        head.append(el('strong', '', heading), el('span', '', day ? new Date(`${day}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''));
         const sameDoctor = jobDoctor && doc.doctor && (foldText(doc.doctor).includes(foldText(jobDoctor)) || foldText(jobDoctor).includes(foldText(doc.doctor)));
         if (sameDoctor) head.append(el('em', 'chip chip-brand', 'gleiche Praxis'));
         entry.append(head);
-        entry.append(el('small', '', [doc.doctor, doc.mine ? 'von dir' : doc.uploader_name ? `von ${doc.uploader_name}` : '', doc.pages ? `${doc.pages} ${doc.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
+        entry.append(el('small', '', [doc.doctor && !foldText(heading).includes(foldText(doc.doctor)) ? doc.doctor : '', doc.status === 'archiv' ? 'aus der Papierakte' : doc.mine ? 'von dir' : doc.uploader_name ? `von ${doc.uploader_name}` : '', doc.pages ? `${doc.pages} ${doc.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
         if (doc.note) entry.append(el('span', 'job-prior-note', doc.note));
         if (doc.body) {
             const full = String(doc.body).trim();
@@ -1449,8 +1454,21 @@ if (!window.TerminContact) {
             count.hidden = !docs.length;
             count.textContent = String(docs.length);
             if (!docs.length) { body.replaceChildren(el('p', 'job-prior-empty', 'Zu diesem Patienten gibt es noch keine früheren Unterlagen im Archiv.')); return; }
-            const last = docs[0].date || String(docs[0].created_at || '').slice(0, 10);
+            // „die neueste vom …“: ein Schriftstück aus der Papierakte ohne Datum zählt dabei nicht (der Tag des Einlesens sagt nichts).
+            const newest = docs.find(doc => doc.date || doc.status !== 'archiv');
+            const last = newest ? newest.date || String(newest.created_at || '').slice(0, 10) : '';
             const nodes = [el('p', 'job-prior-intro', `Zur Vorbereitung: ${docs.length} ${docs.length === 1 ? 'Unterlage' : 'Unterlagen'} aus dem Archiv${last ? ` – die neueste vom ${new Date(`${last}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}. Bitte vertraulich behandeln.`)];
+            // Die ganze Akte groß: suchen, nach Datum / Fachrichtung / Arzt ordnen, ansehen, speichern, weiterleiten, drucken.
+            const recordButton = () => {
+                const button = el('button', 'button-secondary job-record-open', `Ganze Akte öffnen (${docs.length})`);
+                button.type = 'button';
+                button.addEventListener('click', () => {
+                    const facts = parseJobMessage(item.message)?.facts || {};
+                    window.PortalRecord?.open({ docs, patientNr: result.patient_nr, patientName: facts['Patient/in'] || facts['Hauptpatient/in'] || '', jobDoctor, toast });
+                });
+                return button;
+            };
+            if (window.PortalRecord) nodes.push(recordButton());
             // Ganz oben: der letzte Bericht eines Dolmetschers – wann, bei welchem Arzt / welcher Fachrichtung, von wem.
             const lastReport = docs.find(doc => doc.kind === 'Dolmetscherbericht' && String(doc.body || '').trim());
             if (lastReport) {
@@ -1463,15 +1481,23 @@ if (!window.TerminContact) {
                 if (lastReport.note) card.append(el('span', 'job-prior-note', lastReport.note));
                 nodes.push(card, el('h4', 'job-prior-title job-prior-all', `Ganze Akte (${docs.length})`));
             }
-            const rest = [...docs];
-            PRIOR_GROUPS.forEach(([title, test]) => {
-                const group = rest.filter(doc => test(doc.kind || ''));
-                if (!group.length) return;
-                group.forEach(doc => rest.splice(rest.indexOf(doc), 1));
+            if (docs.length > PRIOR_INLINE) {
+                // Große Akte (z. B. eine eingelesene Papierakte): hier nur die neuesten – alles steht in der ganzen Akte.
                 const list = el('ul', 'job-prior-list');
-                list.append(...group.map(doc => priorEntry(doc, jobDoctor)));
-                nodes.push(el('h4', 'job-prior-title', `${title} (${group.length})`), list);
-            });
+                list.append(...docs.slice(0, PRIOR_NEWEST).map(doc => priorEntry(doc, jobDoctor)));
+                nodes.push(el('h4', 'job-prior-title', `Die neuesten ${PRIOR_NEWEST} von ${docs.length}`), list,
+                    el('p', 'job-prior-intro job-prior-rest', `${docs.length - PRIOR_NEWEST} weitere Unterlagen stehen in der ganzen Akte (Knopf oben) – dort kannst du suchen und nach Fachrichtung oder Arzt ordnen.`));
+            } else {
+                const rest = [...docs];
+                PRIOR_GROUPS.forEach(([title, test]) => {
+                    const group = rest.filter(doc => test(doc.kind || ''));
+                    if (!group.length) return;
+                    group.forEach(doc => rest.splice(rest.indexOf(doc), 1));
+                    const list = el('ul', 'job-prior-list');
+                    list.append(...group.map(doc => priorEntry(doc, jobDoctor)));
+                    nodes.push(el('h4', 'job-prior-title', `${title} (${group.length})`), list);
+                });
+            }
             body.replaceChildren(...nodes);
             // Von selbst aufgeklappt, solange der Auftrag noch bevorsteht – außer der Dolmetscher hat es selbst zugeklappt.
             box.open = priorOpen.has(item.id) ? priorOpen.get(item.id) : !jobStarted(item) && !jobFinished(item);
@@ -2451,6 +2477,7 @@ if (!window.TerminContact) {
             if (error) throw error;
             $('damageDescription').value = '';
             $('damagePhoto').value = '';
+            showDamagePicks();
             document.querySelectorAll('input[name="damageKind"]').forEach(input => { input.checked = false; });
             damagePosition = null;
             sketch.setPicked(null);
@@ -2509,6 +2536,50 @@ if (!window.TerminContact) {
         }
     });
 
+    // Gewählte Fotos (Schaden, Meldung im Auto) als kleine Bilder unter dem Feld: antippen = groß ansehen, × = wieder entfernen.
+    function photoPicks(input, name) {
+        const box = el('div', 'request-photos pick-photos');
+        input.after(box);
+        let urls = [];
+        const removeAt = index => {
+            const rest = new DataTransfer();
+            [...input.files].forEach((file, at) => { if (at !== index) rest.items.add(file); });
+            input.files = rest.files;
+            render();
+        };
+        function render() {
+            urls.forEach(url => URL.revokeObjectURL(url));
+            urls = [];
+            box.replaceChildren(...[...(input.files || [])].map((file, index) => {
+                const url = URL.createObjectURL(file);
+                urls.push(url);
+                const wrap = el('span', 'request-thumb');
+                const image = el('img');
+                image.src = url;
+                image.alt = `${name} ${index + 1}`;
+                const open = el('button', 'request-thumb-open');
+                open.type = 'button';
+                open.setAttribute('aria-label', `${name} ${index + 1} groß ansehen`);
+                open.addEventListener('click', async () => { if (await window.ScanCam?.look?.({ url, title: `${name} ${index + 1}`, removeLabel: 'Entfernen' }) === 'remove') removeAt([...input.files].indexOf(file)); });
+                open.append(image);
+                wrap.append(open);
+                if (typeof DataTransfer === 'function') {
+                    const remove = el('button', 'request-thumb-remove', '×');
+                    remove.type = 'button';
+                    remove.setAttribute('aria-label', `${name} ${index + 1} entfernen`);
+                    remove.addEventListener('click', () => removeAt([...input.files].indexOf(file)));
+                    wrap.append(remove);
+                }
+                return wrap;
+            }));
+        }
+        input.addEventListener('change', render);
+        input.form?.addEventListener('reset', () => window.setTimeout(render));
+        return render;
+    }
+    const showDamagePicks = photoPicks($('damagePhoto'), 'Foto');
+    photoPicks($('alertPhoto'), 'Foto');
+
     // ---------- Belege (mit automatischem Auslesen des Fotos) ----------
     async function loadReceipts() {
         if (!$('receiptDate').value) $('receiptDate').value = TerminCloud.todayIso();
@@ -2550,7 +2621,8 @@ if (!window.TerminContact) {
     // Sobald ein Foto gewählt ist, liest das Handy Betrag, Datum und Ort selbst aus.
     let scanToken = 0;
     // Der Beleg wird wie eine Unterlage gescannt (Kamera in der App, Rand erkannt, aufgehellt) und als PDF gespeichert.
-    let receiptPage = null;       // { blob, width, height, file } – der zugeschnittene Beleg
+    let receiptPage = null;       // { blob, width, height, file, source, settings } – der zugeschnittene Beleg (source = das Foto davor)
+    let receiptFilled = {};       // was die Texterkennung eingetragen hat – wird mit dem Beleg wieder gelöscht, solange es unverändert ist
     function clearReceiptPage() {
         receiptPage = null;
         const image = $('receiptPreviewImage');
@@ -2561,26 +2633,38 @@ if (!window.TerminContact) {
     }
     $('receiptScanButton').addEventListener('click', async () => {
         if (!window.ScanCam?.supported()) { $('receiptPhoto').click(); return; }
-        const result = await ScanCam.open({ title: 'Beleg scannen', single: true, shape: 'beleg', onCapture: file => useReceiptFile(file) });
+        const result = await ScanCam.open({ title: 'Beleg scannen', single: true, shape: 'beleg', onCapture: (file, info) => useReceiptFile(file, info?.result, { settings: info?.settings }) });
         if (result.reason === 'galerie') $('receiptPhoto').click();
         else if (result.reason === 'fehler') { toast(`${result.error || 'Die Kamera konnte nicht gestartet werden.'} Wähle das Foto aus der Galerie oder nimm die Foto-App.`, 'info'); $('receiptPhoto').click(); }
     });
     $('receiptPhoto').addEventListener('change', () => { const file = $('receiptPhoto').files?.[0]; $('receiptPhoto').value = ''; if (file) useReceiptFile(file); });
 
-    async function useReceiptFile(original) {
+    // ready = der Beleg ist schon aufbereitet und in der Vorschau bestätigt (Kamera in der App). Ein Foto aus der Galerie wird hier
+    // aufbereitet und gezeigt: ansehen, vergrößern, Ecken anpassen.
+    // read: false = nur das Bild wurde geändert (Ecken, Drehung) – die Angaben im Formular bleiben, wie sie sind.
+    async function useReceiptFile(original, ready = null, { settings = null, read = true } = {}) {
         let file = original;
         const status = $('receiptScan');
         const token = ++scanToken;
+        const before = { hidden: status.hidden, kind: status.dataset.kind, text: status.textContent };
         clearReceiptPage();
+        if (read) forgetReceiptValues();
         status.hidden = false;
         status.dataset.kind = 'busy';
         status.textContent = 'Beleg wird zugeschnitten …';
         try {
-            // Rand erkennen, gerade rücken, aufhellen – wie bei den Unterlagen. Klappt das nicht, bleibt das Foto, wie es ist.
-            const scanned = window.DocScan ? await DocScan.process(original) : null;
+            // Rand erkennen, gerade rücken, aufbereiten – wie bei den Unterlagen. Klappt das nicht, bleibt das Foto, wie es ist.
+            let scanned = ready;
+            if (!scanned && window.ScanCam?.prepareFull && window.DocScan) {
+                const prepared = await ScanCam.prepareFull(original, { title: 'Beleg – Vorschau' });
+                if (!prepared) { if (token === scanToken) status.hidden = true; return; }      // Vorschau geschlossen: nichts übernehmen
+                scanned = prepared.result;
+                settings = prepared.settings;
+            } else if (!scanned && window.DocScan) scanned = await DocScan.process(original);
             if (token !== scanToken) return;
             if (scanned?.blob) {
                 receiptPage = { blob: scanned.blob, width: scanned.width, height: scanned.height, cropped: Boolean(scanned.cropped) };
+                window.DocScan?.release?.(scanned);
                 file = new File([scanned.blob], 'beleg.jpg', { type: 'image/jpeg' });
             }
         } catch (error) { /* weiter mit dem Foto */ }
@@ -2591,10 +2675,13 @@ if (!window.TerminContact) {
             receiptPage = { blob: original, width: size[0], height: size[1], cropped: false };
         }
         receiptPage.file = file;
+        receiptPage.source = original;
+        receiptPage.settings = settings;
         $('receiptPreviewImage').src = URL.createObjectURL(receiptPage.blob);
         $('receiptPreviewInfo').textContent = receiptPage.cropped ? 'Beleg erkannt und zugeschnitten – wird als PDF gespeichert.' : 'Ganzes Foto – wird als PDF gespeichert.';
         $('receiptPreview').hidden = false;
         $('receiptScanLabel').textContent = 'Beleg neu scannen';
+        if (!read) { status.hidden = before.hidden; status.dataset.kind = before.kind || ''; status.textContent = before.text; return; }
         if (typeof ReceiptReader === 'undefined') { status.hidden = true; return; }
         status.hidden = false;
         status.dataset.kind = 'busy';
@@ -2605,10 +2692,10 @@ if (!window.TerminContact) {
             });
             if (token !== scanToken) return;
             const filled = [];
-            if (found.amount) { $('receiptAmount').value = found.amount.toFixed(2); filled.push('Betrag'); }
-            if (found.date) { $('receiptDate').value = found.date; filled.push('Datum'); }
-            if (found.place && !$('receiptPlace').value) { $('receiptPlace').value = found.place; filled.push('Ort'); }
-            if (found.note && !$('receiptNote').value) $('receiptNote').value = found.note;
+            if (found.amount) { $('receiptAmount').value = found.amount.toFixed(2); filled.push('Betrag'); receiptFilled.receiptAmount = $('receiptAmount').value; }
+            if (found.date) { $('receiptDate').value = found.date; filled.push('Datum'); receiptFilled.receiptDate = found.date; }
+            if (found.place && !$('receiptPlace').value) { $('receiptPlace').value = found.place; filled.push('Ort'); receiptFilled.receiptPlace = found.place; }
+            if (found.note && !$('receiptNote').value) { $('receiptNote').value = found.note; receiptFilled.receiptNote = found.note; }
             if (found.kind) { const radio = document.querySelector(`input[name="receiptKind"][value="${found.kind}"]`); if (radio) radio.checked = true; }
             status.dataset.kind = filled.length ? 'ok' : 'warn';
             status.textContent = filled.length
@@ -2620,6 +2707,43 @@ if (!window.TerminContact) {
             status.textContent = 'Der Beleg konnte nicht automatisch gelesen werden. Bitte trag die Angaben von Hand ein.';
         }
     }
+
+    // Was die Texterkennung aus dem alten Beleg eingetragen hat, verschwindet mit ihm – was der Dolmetscher selbst geändert hat, bleibt.
+    function forgetReceiptValues() {
+        Object.entries(receiptFilled).forEach(([id, value]) => { if ($(id).value === value) $(id).value = id === 'receiptDate' ? TerminCloud.todayIso() : ''; });
+        receiptFilled = {};
+    }
+    function removeReceipt() {
+        scanToken += 1;
+        clearReceiptPage();
+        forgetReceiptValues();
+        $('receiptScan').hidden = true;
+        toast('Beleg gelöscht. Du kannst neu scannen.', 'info');
+        $('receiptScanButton').focus({ preventScroll: true });
+    }
+    // „Ansehen“: der Beleg groß – zum Vergrößern, Ecken anpassen, Drehen, neu aufnehmen.
+    let receiptViewing = false;
+    async function viewReceipt() {
+        const page = receiptPage;
+        if (!page || receiptViewing) return;
+        receiptViewing = true;
+        try {
+            if (!window.ScanCam?.review || !window.DocScan || !page.source) {
+                if (await window.ScanCam?.look?.({ blob: page.blob, title: 'Beleg', removeLabel: 'Löschen' }) === 'remove' && receiptPage === page) removeReceipt();
+                return;
+            }
+            const answer = await ScanCam.review({ file: page.source, settings: page.settings, title: 'Beleg', okLabel: 'Übernehmen' });
+            if (receiptPage !== page) { if (answer.action === 'ok') window.DocScan?.release?.(answer.result); return; }
+            if (answer.action === 'retake') { $('receiptScanButton').click(); return; }
+            if (answer.action !== 'ok') return;
+            if (page.settings && JSON.stringify(answer.settings) === JSON.stringify(page.settings)) { window.DocScan?.release?.(answer.result); return; }
+            await useReceiptFile(page.source, answer.result, { settings: answer.settings, read: false });
+        } finally { receiptViewing = false; }
+    }
+    $('receiptPreviewOpen').addEventListener('click', viewReceipt);
+    $('receiptView').addEventListener('click', viewReceipt);
+    $('receiptRetake').addEventListener('click', () => $('receiptScanButton').click());
+    $('receiptRemove').addEventListener('click', removeReceipt);
 
     $('receiptForm').addEventListener('submit', async event => {
         event.preventDefault();
@@ -2655,11 +2779,12 @@ if (!window.TerminContact) {
             scanToken += 1;
             event.target.reset();
             clearReceiptPage();
+            receiptFilled = {};
             $('receiptScan').hidden = true;
             $('receiptDate').value = TerminCloud.todayIso();
             toast('Beleg eingereicht. Danke!', 'success');
             await loadReceipts();
-            goTo(receiptOrigin || (isFest() ? 'receiptsHome' : 'statement'));
+            goTo(isFest() ? 'receiptsHome' : 'statement');
         } catch (error) {
             toast(TerminCloud.germanError(error), 'error');
         } finally {

@@ -6,13 +6,14 @@
       <title>Neue Rezepte · Medical Office Bonn</title>
       <link rel="stylesheet" href="style.css">
       <link rel="stylesheet" href="patienten.css">
+      <link rel="stylesheet" href="akte.css">
       <script src="appShell.js"></script>
    </head>
    <body data-page="rezepte" data-view="rezepte">
       <main class="container">
          <div class="page-heading fleet-heading">
             <div><p class="page-kicker" id="viewKicker">ONLINE · PATIENTEN</p><h1 id="viewTitle">Patientenakten</h1><p id="viewLead">Das Archiv: je Patient eine Akte mit Terminen, Berichten, Rezepten und Überweisungen.</p></div>
-            <div class="fleet-heading-actions"><button type="button" id="patientReload" class="button-secondary">Aktualisieren</button></div>
+            <div class="fleet-heading-actions"><a id="akteImportLink" class="button-primary" href="akteEinlesen.html" hidden>Papierakte einlesen</a><button type="button" id="fixAllButton" class="button-secondary" hidden>Alle Scans verbessern</button><button type="button" id="patientReload" class="button-secondary">Aktualisieren</button></div>
          </div>
          <p id="patientStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
@@ -116,16 +117,21 @@
             <select id="docEditKind"></select>
             <div class="time-pair">
                <label class="time-box" for="docEditNr"><span>Patienten-Nr.</span><input id="docEditNr" type="text" maxlength="40" autocomplete="off"></label>
-               <label class="time-box" for="docEditDate"><span>Datum des Termins</span><input id="docEditDate" type="date"></label>
+               <label class="time-box" for="docEditDate"><span id="docEditDateLabel">Datum des Termins</span><input id="docEditDate" type="date"></label>
             </div>
             <label for="docEditName">Name des Patienten</label>
             <input id="docEditName" type="text" maxlength="120" autocomplete="off">
             <label for="docEditDoctor">Arzt / Praxis</label>
             <input id="docEditDoctor" type="text" maxlength="160" autocomplete="off">
+            <label for="docEditSpecialty">Fachrichtung <span class="optional-label">optional</span></label>
+            <input id="docEditSpecialty" type="text" maxlength="120" autocomplete="off" list="docEditSpecialtyList" placeholder="z. B. Neurochirurgie">
+            <datalist id="docEditSpecialtyList"></datalist>
+            <label for="docEditHeading">Überschrift in der Akte <span class="optional-label">optional</span></label>
+            <input id="docEditHeading" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Arztbericht · Prof. Dr. Goldbach · Neurochirurgie">
             <label for="docEditNote">Hinweis <span class="optional-label">optional</span></label>
             <input id="docEditNote" type="text" maxlength="300" autocomplete="off">
             <label for="docEditStatus">Stand</label>
-            <select id="docEditStatus"><option value="neu">Neu</option><option value="geprüft">Geprüft</option><option value="weitergeleitet">Weitergeleitet</option></select>
+            <select id="docEditStatus"><option value="neu">Neu</option><option value="geprüft">Geprüft</option><option value="weitergeleitet">Weitergeleitet</option><option value="archiv">Papierakte (nur in der Akte, nicht im Eingang)</option></select>
             <p id="docEditStatusLine" class="workflow-status" role="status" aria-live="polite" hidden></p>
             <div class="modal-buttons absence-dialog-buttons">
                <button type="button" class="button-secondary" id="docEditCancel">Abbrechen</button>
@@ -152,6 +158,9 @@
       <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="docPdf.js"></script>
+      <script src="arztVerzeichnis.js"></script>
+      <script src="akteLogic.js"></script>
+      <script src="scanFix.js"></script>
       <script src="patientenApp.js"></script>
    </body>
 </html>

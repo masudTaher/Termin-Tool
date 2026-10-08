@@ -58,12 +58,14 @@
                     ['12-auftrag-offen', 'Auftrag lesen', 'Patient, Praxis, Adresse und Telefon. [[In Karten öffnen]] zeigt den Weg. Unter jeder Nummer des Patienten: [[Anrufen]] und [[WhatsApp]].'],
                     ['12b-auftrag-antwort', 'Immer antworten', 'Auf jeder Karte stehen zwei große Knöpfe: [[Zusage]] oder [[Absage]]. Eine Absage geht nur mit Grund – danach ist der Auftrag für dich abgeschlossen und rot. Vertippt? [[Rückgängig]] oder [[Antwort ändern …]]. Einen kurzen Hinweis schickst du mit [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'Losfahren', 'Nach der Zusage wird aus dem Knopf [[Jetzt losfahren]]. Am Tag des Termins antippen – das geht erst mit Fahrzeug und erst, wenn dein laufender Auftrag beendet ist. Unter [[Frühere Unterlagen zum Patienten]] kannst du dich vorbereiten.'],
+                    ['12f-akte', 'Akte des Patienten', 'Unter [[Frühere Unterlagen zum Patienten]] zeigt [[Ganze Akte öffnen]] alle Unterlagen. Du kannst suchen und nach [[Fachrichtung]] oder [[Arzt]] ordnen. Eine Unterlage antippen – dann [[Ansehen]], [[Speichern]], [[Weiterleiten]] oder [[Drucken]]. Bitte vertraulich behandeln: Jeder Abruf wird festgehalten.'],
                     ['12d-auftrag-unterwegs', 'Fertig', 'Nach dem Termin [[Fertig – Auftrag beenden]] tippen. Die Einsatzleitung sieht sofort, dass du wieder frei bist. Fällt der Termin aus oder geht der Patient alleine? Das meldest du ganz unten in der Karte.']
                 ] },
                 { id: 'unterlagen', title: 'Unterlagen fotografieren', lead: 'Arztbericht, Rezept oder Überweisung – direkt nach dem Termin.', steps: [
                     ['13-unterlagen', 'Starten', '[[Unterlage scannen]] unter [[Unterlagen]] – oder [[Unterlagen scannen]] direkt am Auftrag.'],
                     ['13c-unterlage-art', 'Art wählen', 'Arztbericht, Rezept (Medikamente, Physiotherapie, Hilfsmittel), Überweisung (Facharzt, Radiologie) oder Sonstiges.'],
-                    ['13e-unterlage-seiten', 'Seiten fotografieren', 'Blatt auf einen dunklen Untergrund legen, jede Seite einzeln. Die App schneidet den Rand zu und prüft, ob alles lesbar ist.'],
+                    ['13d-unterlage-kamera', 'Seite scannen', 'Handy über das Blatt halten: Es wird gelb markiert und von selbst aufgenommen. Ist es zu weit weg oder nicht ganz im Bild, sagt es dir die App.'],
+                    ['13e-unterlage-seiten', 'Ansehen und prüfen', 'Danach siehst du die Seite groß – mit [[Vergrößern]] ganz genau. Passt alles, tippe [[Passt – weiter]]; stimmt der Rand nicht: [[Ecken anpassen]].'],
                     ['13f-unterlage-senden', 'Prüfen und senden', '[[Als PDF senden]] tippen. Fehlt eine Seite, sagt dir die App vorher Bescheid.']
                 ] },
                 { id: 'arbeitstage', title: 'Arbeitstage', badge: 'Temporär', lead: 'Sag der Einsatzleitung, wann du arbeiten kannst – ein Tipp pro Tag.', steps: [
@@ -146,12 +148,14 @@
                     ['12-auftrag-offen', 'اقرأ المهمة', 'اسم المريض والعيادة والعنوان وأرقام الهاتف. اضغط [[In Karten öffnen]] لفتح الخريطة. وتحت كل رقم للمريض زرّان: [[Anrufen]] للاتصال و[[WhatsApp]] للمحادثة.'],
                     ['12b-auftrag-antwort', 'أجب دائمًا', 'على كل بطاقة زرّان كبيران: [[Zusage]] للموافقة أو [[Absage]] للاعتذار. الاعتذار يحتاج إلى ذكر السبب، وبعده تُغلق المهمة عندك وتظهر باللون الأحمر. ضغطت بالخطأ؟ اضغط [[Rückgängig]] أو [[Antwort ändern …]]. ولإرسال ملاحظة قصيرة اكتبها ثم اضغط [[Senden]].'],
                     ['12c-auftrag-zugesagt', 'عند الانطلاق', 'بعد الموافقة يتحوّل الزر إلى [[Jetzt losfahren]]. اضغطه في يوم الموعد. لا يعمل إلا بعد استلام سيارة وبعد إنهاء المهمة الجارية. وتحت [[Frühere Unterlagen zum Patienten]] تجد أوراقًا سابقة عن المريض للتحضير.'],
+                    ['12f-akte', 'ملف المريض', 'تحت [[Frühere Unterlagen zum Patienten]] اضغط [[Ganze Akte öffnen]] لتظهر كل مستندات المريض. يمكنك البحث فيها وترتيبها حسب التخصص [[Fachrichtung]] أو الطبيب [[Arzt]]. اضغط على المستند ثم اختر: [[Ansehen]] للعرض، [[Speichern]] للحفظ، [[Weiterleiten]] للإرسال، [[Drucken]] للطباعة. يُرجى التعامل معها بسرّية، فكل اطّلاع يُسجَّل.'],
                     ['12d-auftrag-unterwegs', 'عند الانتهاء', 'بعد الموعد اضغط [[Fertig – Auftrag beenden]]، فتعرف الإدارة فورًا أنك أصبحت متاحًا. إذا أُلغي الموعد أو ذهب المريض وحده فبلّغ عن ذلك من أسفل البطاقة.']
                 ] },
                 { id: 'unterlagen', title: 'تصوير المستندات', lead: 'التقرير الطبي أو الوصفة أو الإحالة، مباشرةً بعد الموعد.', steps: [
                     ['13-unterlagen', 'ابدأ', 'اضغط [[Unterlage scannen]] في قسم [[Unterlagen]]، أو [[Unterlagen scannen]] في بطاقة المهمة.'],
                     ['13c-unterlage-art', 'اختر النوع', 'تقرير طبي، وصفة (أدوية، علاج طبيعي، مستلزمات طبية)، إحالة (طبيب مختص، أشعة)، أو غير ذلك.'],
-                    ['13e-unterlage-seiten', 'صوّر الصفحات', 'ضع الورقة على سطح داكن وصوّر كل صفحة على حدة. تقصّ البوابة الحواف وتتحقق من وضوح الصورة.'],
+                    ['13d-unterlage-kamera', 'صوّر الصفحة', 'أمسك الهاتف فوق الورقة: تظهر محدَّدةً بالأصفر وتُصوَّر تلقائيًا. وإذا كانت بعيدة أو خارج الصورة نبّهتك البوابة.'],
+                    ['13e-unterlage-seiten', 'راجع الصفحة', 'بعد ذلك تُعرض الصفحة: اضغط [[Vergrößern]] لتكبيرها والتأكد منها، ثم [[Passt – weiter]]. إذا لم تكن الحواف صحيحة اضغط [[Ecken anpassen]].'],
                     ['13f-unterlage-senden', 'راجع وأرسل', 'اضغط [[Als PDF senden]]. وإذا نقصت صفحة نبّهتك البوابة قبل الإرسال.']
                 ] },
                 { id: 'arbeitstage', title: 'أيام العمل', badge: 'للمؤقتين', lead: 'أخبر الإدارة متى تستطيع العمل. ضغطة واحدة لكل يوم.', steps: [

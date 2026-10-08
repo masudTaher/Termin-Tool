@@ -1,0 +1,205 @@
+/* Papierakte einlesen (akteEinlesen.html) und die Akten-Ansicht mit Überschrift, Fachrichtung und Ordnen. */
+
+/* ---------- Ablauf oben ---------- */
+.akte-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
+.akte-steps li { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px 7px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: .86rem; font-weight: 650; }
+.akte-steps li b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--surface-soft); color: var(--muted); font-size: .78rem; }
+.akte-steps li[data-state="now"] { border-color: var(--brand); color: var(--ink); box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 30%, transparent); }
+.akte-steps li[data-state="now"] b { background: var(--brand); color: #fff; }
+.akte-steps li[data-state="done"] { color: var(--ink-soft); }
+.akte-steps li[data-state="done"] b { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); }
+.akte-demo { margin: 0 0 16px; padding: 11px 14px; border: 1px dashed color-mix(in srgb, var(--warn) 60%, var(--line)); border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: .92rem; }
+:root[data-theme="dark"] .akte-demo { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+
+/* ---------- Schritt 1 ---------- */
+.akte-patient-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.akte-patient-grid label { display: grid; gap: 6px; }
+@media (max-width: 760px) { .akte-patient-grid { grid-template-columns: 1fr; } }
+.akte-drop { display: grid; justify-items: center; gap: 6px; margin-top: 14px; padding: 30px 18px; border: 2px dashed var(--line-strong); border-radius: 16px; background: var(--surface-soft); color: var(--ink-soft); text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.akte-drop:hover, .akte-drop.is-over, .akte-drop:focus-within { border-color: var(--brand); background: var(--brand-soft); }
+:root[data-theme="dark"] .akte-drop:hover, :root[data-theme="dark"] .akte-drop.is-over, :root[data-theme="dark"] .akte-drop:focus-within { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); }
+.akte-drop svg { width: 34px; height: 34px; fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.akte-drop strong { color: var(--ink); font-size: 1.05rem; }
+.akte-drop span { max-width: 520px; font-size: .88rem; line-height: 1.45; }
+.akte-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.akte-file-list { display: grid; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; }
+.akte-file-list li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: .9rem; font-weight: 600; }
+.akte-privacy { margin-top: 10px; }
+.akte-tips { margin-top: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--ink-soft); font-size: .9rem; }
+.akte-tips summary { color: var(--brand); cursor: pointer; font-weight: 700; }
+.akte-tips ul { display: grid; gap: 6px; margin: 10px 0 2px; padding-left: 20px; line-height: 1.45; }
+.akte-start-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; }
+.akte-start-actions .big-button { min-width: 240px; }
+
+/* ---------- Fortschritt ---------- */
+.akte-progress { height: 12px; margin: 14px 0 8px; overflow: hidden; border-radius: 999px; background: var(--surface-soft); box-shadow: inset 0 0 0 1px var(--line); }
+.akte-progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--accent)); transition: width .35s ease; }
+.akte-progress-text { margin: 0 0 12px; color: var(--ink-soft); font-weight: 600; }
+.akte-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.akte-strip img { width: 54px; height: 76px; border: 1px solid var(--line); border-radius: 5px; background: #fff; object-fit: cover; }
+.akte-strip img.is-blank { opacity: .45; }
+
+/* ---------- Schritt 3: Übersicht ---------- */
+.akte-summary { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; }
+.akte-summary h2 { margin: 0 0 4px; }
+.akte-patient-line { margin: 0 0 6px; color: var(--ink-soft); font-weight: 650; }
+.akte-count { margin: 0; padding: 7px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ink); font-size: .9rem; font-weight: 650; }
+.akte-count[data-state="fehlt"] { background: var(--danger-soft); color: var(--danger); }
+.akte-summary-side { display: grid; justify-items: end; gap: 8px; }
+.akte-summary-side .field-hint { margin: 0; }
+.akte-space[data-state="voll"] { max-width: 420px; padding: 8px 12px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font-weight: 650; text-align: left; }
+.akte-compact { max-width: 420px; margin: 0; font-size: .86rem; font-weight: 500; text-align: left; }
+.akte-compact[hidden] { display: none; }
+.akte-compact strong { color: var(--ink); font-weight: 700; }
+.akte-compact small { display: block; margin-top: 2px; color: var(--ink-soft); font-size: .82rem; }
+.akte-order { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+.akte-order button, :root[data-theme="dark"] .akte-order button { min-height: 34px; padding: 5px 13px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); font-size: .85rem; font-weight: 650; box-shadow: none; }
+.akte-order button[aria-pressed="true"], :root[data-theme="dark"] .akte-order button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .akte-order button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+@media (max-width: 760px) { .akte-summary { position: static; } .akte-summary-side { justify-items: stretch; width: 100%; } }
+.akte-problems { display: grid; gap: 6px; margin: 0 0 14px; padding: 12px 14px 12px 32px; border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: .9rem; }
+:root[data-theme="dark"] .akte-problems { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+
+/* ---------- Kategorien ---------- */
+.akte-groups { display: grid; gap: 14px; }
+.akte-group[data-state="bestätigt"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.akte-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.akte-group-title h3 { margin: 0; font-size: 1.08rem; }
+.akte-group-title span { color: var(--muted); font-size: .86rem; }
+.akte-confirm { min-height: 40px; }
+.akte-group[data-state="bestätigt"] .akte-confirm, :root[data-theme="dark"] .akte-group[data-state="bestätigt"] .akte-confirm { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); background: color-mix(in srgb, var(--ok) 13%, var(--surface)); color: var(--ok); }
+.akte-doc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.akte-card { min-width: 0; }
+.akte-card-open, :root[data-theme="dark"] .akte-card-open { display: flex; width: 100%; min-height: 0; align-items: stretch; gap: 12px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: left; box-shadow: none; }
+.akte-card-open:hover { border-color: var(--brand); background: var(--surface-hover); }
+.akte-card[data-state="unsicher"] .akte-card-open { border-color: color-mix(in srgb, var(--warn) 70%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.akte-card[data-state="geprüft"] .akte-card-open { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.akte-card-thumb { position: relative; flex: 0 0 62px; }
+.akte-card-thumb img { display: block; width: 62px; height: 88px; border: 1px solid var(--line); border-radius: 5px; background: #fff; object-fit: cover; object-position: top; }
+.akte-card-thumb b { position: absolute; right: -4px; bottom: -4px; padding: 2px 6px; border-radius: 999px; background: var(--nav-bg); color: #fff; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+.akte-card-text { display: grid; min-width: 0; flex: 1 1 auto; align-content: start; gap: 4px; }
+.akte-card-text strong { overflow: hidden; font-size: .93rem; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.akte-card-date { color: var(--muted); font-size: .85rem; font-weight: 600; }
+.akte-card-marks { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip.chip-ok { background: color-mix(in srgb, var(--ok) 15%, var(--surface)); color: var(--ok); }
+.chip.chip-warn { background: var(--warn-soft); color: var(--warn); }
+.chip.chip-danger { background: var(--danger-soft); color: var(--danger); }
+:root[data-theme="dark"] .chip.chip-warn { background: color-mix(in srgb, var(--warn) 22%, var(--surface)); color: #f6c453; }
+:root[data-theme="dark"] .chip.chip-danger { background: color-mix(in srgb, var(--danger) 26%, var(--surface)); color: #ff9c9c; }
+:root[data-theme="dark"] .chip.chip-ok { color: #6ee7a8; }
+
+/* ---------- Leere und entfernte Seiten ---------- */
+.akte-tray { margin-top: 14px; }
+.akte-tray summary { cursor: pointer; font-weight: 700; }
+.akte-tray-list { margin-top: 10px; }
+.akte-tray-page, :root[data-theme="dark"] .akte-tray-page { display: grid; width: 92px; min-height: 0; justify-items: center; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink-soft); font-size: .7rem; font-weight: 600; line-height: 1.25; text-align: center; box-shadow: none; }
+.akte-tray-page:hover { border-color: var(--brand); }
+.akte-tray-page img { width: 54px; height: 76px; }
+.akte-tray-doc { width: 150px; }
+.akte-restart { margin: 14px 0 0; text-align: center; }
+
+/* ---------- Speichern ---------- */
+.akte-done { display: grid; justify-items: center; gap: 8px; padding: 18px 8px; text-align: center; }
+.akte-done svg { width: 64px; height: 64px; fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.akte-done strong { font-size: 1.25rem; }
+.akte-done span { max-width: 620px; color: var(--ink-soft); line-height: 1.5; }
+.akte-done-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 12px; }
+.akte-done-actions a.button-primary { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* ---------- Ein Schriftstück ansehen und berichtigen ---------- */
+dialog.akte-doc { width: min(1180px, 96vw); max-width: none; height: min(880px, 94vh); max-height: none; margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
+dialog.akte-doc[open] { display: flex; flex-direction: column; }
+dialog.akte-doc::backdrop { background: rgba(15, 23, 42, .55); backdrop-filter: blur(3px); }
+.akte-doc-head { display: flex; flex: 0 0 auto; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 18px 12px; border-bottom: 1px solid var(--line); }
+.akte-doc-head h2 { margin: 2px 0 0; font-size: 1.12rem; line-height: 1.3; }
+.akte-doc-pos { color: var(--muted); font-size: .8rem; font-weight: 650; letter-spacing: .02em; }
+.akte-close, :root[data-theme="dark"] .akte-close { width: 38px; min-height: 38px; flex: 0 0 auto; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink-soft); font-size: 1.3rem; line-height: 1; box-shadow: none; }
+.akte-close:hover { border-color: var(--brand); color: var(--ink); }
+.akte-doc-body { display: grid; min-height: 0; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 340px; }
+.akte-view { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface-soft); }
+.akte-view-bar { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.akte-view-bar span { flex: 1 1 auto; color: var(--ink-soft); font-size: .86rem; font-weight: 650; text-align: center; }
+.akte-view-bar button { min-height: 36px; padding: 4px 13px; }
+.akte-view-frame { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 12px; text-align: center; }
+.akte-view-frame img { max-width: 100%; max-height: 100%; border: 1px solid var(--line); background: #fff; box-shadow: var(--shadow-sm); cursor: zoom-in; }
+.akte-view-frame.is-zoomed img { width: min(1400px, 190%); max-width: none; max-height: none; cursor: zoom-out; }
+.akte-view-pages { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; margin: 0; overflow-x: auto; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+.akte-view-pages button, :root[data-theme="dark"] .akte-view-pages button { position: relative; width: 46px; min-height: 0; flex: 0 0 auto; padding: 2px; border: 2px solid transparent; border-radius: 6px; background: transparent; box-shadow: none; }
+.akte-view-pages button.is-active { border-color: var(--brand); }
+.akte-view-pages button img { display: block; width: 38px; height: 54px; }
+.akte-view-pages button span { position: absolute; right: 2px; bottom: 2px; padding: 0 4px; border-radius: 6px; background: var(--nav-bg); color: #fff; font-size: .64rem; font-weight: 700; }
+.akte-doc-form { display: flex; min-height: 0; flex-direction: column; gap: 6px; overflow-y: auto; padding: 14px 16px 16px; }
+.akte-doc-form label { margin-top: 4px; }
+.akte-hints { display: grid; gap: 5px; margin: 0 0 4px; padding: 10px 12px 10px 28px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: .85rem; line-height: 1.4; }
+:root[data-theme="dark"] .akte-hints { background: color-mix(in srgb, var(--warn) 16%, var(--surface)); }
+.akte-page-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.akte-page-tools legend { padding: 0 6px; color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.akte-page-tools button { min-height: 36px; padding: 5px 11px; font-size: .84rem; }
+.akte-doc-nav { display: flex; gap: 8px; margin-top: auto; padding-top: 12px; }
+.akte-doc-nav .button-primary { flex: 1 1 auto; min-height: 46px; }
+@media (max-width: 900px) {
+  dialog.akte-doc { width: 100vw; height: 100vh; height: 100dvh; border: 0; border-radius: 0; }
+  .akte-doc-body { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 46%) minmax(0, 1fr); overflow: hidden; }
+  .akte-view { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* ---------- Akte: Knopf „Papierakte einlesen“, Ordnen, eingelesene Papierakten ---------- */
+.chart-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 2px; }
+.chart-tools-label { color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.chart-tools .akte-order { flex: 0 0 auto; }
+.chart-head .chart-import, :root[data-theme="dark"] .chart-head .chart-import { min-height: 40px; flex: 0 0 auto; border-color: rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .14); color: #fff; box-shadow: none; }
+.chart-head .chart-import:hover { background: rgba(255, 255, 255, .26); }
+.chart-imports { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.chart-imports li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: .86rem; }
+.fleet-heading-actions a.button-primary, .fleet-heading-actions a.button-secondary { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* ---------- „Scan verbessern“: Vorher / Nachher je Seite ---------- */
+html.scan-fix-open, html.scan-fix-open body { overflow: hidden; }
+.scan-fix { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.scan-fix-head { display: flex; flex: 0 0 auto; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 22px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.scan-fix-head h2 { margin: 0; font-size: 1.25rem; }
+.scan-fix-head p { margin: 2px 0 0; color: var(--ink-soft); font-size: .92rem; font-weight: 600; }
+.scan-fix-close, :root[data-theme="dark"] .scan-fix-close { width: 40px; min-height: 40px; flex: 0 0 auto; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink-soft); font-size: 1.35rem; line-height: 1; box-shadow: none; }
+.scan-fix-close:hover { border-color: var(--brand); color: var(--ink); }
+.scan-fix-body { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 16px 22px 20px; }
+.scan-fix-lead { max-width: 900px; margin: 0 0 12px; color: var(--ink-soft); line-height: 1.5; }
+.scan-fix-status { margin: 0 0 14px; }
+.scan-fix-pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.scan-fix-page { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.scan-fix-page[data-cropped="ja"] { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.scan-fix-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.scan-fix-pair figure { display: grid; justify-items: center; gap: 6px; margin: 0; }
+.scan-fix-pair img { max-width: 100%; max-height: 46vh; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; box-shadow: var(--shadow-sm); }
+.scan-fix-pair figcaption { color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.scan-fix-arrow { color: var(--muted); font-size: 1.5rem; font-weight: 700; }
+.scan-fix-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.scan-fix-note { min-width: 0; flex: 1 1 220px; color: var(--ink-soft); font-size: .88rem; font-weight: 600; line-height: 1.4; }
+.scan-fix-edit { min-height: 38px; flex: 0 0 auto; }
+.scan-fix-actions { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 10px; padding: 12px 22px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--surface); }
+.scan-fix-actions .button-primary { min-width: 200px; min-height: 46px; }
+@media (max-width: 640px) {
+  .scan-fix-pages { grid-template-columns: 1fr; }
+  .scan-fix-head, .scan-fix-body, .scan-fix-actions { padding-right: 14px; padding-left: 14px; }
+  .scan-fix-actions .button-primary { min-width: 0; flex: 1 1 auto; }
+}
+
+/* ---------- „Scans verbessern“ für viele Unterlagen: eine Zeile je Unterlage ---------- */
+.scan-fix-batch { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.scan-fix-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.scan-fix-row[data-status="gespeichert"] { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.scan-fix-row[data-status="fehler"] { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.scan-fix-row[data-status="wartet"] { opacity: .6; }
+.scan-fix-tick { display: grid; width: 30px; height: 30px; place-items: center; }
+.scan-fix-tick input { width: 22px; height: 22px; margin: 0; accent-color: var(--brand); }
+.scan-fix .scan-fix-mini, :root[data-theme="dark"] .scan-fix .scan-fix-mini { display: inline-flex; min-width: 150px; min-height: 96px; align-items: center; justify-content: center; gap: 8px; padding: 4px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; cursor: zoom-in; }
+.scan-fix-mini img { max-width: 64px; max-height: 88px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; }
+.scan-fix-row[data-big="ja"] { grid-template-columns: auto minmax(0, 1fr); }
+.scan-fix-row[data-big="ja"] .scan-fix-mini { grid-column: 1 / -1; grid-row: 2; justify-self: center; cursor: zoom-out; }
+.scan-fix-row[data-big="ja"] .scan-fix-mini img { max-width: min(44vw, 520px); max-height: 70vh; }
+.scan-fix-rowtext { display: grid; min-width: 0; gap: 2px; }
+.scan-fix-rowtext strong { overflow-wrap: anywhere; }
+.scan-fix-rowtext span { color: var(--muted); font-size: .84rem; }
+.scan-fix-rowtext em { color: var(--ink-soft); font-size: .86rem; font-style: normal; font-weight: 600; }
+.scan-fix-row[data-status="fehler"] .scan-fix-rowtext em { color: var(--danger); }
+.scan-fix-row[data-status="gespeichert"] .scan-fix-rowtext em { color: var(--ok); }
+.chart-fix { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--surface-soft); color: var(--ink-soft); font-size: .88rem; }
