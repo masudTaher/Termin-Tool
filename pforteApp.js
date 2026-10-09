@@ -14,6 +14,7 @@
     let day = '';
     let known = null;             // schon gesehene Meldungen (für das Aufleuchten und den Ton)
     let busy = false;
+    let lastNudge = Date.now();
 
     const today = () => TerminCloud.todayIso();
     const canGate = account => Boolean(account?.active && ['pforte', 'admin', 'sekretariat'].includes(account.role));
@@ -79,20 +80,31 @@
     const stopTime = stop => stop.time ? `${String(stop.time).slice(0, 5)} Uhr` : '';
     const destination = row => stopsOf(row).map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ') || row.note || 'Ziel nicht angegeben';
 
+    // Bestätigt die Pforte die Ausfahrt, gilt die Person als draußen. Vorher ist sie nur „angemeldet“.
+    // (Meldungen aus der Zeit vor Update 31 kennen das Feld nicht – sie gelten als bestätigt.)
+    const confirmedAt = row => ('out_confirmed_at' in row ? row.out_confirmed_at : row.out_at) || null;
+    const leftAt = row => confirmedAt(row) || row.out_at;
+
     function render() {
-        const out = rows.filter(row => !row.in_at).sort((left, right) => String(left.out_at).localeCompare(String(right.out_at)));
+        // Oben, was die Pforte noch bestätigen muss – darunter, wer draußen ist.
+        const out = rows.filter(row => !row.in_at).sort((left, right) => (confirmedAt(left) ? 1 : 0) - (confirmedAt(right) ? 1 : 0) || String(left.out_at).localeCompare(String(right.out_at)));
+        const waiting = out.filter(row => !confirmedAt(row));
         const back = rows.filter(row => row.in_at).sort((left, right) => String(right.in_at).localeCompare(String(left.in_at)));
-        $('gateCountOut').textContent = String(out.length);
+        $('gateCountWait').textContent = String(waiting.length);
+        $('gateCountWaitBox').dataset.open = waiting.length ? 'ja' : '';
+        $('gateCountOut').textContent = String(out.length - waiting.length);
         $('gateCountBack').textContent = String(back.length);
         const live = day === today();
-        $('gateOutTitle').textContent = live ? 'Draußen' : `Noch draußen am ${dayLong(day)}`;
+        $('gateOutTitle').textContent = live ? (waiting.length ? 'Angemeldet und draußen' : 'Draußen') : `Noch offen am ${dayLong(day)}`;
         $('gateOutEmpty').hidden = out.length > 0;
-        $('gateOutEmpty').textContent = live ? 'Im Moment ist niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.';
+        $('gateOutEmpty').textContent = live ? 'Im Moment ist niemand angemeldet und niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.';
         $('gateBackEmpty').hidden = back.length > 0;
         $('gateOutList').replaceChildren(...out.map(row => {
             const card = el('li', 'gate-card');
             card.dataset.id = row.id;
-            if (Date.now() - new Date(row.out_at) < FRESH) card.dataset.fresh = String(new Date(row.out_at).getTime());
+            const isOut = Boolean(confirmedAt(row));
+            card.dataset.state = isOut ? 'draussen' : 'angemeldet';
+            if (isOut && Date.now() - new Date(leftAt(row)) < FRESH) card.dataset.fresh = String(new Date(leftAt(row)).getTime());
             // Die Hauptrolle hat die Person: Name groß, darunter ihr Fahrzeug – daneben ihre Aufträge der Reihe nach.
             const car = el('div', 'gate-car');
             car.append(el('strong', 'gate-driver', row.driver_name || 'Unbekannt'), el('span', 'gate-plate', row.plate || 'ohne Fahrzeug'), el('span', 'gate-model', row.vehicle || ''));
@@ -115,15 +127,34 @@
             if (row.note && stops.length) info.append(el('span', 'gate-fact', row.note));
             const time = el('div', 'gate-time');
             const since = el('span', 'gate-since', '');
-            since.dataset.since = row.out_at;
+            since.dataset.since = leftAt(row);
             const otherDay = row.date !== today();
-            time.append(el('span', 'gate-time-label', otherDay ? `raus am ${new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}` : 'raus um'), el('strong', '', clock(row.out_at)), since);
+            const dayText = new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+            time.append(el('span', 'gate-time-label', isOut ? (otherDay ? `raus am ${dayText}` : 'raus um') : (otherDay ? `gemeldet am ${dayText}` : 'gemeldet um')), el('strong', '', clock(leftAt(row))), since);
             if (otherDay) card.dataset.old = 'ja';
             const side = el('div', 'gate-side');
-            const done = el('button', 'gate-button gate-return', 'Ist zurück');
-            done.type = 'button';
-            done.addEventListener('click', () => setBack(row, true, done));
-            side.append(done);
+            if (isOut) {
+                const done = el('button', 'gate-button gate-return', 'Ist zurück');
+                done.type = 'button';
+                done.addEventListener('click', () => setBack(row, true, done));
+                side.append(done);
+                if ('out_confirmed_at' in row) {
+                    const unconfirm = el('button', 'gate-button gate-button-quiet gate-unconfirm', 'Doch nicht draußen');
+                    unconfirm.type = 'button';
+                    unconfirm.addEventListener('click', () => setOut(row, false, unconfirm));
+                    side.append(unconfirm);
+                }
+            } else {
+                // Erst die Pforte macht aus der Meldung eine Ausfahrt.
+                side.append(el('span', 'gate-wait-label', 'Wartet auf dich'));
+                const confirm = el('button', 'gate-button gate-confirm-out', 'Ausfahrt bestätigen');
+                confirm.type = 'button';
+                confirm.addEventListener('click', () => setOut(row, true, confirm));
+                const drop = el('button', 'gate-button gate-button-quiet gate-drop', 'Nicht gefahren');
+                drop.type = 'button';
+                drop.addEventListener('click', () => dropRow(row, drop));
+                side.append(confirm, drop);
+            }
             if (isStaff()) {
                 const remove = el('button', 'gate-button gate-button-quiet gate-remove', 'Löschen');
                 remove.type = 'button';
@@ -137,7 +168,7 @@
             const item = el('li', 'gate-back-row');
             item.dataset.id = row.id;
             const text = el('div', 'gate-back-text');
-            text.append(el('strong', '', `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'}`), el('span', '', `${destination(row)} · raus ${clock(row.out_at)} · zurück ${clock(row.in_at)} (${span(row.out_at, row.in_at)})`));
+            text.append(el('strong', '', `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'}`), el('span', '', `${destination(row)} · raus ${clock(leftAt(row))} · zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})`));
             const undo = el('button', 'gate-button gate-button-quiet gate-undo', 'Doch nicht zurück');
             undo.type = 'button';
             undo.addEventListener('click', () => setBack(row, false, undo));
@@ -152,13 +183,14 @@
             const line = el('tr');
             const stops = stopsOf(row);
             [String(index + 1), row.driver_name, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stopPlace), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
-                stops.map(stopPatient).join('\n'), clock(row.out_at), row.in_at ? clock(row.in_at) : 'noch draußen', row.in_at ? span(row.out_at, row.in_at) : '', row.in_by || '']
+                stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
+                [...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / ')]
                 .forEach(value => line.append(el('td', '', value || '')));
             return line;
         }));
-        if (!all.length) { const line = el('tr'); const cell = el('td', '', 'An diesem Tag gab es keine Ausfahrten.'); cell.colSpan = 10; line.append(cell); $('gateReportBody').append(line); }
+        if (!all.length) { const line = el('tr'); const cell = el('td', '', 'An diesem Tag gab es keine Ausfahrten.'); cell.colSpan = 11; line.append(cell); $('gateReportBody').append(line); }
         const older = out.filter(row => row.date !== day).length;
-        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Ausfahrt' : 'Ausfahrten'} · ${all.filter(row => row.in_at).length} zurück · ${all.filter(row => !row.in_at).length} noch draußen${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
+        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Ausfahrt' : 'Ausfahrten'} · ${all.filter(row => row.in_at).length} zurück · ${all.filter(row => !row.in_at && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
         tick();
     }
 
@@ -180,10 +212,29 @@
             // Neue Meldung seit dem letzten Blick? Dann kurz aufleuchten lassen und einen Ton geben.
             const ids = new Set(data.map(row => row.id));
             if (known && day === today() && data.some(row => !known.has(row.id) && !row.in_at)) chime();
+            else if (day === today() && data.some(row => !row.in_at && !confirmedAt(row)) && Date.now() - lastNudge > 60000) { lastNudge = Date.now(); if (known) chime(); }   // wartet noch jemand: jede Minute ein Ton
             known = ids;
             rows = data;
             render();
         } finally { busy = false; }
+    }
+
+    const need31 = error => /could not find the function|schema cache|does not exist/i.test(error?.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 31). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error);
+    async function setOut(row, ok, button) {
+        if (!ok && !(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) ist doch nicht hinausgefahren?\n\nDie Meldung wartet dann wieder auf deine Bestätigung.`, 'Bestätigung zurücknehmen'))) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_gate_out', { p_id: row.id, p_ok: ok });
+        button.disabled = false;
+        if (error) { banner(need31(error), 'error'); return; }
+        await load();
+    }
+    async function dropRow(row, button) {
+        if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) ist nicht gefahren?\n\nDie Meldung wird herausgenommen.`, 'Meldung herausnehmen'))) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_gate_drop', { p_id: row.id });
+        button.disabled = false;
+        if (error) { banner(need31(error), 'error'); return; }
+        await load();
     }
 
     async function setBack(row, back, button) {

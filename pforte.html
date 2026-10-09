@@ -30,6 +30,7 @@
             <div class="gate-title"><p class="gate-kicker">MEDICAL OFFICE BONN</p><h1>Pforte</h1></div>
             <div class="gate-clock"><strong id="gateClock">--:--</strong><span id="gateDate"></span></div>
             <div class="gate-counts">
+               <div class="gate-count is-wait" id="gateCountWaitBox"><b id="gateCountWait">0</b><span>angemeldet</span></div>
                <div class="gate-count is-out"><b id="gateCountOut">0</b><span>draußen</span></div>
                <div class="gate-count is-back"><b id="gateCountBack">0</b><span>zurück</span></div>
             </div>
@@ -61,7 +62,7 @@
          <h1 id="gateReportTitle">Pforte – Bewegungen</h1>
          <p id="gateReportSub"></p>
          <table>
-            <thead><tr><th>Nr.</th><th>Fahrer/in</th><th>Fahrzeug</th><th>Ziel</th><th>Termin</th><th>Patient/in</th><th>Raus</th><th>Zurück</th><th>Dauer</th><th>Eingetragen von</th></tr></thead>
+            <thead><tr><th>Nr.</th><th>Fahrer/in</th><th>Fahrzeug</th><th>Ziel</th><th>Termin</th><th>Patient/in</th><th>Gemeldet</th><th>Raus (Pforte)</th><th>Zurück</th><th>Dauer</th><th>Pforte</th></tr></thead>
             <tbody id="gateReportBody"></tbody>
          </table>
          <p id="gateReportSum" class="gate-report-sum"></p>

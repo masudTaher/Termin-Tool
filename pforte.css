@@ -37,7 +37,10 @@ button, input { font: inherit; }
 .gate-count { display: grid; min-width: 118px; padding: 8px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); text-align: center; }
 .gate-count b { font-size: clamp(1.8rem, 2.6vw, 3rem); font-variant-numeric: tabular-nums; line-height: 1.05; }
 .gate-count span { color: var(--soft); font-size: .86rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
-.gate-count.is-out b { color: var(--warn); }
+.gate-count.is-out b { color: var(--glow); }
+.gate-count.is-wait b { color: var(--soft); }
+.gate-count.is-wait[data-open="ja"] { border-color: #f0a020; background: #fff6dd; }
+.gate-count.is-wait[data-open="ja"] b { color: var(--warn); }
 .gate-count.is-back b { color: var(--go); }
 .gate-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-left: auto; }
 .gate-day { display: grid; gap: 2px; color: var(--soft); font-size: .74rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
@@ -129,3 +132,15 @@ button, input { font: inherit; }
 a.gate-button { display: inline-flex; align-items: center; text-decoration: none; }
 .gate-card[data-old] { border-color: var(--warn); }
 .gate-card[data-old] .gate-time-label { color: var(--warn); }
+
+/* Angemeldet (wartet auf die Bestätigung der Pforte) – gelb und pulsierend; bestätigt draußen – ruhig */
+.gate-card[data-state="angemeldet"] { border-color: #f0a020; background: #fffaf0; animation: gate-wait 1.6s ease-in-out infinite; }
+.gate-card[data-state="angemeldet"] .gate-car { background: rgba(240, 160, 32, .12); }
+.gate-card[data-state="angemeldet"] .gate-since { color: var(--warn); }
+.gate-card[data-state="draussen"] .gate-since { color: var(--soft); }
+@keyframes gate-wait { 0%, 100% { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0), 0 8px 26px rgba(12, 27, 46, .08); } 50% { box-shadow: 0 0 0 7px rgba(240, 160, 32, .35), 0 0 46px rgba(240, 160, 32, .55); } }
+@media (prefers-reduced-motion: reduce) { .gate-card[data-state="angemeldet"] { animation: none; box-shadow: 0 0 0 5px rgba(240, 160, 32, .4); } }
+.gate-wait-label { color: var(--warn); font-size: .8rem; font-weight: 800; letter-spacing: .1em; text-align: center; text-transform: uppercase; }
+.gate-confirm-out { min-height: clamp(86px, 9vh, 130px); border: 0; border-radius: 16px; background: linear-gradient(180deg, #f5b02e, #e08e0b); color: #2b1a00; font-size: clamp(1.1rem, 1.5vw, 1.8rem); font-weight: 850; line-height: 1.15; box-shadow: 0 10px 30px rgba(224, 142, 11, .35); }
+.gate-confirm-out:hover { filter: brightness(1.05); }
+.gate-drop, .gate-unconfirm { min-height: 40px; font-size: .9rem; }

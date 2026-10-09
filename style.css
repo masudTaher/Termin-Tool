@@ -2787,3 +2787,4 @@ body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
 .gate-sheet-list dd.gate-sheet-warn { color: #b45309; }
 .gate-sheet input { width: 100%; }
 .gate-sheet-status { min-height: 1.2em; margin: 6px 0 0; color: #b42318; font-weight: 700; }
+.gate-box[data-state="angemeldet"] { border-color: color-mix(in srgb, #c98a1b 45%, var(--line)); border-left-color: #c98a1b; background: color-mix(in srgb, #c98a1b 10%, var(--surface)); }

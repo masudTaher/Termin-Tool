@@ -1052,7 +1052,9 @@ if (!window.TerminContact) {
             return;
         }
         const overtime = Number(data?.overtime_minutes || 0);
-        toast(action === 'start' ? 'Gute Fahrt! Die Einsatzleitung sieht, dass du unterwegs bist.'
+        // Fest Angestellte: „Jetzt losfahren“ meldet zugleich an die Pforte – sie bestätigt die Ausfahrt.
+        const gated = action === 'start' ? await window.PortalGate?.autoReport().catch(() => false) : false;
+        toast(action === 'start' ? (gated ? 'Gute Fahrt! Einsatzleitung und Pforte wissen Bescheid – bitte an der Pforte kurz bestätigen lassen.' : 'Gute Fahrt! Die Einsatzleitung sieht, dass du unterwegs bist.')
             : `Auftrag beendet. Die Einsatzleitung weiß, dass du wieder frei bist.${overtime ? ` Überstunden eingetragen: ${duration(overtime)}.` : ''}`, 'success');
         // Zusätzlich als Mitteilung an die Einsatzleitung (falls dort eingeschaltet).
         TerminCloud.callFunction({ action: 'progress', assignmentId: item.id }).catch(() => null);

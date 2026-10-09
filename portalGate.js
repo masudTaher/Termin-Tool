@@ -12,6 +12,10 @@
     let ready = false;        // gibt es die Pforte in der Datenbank schon?
     let busy = false;
 
+    // Die Pforte gibt es nur für fest Angestellte (und das Büro, wenn es die App der Dolmetscher benutzt). Temporäre brauchen sie nicht.
+    const allowed = () => { const profile = core.profile(); return Boolean(profile?.active && (TerminCloud.isStaff(profile) || (profile.role === 'dolmetscher' && profile.employment === 'fest'))); };
+    // Bestätigt ist die Ausfahrt erst, wenn die Pforte es eingetragen hat (vor Update 31 gab es das Feld nicht).
+    const confirmedAt = row => ('out_confirmed_at' in row ? row.out_confirmed_at : row.out_at) || null;
     const openRow = () => rows.find(row => !row.in_at) || null;
     const lastBack = () => rows.filter(row => row.in_at).sort((left, right) => String(right.in_at).localeCompare(String(left.in_at)))[0] || null;
 
@@ -31,22 +35,28 @@
     const stopLine = stop => [stop.time ? `${stop.time} Uhr` : '', stop.doctor, stop.city].filter(Boolean).join(' · ');
 
     function render() {
-        box.hidden = !ready;
-        if (!ready) return;
+        box.hidden = !ready || !allowed();
+        if (box.hidden) return;
         const row = openRow();
         const back = lastBack();
-        box.dataset.state = row ? 'draussen' : 'da';
+        const confirmed = row && confirmedAt(row);
+        box.dataset.state = row ? (confirmed ? 'draussen' : 'angemeldet') : 'da';
         box.replaceChildren();
         const text = el('div', 'gate-box-text');
         if (row) {
             const stops = Array.isArray(row.stops) ? row.stops : [];
-            text.append(el('strong', '', `An der Pforte gemeldet · raus seit ${clock(row.out_at)} Uhr`),
-                el('span', '', [row.plate || 'ohne Dienstfahrzeug', stops.length ? `${stops.length} ${stops.length === 1 ? 'Auftrag' : 'Aufträge'}` : row.note].filter(Boolean).join(' · ')),
-                el('span', 'gate-box-hint', 'Wenn du zurück bist, trägt die Pforte das ein.'));
-            const undo = el('button', 'button-secondary gate-box-undo', 'Zurücknehmen');
-            undo.type = 'button';
-            undo.addEventListener('click', () => takeBack(row, undo));
-            box.append(text, undo);
+            const facts = el('span', '', [row.plate || 'ohne Dienstfahrzeug', stops.length ? `${stops.length} ${stops.length === 1 ? 'Auftrag' : 'Aufträge'}` : row.note].filter(Boolean).join(' · '));
+            if (confirmed) {
+                // Die Pforte hat die Ausfahrt bestätigt: Jetzt gilt die Person als draußen – zurücknehmen kann das nur noch die Pforte.
+                text.append(el('strong', '', `Die Pforte hat deine Ausfahrt bestätigt · ${clock(confirmed)} Uhr`), facts, el('span', 'gate-box-hint', 'Wenn du zurück bist, trägt die Pforte das ein.'));
+                box.append(text);
+            } else {
+                text.append(el('strong', '', `An die Pforte gemeldet · ${clock(row.out_at)} Uhr`), facts, el('span', 'gate-box-hint', 'Bitte an der Pforte kurz bestätigen lassen – erst dann giltst du als hinausgefahren.'));
+                const undo = el('button', 'button-secondary gate-box-undo', 'Zurücknehmen');
+                undo.type = 'button';
+                undo.addEventListener('click', () => takeBack(row, undo));
+                box.append(text, undo);
+            }
         } else {
             text.append(el('strong', '', 'Fährst du hinaus?'),
                 el('span', '', back ? `Zuletzt zurück um ${clock(back.in_at)} Uhr – für die nächste Fahrt wieder melden.` : 'Melde dich vor der Abfahrt an der Pforte – ein Tipp genügt, kein Zettel nötig.'));
@@ -101,7 +111,7 @@
             ok.disabled = false;
             if (error) { status.textContent = missing(error) ? 'Die Pforte ist in der App noch nicht eingerichtet. Bitte sag der Einsatzleitung Bescheid.' : TerminCloud.germanError(error); return; }
             dialog.close();
-            toast('Die Pforte weiß Bescheid. Gute Fahrt!', 'success');
+            toast('Die Pforte weiß Bescheid – bitte dort kurz bestätigen lassen.', 'success');
             await load();
             button.focus?.();
         });
@@ -109,12 +119,14 @@
     }
 
     async function takeBack(row, button) {
-        const yes = await core.askYesNo({ title: 'Meldung zurücknehmen?', text: 'Die Pforte sieht dich dann nicht mehr als „draußen“. Das ist richtig, wenn du doch nicht fährst oder dich vertippt hast.', okLabel: 'Zurücknehmen', cancelLabel: 'Abbrechen' });
+        const yes = await core.askYesNo({ title: 'Meldung zurücknehmen?', text: 'Die Pforte sieht deine Meldung dann nicht mehr. Das ist richtig, wenn du doch nicht fährst oder dich vertippt hast.', okLabel: 'Zurücknehmen', cancelLabel: 'Abbrechen' });
         if (!yes) return;
         button.disabled = true;
         const { error } = await client.from('tt_gate').delete().eq('id', row.id);
         button.disabled = false;
         if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
+        await load();
+        if (rows.some(item => item.id === row.id)) { toast('Die Pforte hat deine Ausfahrt schon bestätigt – zurücknehmen kann sie jetzt nur noch die Pforte.', 'info'); return; }
         toast('Die Meldung ist zurückgenommen.', 'success');
         await load();
     }
@@ -133,11 +145,26 @@
         if (!error) { Object.assign(row, changes); render(); }
     }
 
+    // „Jetzt losfahren“ meldet zugleich an die Pforte (ohne Rückfrage) – wenn nicht schon eine Meldung offen ist.
+    async function autoReport() {
+        if (!ready || !allowed() || openRow()) return false;
+        const car = carNow();
+        const stops = stopsNow(null);
+        const first = stops[0] || {};
+        const { error } = await client.from('tt_gate').insert({
+            plate: car.plate, vehicle: car.vehicle, stops, note: '',
+            appointment_time: first.time || '', doctor: first.doctor || '', city: first.city || '', patient_name: first.patient_name || '', patient_nr: first.patient_nr || ''
+        });
+        if (error) return false;
+        await load();
+        return true;
+    }
+
     const missing = error => /does not exist|schema cache|relation|PGRST205|42P01/i.test(`${error?.code || ''} ${error?.message || ''}`);
 
     async function load() {
         const profile = core.profile();
-        if (busy || !profile?.active || profile.role === 'pforte') return;
+        if (busy || !profile?.active || !allowed()) { render(); return; }
         busy = true;
         try {
             const today = TerminCloud.todayIso();
@@ -150,7 +177,7 @@
         } finally { busy = false; }
     }
 
-    window.PortalGate = { load, refresh: () => { if (ready) { render(); keepCurrent(); } }, state: () => ({ rows, ready }) };
+    window.PortalGate = { load, autoReport, refresh: () => { if (ready) { render(); keepCurrent(); } }, state: () => ({ rows, ready }) };
     window.setInterval(() => { if (!document.hidden && core.view() === 'vehicle') load(); }, 30000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
     load();
