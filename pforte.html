@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="robots" content="noindex">
+      <meta name="theme-color" content="#07111f">
+      <title>Pforte · Medical Office Bonn</title>
+      <link rel="stylesheet" href="pforte.css">
+   </head>
+   <body>
+      <!-- ===== Anmeldung ===== -->
+      <main id="gateAuth" class="gate-auth" hidden>
+         <form id="gateSignIn" class="gate-auth-card" novalidate>
+            <p class="gate-kicker">MEDICAL OFFICE BONN</p>
+            <h1>Pforte</h1>
+            <p class="gate-auth-text">Bitte mit dem Konto der Pforte anmelden.</p>
+            <label for="gateEmail">E-Mail</label>
+            <input id="gateEmail" type="email" autocomplete="username" required>
+            <label for="gatePassword">Passwort</label>
+            <input id="gatePassword" type="password" autocomplete="current-password" required>
+            <button type="submit" class="gate-button gate-button-main">Anmelden</button>
+            <p id="gateAuthStatus" class="gate-status" role="status" aria-live="polite"></p>
+         </form>
+      </main>
+
+      <!-- ===== Anzeige ===== -->
+      <div id="gateApp" class="gate-app" hidden>
+         <header class="gate-top">
+            <div class="gate-title"><p class="gate-kicker">MEDICAL OFFICE BONN</p><h1>Pforte</h1></div>
+            <div class="gate-clock"><strong id="gateClock">--:--</strong><span id="gateDate"></span></div>
+            <div class="gate-counts">
+               <div class="gate-count is-out"><b id="gateCountOut">0</b><span>draußen</span></div>
+               <div class="gate-count is-back"><b id="gateCountBack">0</b><span>zurück</span></div>
+            </div>
+            <div class="gate-tools">
+               <label class="gate-day" for="gateDay"><span>Tag</span><input id="gateDay" type="date"></label>
+               <button type="button" id="gatePrint" class="gate-button">Tagesbericht drucken</button>
+               <button type="button" id="gateFull" class="gate-button">Vollbild</button>
+               <a id="gateOffice" class="gate-button gate-button-quiet" href="index.html" hidden>Zur Einsatzleitung</a>
+               <button type="button" id="gateSignOut" class="gate-button gate-button-quiet">Abmelden</button>
+            </div>
+         </header>
+         <p id="gateStatus" class="gate-banner" role="status" aria-live="polite" hidden></p>
+         <main class="gate-main">
+            <section class="gate-out" aria-labelledby="gateOutTitle">
+               <h2 id="gateOutTitle">Draußen</h2>
+               <ul id="gateOutList" class="gate-list"></ul>
+               <p id="gateOutEmpty" class="gate-empty" hidden>Im Moment ist niemand draußen.</p>
+            </section>
+            <section class="gate-back" aria-labelledby="gateBackTitle">
+               <h2 id="gateBackTitle">Wieder zurück</h2>
+               <ul id="gateBackList" class="gate-back-list"></ul>
+               <p id="gateBackEmpty" class="gate-empty gate-empty-small" hidden>Noch niemand zurück.</p>
+            </section>
+         </main>
+      </div>
+
+      <!-- ===== Tagesbericht (nur im Druck sichtbar) ===== -->
+      <section id="gateReport" class="gate-report" aria-hidden="true">
+         <h1 id="gateReportTitle">Pforte – Bewegungen</h1>
+         <p id="gateReportSub"></p>
+         <table>
+            <thead><tr><th>Nr.</th><th>Fahrer/in</th><th>Fahrzeug</th><th>Ziel</th><th>Termin</th><th>Patient/in</th><th>Raus</th><th>Zurück</th><th>Dauer</th><th>Eingetragen von</th></tr></thead>
+            <tbody id="gateReportBody"></tbody>
+         </table>
+         <p id="gateReportSum" class="gate-report-sum"></p>
+         <p class="gate-report-sign">Unterschrift Pforte: ______________________________</p>
+      </section>
+
+      <dialog id="gateConfirm" class="gate-confirm">
+         <p id="gateConfirmText"></p>
+         <div class="gate-confirm-buttons"><button type="button" id="gateConfirmNo" class="gate-button gate-button-quiet">Abbrechen</button><button type="button" id="gateConfirmYes" class="gate-button gate-button-main">Ja</button></div>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="pforteApp.js"></script>
+   </body>
+</html>

@@ -2769,3 +2769,21 @@ body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
 /* ===== 77. Meldungen von außen: wie eine Mitteilung auf dem Handy – ein Klick öffnet die Seite ===== */
 .toast.toast-link { cursor: pointer; }
 .toast.toast-link:hover { filter: brightness(1.06); }
+
+/* ===== 78. Portal: An die Pforte melden ===== */
+.gate-box { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; padding: 14px; border: 1px solid color-mix(in srgb, #1769aa 35%, var(--line)); border-left: 6px solid #1769aa; border-radius: 14px; background: color-mix(in srgb, #1769aa 7%, var(--surface)); }
+.gate-box[hidden] { display: none; }
+.gate-box[data-state="draussen"] { border-color: color-mix(in srgb, #18794e 40%, var(--line)); border-left-color: #18794e; background: color-mix(in srgb, #18794e 9%, var(--surface)); }
+.gate-box-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.gate-box-text strong { font-size: 1.02rem; }
+.gate-box-text span { color: var(--muted); font-size: .9rem; }
+.gate-box-text .gate-box-hint { font-size: .82rem; }
+.gate-box .button-primary, .gate-box .button-secondary { flex: none; min-height: 46px; }
+@media (max-width: 480px) { .gate-box { flex-direction: column; align-items: stretch; } .gate-box .button-primary, .gate-box .button-secondary { width: 100%; } }
+.gate-sheet { width: min(480px, calc(100vw - 24px)); }
+.gate-sheet-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 10px 0 14px; }
+.gate-sheet-list dt { color: var(--muted); font-size: .86rem; padding-top: 2px; }
+.gate-sheet-list dd { display: flex; flex-direction: column; gap: 4px; margin: 0; font-weight: 700; }
+.gate-sheet-list dd.gate-sheet-warn { color: #b45309; }
+.gate-sheet input { width: 100%; }
+.gate-sheet-status { min-height: 1.2em; margin: 6px 0 0; color: #b42318; font-weight: 700; }

@@ -216,6 +216,8 @@ if (!window.TerminContact) {
             return;
         }
         if (!profile) { show('auth'); $('portalUser').textContent = DEFAULT_USER_LINE; return; }
+        // Das Konto der Pforte gehört auf die Anzeige der Pforte, nicht ins Portal der Dolmetscher.
+        if (profile.role === 'pforte') { window.location.replace('pforte.html'); return; }
         $('portalUser').textContent = [profile.full_name || profile.email, isFest() ? 'fest angestellt' : ''].filter(Boolean).join(' · ');
         // Admins können zwischen der App der Dolmetscher und der Einsatzleitung wechseln.
         $('switchToOffice').hidden = $('officeCard').hidden = !TerminCloud.isAdmin(profile);
@@ -227,6 +229,7 @@ if (!window.TerminContact) {
         await loadFleet();
         await Promise.all([loadJobs(), loadReceipts(), loadStatements(), loadMessages(), loadFuelCards(), isFest() ? loadOvertime() : loadWorkdays()]);
         window.PortalDocs?.load();
+        window.PortalGate?.load();
         await window.PortalRequests?.load();
         await window.PortalPlan?.start();
         if (!isFest()) renderWorked();
@@ -1926,6 +1929,7 @@ if (!window.TerminContact) {
         // Ältere Aufträge können im Titel noch einen Zeilenumbruch aus der Terminliste tragen (Name der Praxis).
         data.forEach(item => { item.title = TerminContact.singleLine(item.title); });
         jobsData = data;
+        window.PortalGate?.refresh();
         if (currentView === 'vehicle') renderHomeJobs(TerminCloud.todayIso());
         const today = TerminCloud.todayIso();
         // Oben stehen kommende Aufträge – und ältere, die gestartet, aber noch nicht beendet wurden.
@@ -3542,7 +3546,12 @@ if (!window.TerminContact) {
 
     // Schnittstelle für portalDocs.js (Unterlagen und Bericht über den Tag).
     window.PortalCore = {
-        client, config, toast, showSuccess, goTo, el, emptyItem, makeWizard, choiceButtons, parseJobMessage, isoDate, svgSpan,
+        client, config, toast, showSuccess, goTo, el, emptyItem, makeWizard, choiceButtons, parseJobMessage, isoDate, svgSpan, askYesNo, homeJobText,
+        // Für „An die Pforte melden“ (portalGate.js): das übernommene Fahrzeug und die Aufträge dieser Ausfahrt –
+        // alle von heute, die noch anstehen (und die, die erst nach der Abfahrt fertig wurden).
+        myVehicle: () => myHandover ? vehicleById(myHandover.vehicle_id) || null : null,
+        gateJobs: since => jobsData.filter(item => item.date === TerminCloud.todayIso() && !item.cancelled && item.response !== 'abgesagt' && !jobStorno(item)
+            && (!jobFinished(item) || Boolean(since && item.finished_at && item.finished_at > since))).sort(jobOrder),
         profile: () => profile, jobs: () => jobsData, view: () => currentView,
         isFest: () => isFest(), refreshWorkdays: () => loadWorkdays(), refreshAccount: () => renderAccount(),
         setProfile: fields => { if (profile) Object.assign(profile, fields); }
