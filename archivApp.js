@@ -132,19 +132,27 @@
         if (!id) { $('historySummary').textContent = 'Wähle eine Person.'; return; }
         const { data, error } = await client.from('tt_assignments').select('*').eq('interpreter_id', id).order('date', { ascending: false }).limit(500);
         if (error) { $('historySummary').textContent = TerminCloud.germanError(error); return; }
+        // Nachweis über zurückgezogene Aufträge: bleibt stehen, auch wenn der Termin danach an jemand anderen ging (Update 33).
+        const withdrawn = await client.from('tt_withdrawals').select('*').eq('interpreter_id', id).order('withdrawn_at', { ascending: false }).limit(500).then(result => (result.error ? [] : result.data || []), () => []);
         const active = data.filter(item => !item.cancelled);
         const accepted = active.filter(item => item.response === 'zugesagt').length;
         const declined = active.filter(item => item.response === 'abgesagt').length;
         const worked = active.filter(item => item.work_status === 'beendet').length;
         const workedDays = new Set(active.filter(item => item.work_status === 'beendet').map(item => item.date)).size;
         $('historySummary').textContent = `${active.length} ${active.length === 1 ? 'Auftrag' : 'Aufträge'} · ${accepted} Zusagen · ${declined} Absagen · ${worked} gearbeitet an ${workedDays} ${workedDays === 1 ? 'Tag' : 'Tagen'}`;
-        if (!data.length) { list.append(el('li', 'directory-empty', 'Für diese Person gibt es noch keine Aufträge.')); return; }
-        data.forEach(item => {
+        if (withdrawn.length) $('historySummary').textContent += ` · ${withdrawn.length} zurückgezogen`;
+        const stamp = value => { const at = new Date(value); return `${at.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`; };
+        const proofs = withdrawn.map(log => ({ date: log.date, time: log.time, title: log.title, cancelled: true, proof: [`Zurückgezogen am ${stamp(log.withdrawn_at)}${log.withdrawn_by ? ` von ${log.withdrawn_by}` : ''}`,
+            { 'neu vergeben': `neu vergeben${log.new_interpreter_name ? ` an ${log.new_interpreter_name}` : ''}`, 'gelöscht': 'Auftrag gelöscht' }[log.reason] || '', log.started_at ? 'war schon losgefahren' : `Antwort bis dahin: ${RESPONSE_LABEL[log.response] || '–'}`, { storniert: 'Termin war storniert', alleine: 'Patient ging alleine' }[log.work_status] || ''].filter(Boolean).join(' · ') }));
+        const rows = [...data.filter(item => !(item.cancelled && withdrawn.some(log => log.assignment_id === item.id))), ...proofs]
+            .sort((left, right) => String(right.date).localeCompare(String(left.date)) || String(left.time || '').localeCompare(String(right.time || '')));
+        if (!rows.length) { list.append(el('li', 'directory-empty', 'Für diese Person gibt es noch keine Aufträge.')); return; }
+        rows.forEach(item => {
             const row = el('li', 'vehicle-entry file-entry');
             const meta = el('span');
             meta.append(
                 el('strong', null, `${formatDate(item.date)} · ${item.title}`),
-                el('small', null, [item.cancelled ? 'Auftrag zurückgezogen' : `Antwort: ${RESPONSE_LABEL[item.response]}`, item.response_note, item.cancelled ? '' : `Ergebnis: ${WORK_LABEL[item.work_status] || '–'}`].filter(Boolean).join(' · '))
+                el('small', null, [item.proof ? item.proof : item.cancelled ? 'Auftrag zurückgezogen' : `Antwort: ${RESPONSE_LABEL[item.response]}`, item.response_note, item.cancelled ? '' : `Ergebnis: ${WORK_LABEL[item.work_status] || '–'}`].filter(Boolean).join(' · '))
             );
             const pill = el('span', 'status-pill', item.cancelled ? 'zurückgezogen' : RESPONSE_LABEL[item.response]);
             pill.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];

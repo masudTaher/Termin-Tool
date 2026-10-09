@@ -1931,6 +1931,8 @@ if (!window.TerminContact) {
         // Ältere Aufträge können im Titel noch einen Zeilenumbruch aus der Terminliste tragen (Name der Praxis).
         data.forEach(item => { item.title = TerminContact.singleLine(item.title); });
         jobsData = data;
+        // Nachweis über zurückgezogene Aufträge (bleibt stehen, auch wenn der Termin danach an jemand anderen ging). Ohne Update 33: leer.
+        const withdrawn = await client.from('tt_withdrawals').select('*').eq('interpreter_id', profile.id).order('withdrawn_at', { ascending: false }).limit(200).then(result => (result.error ? [] : result.data || []), () => []);
         window.PortalGate?.refresh();
         if (currentView === 'vehicle') renderHomeJobs(TerminCloud.todayIso());
         const today = TerminCloud.todayIso();
@@ -1958,7 +1960,7 @@ if (!window.TerminContact) {
         Object.keys(jobNoteDrafts).forEach(id => { if (!allIds.has(id)) delete jobNoteDrafts[id]; });
 
         // Nur neu aufbauen, wenn sich etwas geändert hat. Sonst bleibt alles, wie es ist: Position, Eingaben, Aufgeklapptes.
-        const signature = JSON.stringify([today, data]);
+        const signature = JSON.stringify([today, data, withdrawn]);
         if (signature === jobsRendered) return;
         jobsRendered = signature;
         const list = $('jobList');
@@ -1998,7 +2000,10 @@ if (!window.TerminContact) {
 
         const history = $('jobHistory');
         history.replaceChildren();
-        const past = data.filter(item => !isCurrent(item));
+        // Ins Archiv gehören vergangene und zurückgezogene Aufträge. Für Zurückgezogenes gilt der Nachweis aus der Datenbank
+        // (wann, von wem, was bis dahin geantwortet war) – die bloße Zeile „zurückgezogen“ nur, wenn es keinen Nachweis gibt.
+        const proofs = withdrawn.map(log => ({ id: `nachweis-${log.id}`, date: log.date, time: log.time, title: TerminContact.singleLine(log.title), cancelled: true, response: log.response, withdrawal: log }));
+        const past = [...data.filter(item => !isCurrent(item) && !(item.cancelled && withdrawn.some(log => log.assignment_id === item.id))), ...proofs];
         if (!past.length) {
             const empty = document.createElement('li');
             empty.className = 'directory-empty';
@@ -2035,6 +2040,26 @@ if (!window.TerminContact) {
                 state.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
                 state.textContent = item.cancelled ? 'zurückgezogen' : [RESPONSE_LABEL[item.response], WORK_LABEL[item.work_status]].filter(Boolean).join(' · ');
                 entry.append(text, state);
+                if (item.withdrawal) {
+                    const log = item.withdrawal;
+                    const at = new Date(log.withdrawn_at);
+                    const why = { 'neu vergeben': log.new_interpreter_name ? 'Der Termin ging an jemand anderen.' : 'Der Termin wurde neu vergeben.', 'gelöscht': 'Der Auftrag wurde gelöscht.' }[log.reason] || '';
+                    const before = [log.started_at ? 'du warst schon losgefahren' : `deine Antwort bis dahin: ${RESPONSE_LABEL[log.response] || 'keine'}`,
+                        { storniert: 'der Termin war storniert', alleine: 'der Patient ging alleine' }[log.work_status] || ''].filter(Boolean).join('; ');
+                    entry.classList.add('history-entry-record');
+                    const proof = el('span', 'history-proof', [`Zurückgezogen am ${at.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr${log.withdrawn_by ? ` von ${log.withdrawn_by}` : ''}.`, why, `(${before})`].filter(Boolean).join(' '));
+                    entry.append(proof);
+                }
+                // Ausgefallen oder „Patient ging alleine“: Der Auftrag war bei dir – das bleibt als Nachweis stehen (wann gemeldet, warum).
+                else if (!item.cancelled && ['storniert', 'alleine'].includes(item.work_status)) {
+                    const alone = item.work_status === 'alleine';
+                    const at = item.storno_at ? new Date(item.storno_at) : null;
+                    const note = String(item.storno_note || '').trim();
+                    entry.classList.add('history-entry-record');
+                    entry.append(el('span', 'history-proof', [alone ? 'Der Patient ging alleine – der Auftrag war bei dir.' : 'Der Termin fiel aus (storniert) – der Auftrag war bei dir.',
+                        at ? `Von dir gemeldet am ${at.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.` : 'Von der Einsatzleitung eingetragen.',
+                        note && !/^patient geht alleine$/i.test(note) ? `Grund: ${note}` : ''].filter(Boolean).join(' ')));
+                }
                 // Die Akte des Patienten bleibt auch im Archiv offen (nur für eigene, zugesagte Aufträge – jeder Abruf wird festgehalten).
                 if (priorWanted(item) && window.PortalRecord) {
                     const parsed = parseJobMessage(item.message);
