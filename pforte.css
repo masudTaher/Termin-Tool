@@ -50,7 +50,7 @@ button, input { font: inherit; }
 .gate-main { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 520px); gap: 22px; padding: 20px 28px 24px; }
 .gate-main h2 { margin-bottom: 12px; color: var(--soft); font-size: clamp(1rem, 1.25vw, 1.4rem); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .gate-out, .gate-back { display: flex; min-height: 0; flex-direction: column; }
-.gate-list, .gate-back-list { display: grid; align-content: start; gap: 14px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
+.gate-list, .gate-back-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 14px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
 .gate-empty { display: grid; flex: 1 1 auto; place-items: center; border: 2px dashed var(--line); border-radius: 22px; color: var(--soft); font-size: clamp(1.2rem, 2vw, 2.2rem); font-weight: 700; text-align: center; }
 .gate-empty-small { flex: 0 0 auto; padding: 26px 12px; font-size: 1.05rem; }
 

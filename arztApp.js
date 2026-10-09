@@ -128,7 +128,7 @@
                 actions.append(undo);
             }
         } else {
-            const mark = el('button', 'gate-button gate-button-main doc-mark', 'Gelesen');
+            const mark = el('button', 'gate-button gate-button-main doc-mark', '✓ Gelesen');
             mark.type = 'button';
             mark.addEventListener('click', () => markRead(doc, mark));
             actions.append(mark);
@@ -159,9 +159,15 @@
             const first = items[0];
             const head = el('div', 'doc-patient-head');
             const who = el('div', 'doc-patient-who');
+            const unread = items.filter(item => !isRead(item)).length;
+            card.dataset.unread = unread ? 'ja' : '';
+            const avatar = el('span', 'doc-avatar', clean(first.patient_name).split(/[\s,]+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toLocaleUpperCase('de-DE') || '?');
+            avatar.setAttribute('aria-hidden', 'true');
             who.append(el('strong', '', clean(first.patient_name) || 'Patient ohne Namen'),
-                el('span', '', [clean(first.patient_nr) ? `Akte ${clean(first.patient_nr)}` : 'ohne Aktennummer', clean(first.patient_birth) ? `geb. ${first.patient_birth}` : '', `${items.length} ${items.length === 1 ? 'Unterlage' : 'Unterlagen'} heute`].filter(Boolean).join(' · ')));
-            head.append(who);
+                el('span', '', [clean(first.patient_nr) ? `Akte ${clean(first.patient_nr)}` : 'ohne Aktennummer', clean(first.patient_birth) ? `geb. ${first.patient_birth}` : '', `${items.length} ${items.length === 1 ? 'Unterlage' : 'Unterlagen'}${live ? ' heute' : ''}`, unread ? `${unread} ungelesen` : 'alles gelesen'].filter(Boolean).join(' · ')));
+            const lead = el('div', 'doc-patient-lead');
+            lead.append(avatar, who);
+            head.append(lead);
             if (clean(first.patient_nr)) {
                 const open = el('button', 'gate-button doc-record-open', 'Ganze Akte');
                 open.type = 'button';

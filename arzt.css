@@ -3,6 +3,13 @@
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .gate-count:not(.is-out):not(.is-back):not(.is-wait) b { color: var(--soft); }
 
+/* Kopfzeile etwas kompakter, damit alles in eine Reihe passt */
+.doc-app .gate-top { gap: 12px 24px; padding: 12px 28px; }
+.doc-app .gate-count { min-width: 96px; padding: 6px 12px; }
+.doc-app .gate-count b { font-size: clamp(1.5rem, 2vw, 2.3rem); }
+.doc-app .gate-count span { font-size: .72rem; }
+.doc-app .gate-clock strong { font-size: clamp(1.8rem, 2.8vw, 3.2rem); }
+
 /* Filter */
 .doc-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 28px 0; }
 .doc-chip { min-height: 42px; padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: .98rem; font-weight: 750; cursor: pointer; }
@@ -13,15 +20,20 @@
 
 /* Liste nach Patient */
 .doc-main { display: flex; min-height: 0; flex-direction: column; padding: 16px 28px 24px; }
-.doc-list { display: grid; align-content: start; gap: 16px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
-.doc-patient { border: 2px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 8px 26px rgba(12, 27, 46, .08); overflow: hidden; }
-.doc-patient-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: rgba(10, 132, 214, .07); }
+.doc-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 18px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
+.doc-patient { border: 1px solid var(--line); border-left: 6px solid #c9d8e8; border-radius: 20px; background: var(--panel); box-shadow: 0 10px 30px rgba(12, 27, 46, .07); overflow: hidden; }
+.doc-patient[data-unread="ja"] { border-left-color: #f0a020; }
+.doc-patient-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(10, 132, 214, .08), rgba(10, 132, 214, .02)); }
+.doc-patient-lead { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.doc-avatar { display: grid; width: 54px; height: 54px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--glow); color: #fff; font-size: 1.25rem; font-weight: 850; letter-spacing: .02em; }
+.doc-patient[data-unread="ja"] .doc-avatar { background: #e08e0b; }
 .doc-patient-who { display: grid; gap: 2px; min-width: 0; }
-.doc-patient-who strong { font-size: clamp(1.4rem, 2vw, 2.2rem); font-weight: 850; line-height: 1.1; overflow-wrap: anywhere; }
+.doc-patient-who strong { font-size: clamp(1.3rem, 1.7vw, 1.9rem); font-weight: 850; line-height: 1.1; overflow-wrap: anywhere; }
 .doc-patient-who span { color: var(--soft); font-size: clamp(.95rem, 1.1vw, 1.2rem); font-weight: 650; }
 .doc-record-open { min-height: 52px; padding: 10px 22px; font-size: 1.05rem; }
 .doc-entries { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
-.doc-entry { display: grid; grid-template-columns: 190px minmax(0, 1fr) auto; grid-template-areas: "head title actions" "head body actions"; gap: 6px 20px; padding: 16px 22px; border-top: 1px solid var(--line); }
+.doc-entry { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; grid-template-areas: "head title actions" "head body actions"; gap: 6px 20px; padding: 16px 22px; border-top: 1px solid var(--line); transition: background .2s; }
+.doc-entry:hover { background: #f7faff; }
 .doc-entry:first-child { border-top: 0; }
 .doc-entry[data-read="ja"] { background: #f6faf7; }
 .doc-entry[data-fresh] { background: #fffaf0; box-shadow: inset 6px 0 0 #f0a020; }
@@ -38,8 +50,9 @@
 .doc-more { justify-self: start; min-height: 38px; font-size: .92rem; }
 .doc-note { margin: 0; color: var(--soft); font-size: .95rem; font-weight: 600; }
 .doc-entry-actions { grid-area: actions; display: grid; align-content: start; justify-items: stretch; gap: 8px; min-width: 190px; }
-.doc-mark { min-height: 58px; font-size: 1.1rem; }
-.doc-open { min-height: 50px; }
+.doc-mark { min-height: 56px; font-size: 1.08rem; box-shadow: 0 8px 20px rgba(15, 138, 77, .25); }
+.doc-open { min-height: 48px; }
+.doc-open::before { content: '⤓ '; font-weight: 900; }
 .doc-read { padding: 8px 10px; border-radius: 10px; background: #e6f5ec; color: #0f6b3c; font-size: .9rem; font-weight: 750; text-align: center; }
 .doc-unread { min-height: 36px; font-size: .84rem; }
 
