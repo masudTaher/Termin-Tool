@@ -89,8 +89,14 @@
                         <label for="fileAssigned">Reserviert für (fester Fahrer)</label>
                         <select id="fileAssigned"></select>
                         <p class="field-hint">Ein reserviertes Fahrzeug sehen andere Dolmetscher im Portal nicht.</p>
-                        <label for="fileMileage">Kilometerstand korrigieren</label>
-                        <div class="directory-input-row"><input id="fileMileage" type="number" min="0" step="1" placeholder="km"><button type="submit" class="button-secondary">Speichern</button></div>
+                        <span class="field-label" id="fileFixTitle">Stand korrigieren</span>
+                        <p class="field-hint">Falsch eingetragen? Trag hier den richtigen Kilometerstand oder Parkort ein – ein Feld genügt. Der bisherige Wert steht grau im Feld.</p>
+                        <label for="fileMileage">Kilometerstand</label>
+                        <input id="fileMileage" type="number" min="0" step="1" inputmode="numeric" placeholder="km">
+                        <label for="fileParking">Parkort</label>
+                        <input id="fileParking" type="text" maxlength="80" list="fileParkingList" autocomplete="off" placeholder="Parkort">
+                        <datalist id="fileParkingList"></datalist>
+                        <button type="submit" class="button-secondary" id="fileFixSave">Korrektur speichern</button>
                      </form>
                      <div class="fleet-form file-photo">
                         <label for="filePhoto">Eigenes Foto vom Fahrzeug</label>

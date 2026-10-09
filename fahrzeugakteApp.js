@@ -938,7 +938,19 @@
             ['Außen', cleanText(vehicle.clean_outside)],
             ['Stand', vehicle.state_updated_at ? `${formatDate(vehicle.state_updated_at)}${vehicle.state_updated_by ? `, ${vehicle.state_updated_by}` : ''}` : '–']
         ];
-        $('fileState').replaceChildren(...stateRows.flatMap(([term, value]) => [el('dt', null, term), el('dd', null, value)]));
+        $('fileState').replaceChildren(...stateRows.flatMap(([term, value]) => {
+            const cell = el('dd', null, value);
+            // Kilometer und Parkort lassen sich gleich hier korrigieren (springt zum Feld darunter).
+            const field = { Kilometer: 'fileMileage', Parkort: 'fileParking' }[term];
+            if (field && TerminCloud.isStaff(profile)) {
+                const fix = el('button', 'link-button state-fix', 'korrigieren');
+                fix.type = 'button';
+                fix.setAttribute('aria-label', `${term} korrigieren`);
+                fix.addEventListener('click', () => { $(field).scrollIntoView({ block: 'center' }); $(field).focus(); });
+                cell.append(' ', fix);
+            }
+            return [el('dt', null, term), cell];
+        }));
 
         const assigned = $('fileAssigned');
         assigned.replaceChildren(...[{ id: '', full_name: 'Kein fester Fahrer' }, ...profiles.filter(item => item.active)].map(item => {
@@ -949,6 +961,10 @@
         assigned.value = vehicle.assigned_to || '';
         $('fileMileage').value = '';
         $('fileMileage').placeholder = vehicle.mileage == null ? 'km' : String(vehicle.mileage);
+        $('fileParking').value = '';
+        $('fileParking').placeholder = vehicle.parking || 'Parkort';
+        // Vorschläge: die Parkorte, die es im Fuhrpark schon gibt
+        $('fileParkingList').replaceChildren(...[...new Set(vehicles.map(item => String(item.parking || '').trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'de')).map(place => { const option = el('option'); option.value = place; return option; }));
 
         document.querySelectorAll('[data-file-tab]').forEach(button => button.classList.toggle('is-active', button.dataset.fileTab === fileTab));
         document.querySelectorAll('[data-file-panel]').forEach(panel => { panel.hidden = panel.dataset.filePanel !== fileTab; });
@@ -1015,10 +1031,20 @@
     $('fileSettings').addEventListener('submit', async event => {
         event.preventDefault();
         const text = $('fileMileage').value.trim();
-        if (!text) return;
-        const { error } = await client.from('tt_vehicles').update({ mileage: Number(text), state_updated_at: new Date().toISOString(), state_updated_by: `${profile.full_name || 'Admin'} (Korrektur)` }).eq('id', selectedId);
+        const place = $('fileParking').value.trim().replace(/\s+/g, ' ');
+        if (!text && !place) { showToast('Trag den richtigen Kilometerstand oder Parkort ein.', 'info', { target: '#fileMileage' }); return; }
+        if (text && !(Number.isInteger(Number(text)) && Number(text) >= 0)) { showToast('Bitte nur ganze Kilometer eintragen.', 'error', { target: '#fileMileage' }); return; }
+        const vehicle = vehicles.find(item => item.id === selectedId);
+        const changes = {};
+        if (text && Number(text) !== vehicle?.mileage) changes.mileage = Number(text);
+        if (place && place !== (vehicle?.parking || '')) changes.parking = place;
+        if (!Object.keys(changes).length) { showToast('Das steht schon so da – nichts geändert.', 'info'); return; }
+        // Ein viel kleinerer Kilometerstand ist meist ein Tippfehler: lieber nachfragen.
+        if (changes.mileage != null && vehicle?.mileage != null && changes.mileage < vehicle.mileage
+            && !await confirmDialog(`Der neue Kilometerstand (${formatKm(changes.mileage)}) ist kleiner als der bisherige (${formatKm(vehicle.mileage)}). Stimmt das?`, 'Ja, korrigieren')) return;
+        const { error } = await client.from('tt_vehicles').update({ ...changes, state_updated_at: new Date().toISOString(), state_updated_by: `${profile.full_name || 'Admin'} (Korrektur)` }).eq('id', selectedId);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast('Kilometerstand korrigiert', 'success');
+        showToast([changes.mileage != null ? `Kilometerstand korrigiert: ${formatKm(changes.mileage)}` : '', changes.parking ? `Parkort korrigiert: ${changes.parking}` : ''].filter(Boolean).join(' · '), 'success');
         await refresh();
     });
 
