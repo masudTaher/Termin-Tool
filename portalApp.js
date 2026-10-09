@@ -218,6 +218,7 @@ if (!window.TerminContact) {
         if (!profile) { show('auth'); $('portalUser').textContent = DEFAULT_USER_LINE; return; }
         // Das Konto der Pforte gehört auf die Anzeige der Pforte, nicht ins Portal der Dolmetscher.
         if (profile.role === 'pforte') { window.location.replace('pforte.html'); return; }
+        if (profile.role === 'arzt') { window.location.replace('arzt.html'); return; }
         $('portalUser').textContent = [profile.full_name || profile.email, isFest() ? 'fest angestellt' : ''].filter(Boolean).join(' · ');
         // Admins können zwischen der App der Dolmetscher und der Einsatzleitung wechseln.
         $('switchToOffice').hidden = $('officeCard').hidden = !TerminCloud.isAdmin(profile);

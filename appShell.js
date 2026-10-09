@@ -48,6 +48,7 @@
         card: icon('<rect x="3" y="6" width="18" height="12.5" rx="2"/><path d="M3 10h18M7 14.5h4"/>'),
         swap: icon('<path d="M7 7h12l-3-3M17 17H5l3 3"/>'),
         gate: icon('<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-7h6v7"/><path d="M4 12h16"/>'),
+        stetho: icon('<path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v3a4 4 0 0 0 8 0v-3"/><circle cx="18" cy="11" r="2"/>'),
         pin: icon('<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
         filter: icon('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
         tracking: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
@@ -98,7 +99,8 @@
         ] },
         { group: 'Verwaltung', items: [
             { page: 'team', href: 'team.html', label: 'Team', icon: ICONS.cloud },
-            { page: 'pforte', href: 'pforte.html', label: 'Pforte', icon: ICONS.gate }
+            { page: 'pforte', href: 'pforte.html', label: 'Pforte', icon: ICONS.gate },
+            { page: 'arzt', href: 'arzt.html', label: 'Ärzte-Anzeige', icon: ICONS.stetho }
         ] }
     ];
 

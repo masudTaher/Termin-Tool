@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="robots" content="noindex">
+      <meta name="theme-color" content="#eef4fb">
+      <title>Berichte des Tages · Medical Office Bonn</title>
+      <link rel="stylesheet" href="pforte.css">
+      <link rel="stylesheet" href="arzt.css">
+   </head>
+   <body>
+      <!-- ===== Anmeldung ===== -->
+      <main id="docAuth" class="gate-auth" hidden>
+         <form id="docSignIn" class="gate-auth-card" novalidate>
+            <p class="gate-kicker">MEDICAL OFFICE BONN</p>
+            <h1>Berichte des Tages</h1>
+            <p class="gate-auth-text">Anzeige für die Ärztinnen und Ärzte im Haus. Bitte mit dem eigenen Konto anmelden.</p>
+            <label for="docEmail">E-Mail</label>
+            <input id="docEmail" type="email" autocomplete="username" required>
+            <label for="docPassword">Passwort</label>
+            <input id="docPassword" type="password" autocomplete="current-password" required>
+            <button type="submit" class="gate-button gate-button-main">Anmelden</button>
+            <p id="docAuthStatus" class="gate-status" role="status" aria-live="polite"></p>
+         </form>
+      </main>
+
+      <!-- ===== Anzeige ===== -->
+      <div id="docApp" class="gate-app doc-app" hidden>
+         <header class="gate-top">
+            <div class="gate-title"><p class="gate-kicker">MEDICAL OFFICE BONN</p><h1>Berichte des Tages</h1></div>
+            <div class="gate-clock"><strong id="docClock">--:--</strong><span id="docDate"></span></div>
+            <div class="gate-counts">
+               <div class="gate-count is-wait" id="docCountUnreadBox"><b id="docCountUnread">0</b><span>ungelesen</span></div>
+               <div class="gate-count is-out"><b id="docCountReports">0</b><span>Dolmetscherberichte</span></div>
+               <div class="gate-count is-back"><b id="docCountMedical">0</b><span>Arztberichte</span></div>
+               <div class="gate-count"><b id="docCountOther">0</b><span>Rezepte u. a.</span></div>
+            </div>
+            <div class="gate-tools">
+               <label class="gate-day" for="docDay"><span>Tag</span><input id="docDay" type="date"></label>
+               <button type="button" id="docToday" class="gate-button">Heute</button>
+               <button type="button" id="docFull" class="gate-button">Vollbild</button>
+               <a id="docOffice" class="gate-button gate-button-quiet" href="index.html" hidden>Zur Einsatzleitung</a>
+               <button type="button" id="docSignOut" class="gate-button gate-button-quiet">Abmelden</button>
+            </div>
+         </header>
+         <p id="docStatus" class="gate-banner" role="status" aria-live="polite" hidden></p>
+         <div class="doc-filters" role="group" aria-label="Anzeigen">
+            <button type="button" class="doc-chip is-active" data-filter="alle">Alles</button>
+            <button type="button" class="doc-chip" data-filter="ungelesen">Ungelesen</button>
+            <button type="button" class="doc-chip" data-filter="dolmetscher">Dolmetscherberichte</button>
+            <button type="button" class="doc-chip" data-filter="arzt">Arztberichte</button>
+            <button type="button" class="doc-chip" data-filter="rest">Rezepte, Überweisungen, Sonstiges</button>
+            <label class="doc-search"><span class="visually-hidden">Patient suchen</span><input id="docSearch" type="search" placeholder="Patient oder Nummer suchen"></label>
+         </div>
+         <main class="doc-main">
+            <ul id="docList" class="doc-list"></ul>
+            <p id="docEmpty" class="gate-empty" hidden>Heute ist noch nichts hereingekommen.</p>
+         </main>
+      </div>
+
+      <!-- ===== Ganze Akte eines Patienten ===== -->
+      <dialog id="docRecord" class="doc-record">
+         <header class="doc-record-head">
+            <div><p class="gate-kicker">GANZE AKTE</p><h2 id="docRecordTitle">Patient</h2><p id="docRecordSub" class="doc-record-sub"></p></div>
+            <button type="button" id="docRecordClose" class="gate-button">Schließen</button>
+         </header>
+         <p id="docRecordStatus" class="gate-banner" hidden></p>
+         <div id="docRecordBody" class="doc-record-body"></div>
+      </dialog>
+
+      <dialog id="docConfirm" class="gate-confirm">
+         <p id="docConfirmText"></p>
+         <div class="gate-confirm-buttons"><button type="button" id="docConfirmNo" class="gate-button gate-button-quiet">Abbrechen</button><button type="button" id="docConfirmYes" class="gate-button gate-button-main">Ja</button></div>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="arztApp.js"></script>
+   </body>
+</html>

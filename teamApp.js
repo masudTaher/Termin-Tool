@@ -70,7 +70,7 @@
     const isWaiting = account => !account.active && !account.approved_at;
     const isLocked = account => !account.active && Boolean(account.approved_at);
     const isOffice = account => account.role === 'admin' || account.role === 'sekretariat';
-    const roleText = account => ({ admin: 'Admin', sekretariat: 'Sekretariat', pforte: 'Pforte' }[account.role] || (account.gender === 'weiblich' ? 'Dolmetscherin' : account.gender === 'männlich' ? 'Dolmetscher' : 'Dolmetscher/in'));
+    const roleText = account => ({ admin: 'Admin', sekretariat: 'Sekretariat', pforte: 'Pforte', arzt: 'Arzt/Ärztin' }[account.role] || (account.gender === 'weiblich' ? 'Dolmetscherin' : account.gender === 'männlich' ? 'Dolmetscher' : 'Dolmetscher/in'));
     const ACCOUNT_FILTERS = [
         ['alle', 'Alle', () => true],
         ['wartet', 'Warten auf Freischaltung', isWaiting],
@@ -82,6 +82,7 @@
         ['ohneangabe', 'Ohne Angabe', account => account.role === 'dolmetscher' && !account.gender && account.active],
         ['buero', 'Einsatzleitung und Sekretariat', isOffice],
         ['pforte', 'Pforte', account => account.role === 'pforte'],
+        ['arzt', 'Ärzte im Haus', account => account.role === 'arzt'],
         ['gesperrt', 'Gesperrt', isLocked]
     ];
 
@@ -190,7 +191,7 @@
         $('accountPhone').value = account.phone || '';
         radio('accountEmployment', account.employment === 'fest' ? 'fest' : 'temporär');
         radio('accountGender', account.gender || '');
-        radio('accountRole', ['sekretariat', 'pforte'].includes(account.role) ? account.role : 'dolmetscher');
+        radio('accountRole', ['sekretariat', 'pforte', 'arzt'].includes(account.role) ? account.role : 'dolmetscher');
         radio('accountActive', account.active ? 'ja' : 'nein');
         $('accountLockedText').textContent = isWaiting(account) ? 'Wartet noch' : 'Gesperrt';
         // Anstellung und Angabe gibt es nur für Dolmetscher; Rolle, Zugang und Löschen nicht beim eigenen und nicht bei einem Admin-Konto.
@@ -231,11 +232,12 @@
         }
         if (!own && !admin && (radioValue('accountActive') === 'ja') !== Boolean(account.active)) changes.active = radioValue('accountActive') === 'ja';
         if (!Object.keys(changes).length) { $('accountDialog').close(); return; }
+        if (changes.role === 'arzt' && !await confirmDialog(`${name} sieht dann nur noch die Berichte-Anzeige der Ärzte: alle Unterlagen des Tages (Dolmetscherberichte, Arztberichte, Rezepte, Überweisungen) mit Patientennamen und die ganze Akte eines Patienten – nur lesen und „Gelesen“ abhaken. Keine Aufträge, kein Fuhrpark, keine Abrechnung. Fortfahren?`, 'Zum Arzt machen')) return;
         if (changes.role === 'pforte' && !await confirmDialog(`${name} sieht dann nur noch die Anzeige der Pforte: wer hinausgefahren ist, mit welchem Fahrzeug und wohin – und trägt ein, wer zurück ist. Keine Akten, keine Abrechnung, kein Fuhrpark. Fortfahren?`, 'Zur Pforte machen')) return;
         if (changes.role === 'sekretariat' && !await confirmDialog(`${name} sieht und bearbeitet dann alles wie du – Termine, Fahrzeuge, Schäden und Aufträge. Konten verwalten kann nur der Admin. Fortfahren?`, 'Zum Sekretariat machen')) return;
         if (changes.active === false && !await confirmDialog(`${name} sperren?\n\nDie Person kann sich dann nicht mehr anmelden. Alle Daten bleiben erhalten; du kannst das Konto jederzeit wieder freischalten.`, 'Sperren')) return;
         const { error } = await client.from('tt_profiles').update(changes).eq('id', account.id);
-        if (error) { showToast(changes.role === 'pforte' && /check constraint|role_check/i.test(error.message || '') ? 'Für die Pforte fehlt noch ein Datenbank-Update (supabase/update-30.sql).' : /gender|approved_at|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (supabase/update-15.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        if (error) { showToast(changes.role === 'arzt' && /check constraint|role_check/i.test(error.message || '') ? 'Für die Ärzte fehlt noch ein Datenbank-Update (supabase/update-34.sql).' : changes.role === 'pforte' && /check constraint|role_check/i.test(error.message || '') ? 'Für die Pforte fehlt noch ein Datenbank-Update (supabase/update-30.sql).' : /gender|approved_at|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (supabase/update-15.sql).' : TerminCloud.germanError(error), 'error'); return; }
         $('accountDialog').close();
         // Der Name steht auch in der Vorschlagsliste für das Live-Tracking.
         if (changes.full_name && typeof addInterpreterName === 'function') { if (typeof removeInterpreterName === 'function' && account.full_name) removeInterpreterName(account.full_name); addInterpreterName(name); }
@@ -303,7 +305,7 @@
         const { error } = await client.from('tt_profiles').update(changes).eq('id', account.id);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
         const name = account.full_name || 'Konto';
-        showToast('role' in changes ? `${name}: ${{ sekretariat: 'Sekretariat', pforte: 'Pforte' }[changes.role] || 'Dolmetscher/in'}` : 'employment' in changes ? `${name}: ${changes.employment === 'fest' ? 'fest angestellt' : 'temporär'}` : changes.active ? `${name} ist freigeschaltet` : `${name} ist gesperrt`, 'success');
+        showToast('role' in changes ? `${name}: ${{ sekretariat: 'Sekretariat', pforte: 'Pforte', arzt: 'Arzt/Ärztin' }[changes.role] || 'Dolmetscher/in'}` : 'employment' in changes ? `${name}: ${changes.employment === 'fest' ? 'fest angestellt' : 'temporär'}` : changes.active ? `${name} ist freigeschaltet` : `${name} ist gesperrt`, 'success');
         await loadAccounts();
         window.refreshCloudInbox?.();
     }

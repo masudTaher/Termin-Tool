@@ -1,0 +1,63 @@
+/* Berichte des Tages (Ärzte): baut auf pforte.css auf – hell, große Schrift, klare Knöpfe. */
+.doc-app { grid-template-rows: auto auto auto minmax(0, 1fr); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.gate-count:not(.is-out):not(.is-back):not(.is-wait) b { color: var(--soft); }
+
+/* Filter */
+.doc-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 28px 0; }
+.doc-chip { min-height: 42px; padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: .98rem; font-weight: 750; cursor: pointer; }
+.doc-chip.is-active { border-color: var(--glow); background: var(--glow); color: #fff; }
+.doc-chip:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
+.doc-search { margin-left: auto; }
+.doc-search input { min-width: 260px; min-height: 42px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 1rem; }
+
+/* Liste nach Patient */
+.doc-main { display: flex; min-height: 0; flex-direction: column; padding: 16px 28px 24px; }
+.doc-list { display: grid; align-content: start; gap: 16px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
+.doc-patient { border: 2px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 8px 26px rgba(12, 27, 46, .08); overflow: hidden; }
+.doc-patient-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: rgba(10, 132, 214, .07); }
+.doc-patient-who { display: grid; gap: 2px; min-width: 0; }
+.doc-patient-who strong { font-size: clamp(1.4rem, 2vw, 2.2rem); font-weight: 850; line-height: 1.1; overflow-wrap: anywhere; }
+.doc-patient-who span { color: var(--soft); font-size: clamp(.95rem, 1.1vw, 1.2rem); font-weight: 650; }
+.doc-record-open { min-height: 52px; padding: 10px 22px; font-size: 1.05rem; }
+.doc-entries { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.doc-entry { display: grid; grid-template-columns: 190px minmax(0, 1fr) auto; grid-template-areas: "head title actions" "head body actions"; gap: 6px 20px; padding: 16px 22px; border-top: 1px solid var(--line); }
+.doc-entry:first-child { border-top: 0; }
+.doc-entry[data-read="ja"] { background: #f6faf7; }
+.doc-entry[data-fresh] { background: #fffaf0; box-shadow: inset 6px 0 0 #f0a020; }
+.doc-entry-head { grid-area: head; display: grid; align-content: start; gap: 6px; }
+.doc-kind { justify-self: start; padding: 3px 10px; border-radius: 999px; background: #e3edf8; color: #1e4a7a; font-size: .82rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.doc-entry[data-group="dolmetscher"] .doc-kind { background: #e6f5ec; color: #0f6b3c; }
+.doc-entry[data-group="rest"] .doc-kind { background: #fff1d6; color: #7a4b00; }
+.doc-time { font-size: clamp(1.2rem, 1.5vw, 1.7rem); font-variant-numeric: tabular-nums; }
+.doc-entry-title { grid-area: title; display: grid; gap: 2px; min-width: 0; }
+.doc-entry-title strong { font-size: clamp(1.1rem, 1.35vw, 1.5rem); line-height: 1.25; overflow-wrap: anywhere; }
+.doc-from { color: var(--soft); font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
+.doc-entry-body { grid-area: body; display: grid; gap: 8px; min-width: 0; }
+.doc-text { margin: 4px 0 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdff; font-size: clamp(1.05rem, 1.2vw, 1.3rem); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.doc-more { justify-self: start; min-height: 38px; font-size: .92rem; }
+.doc-note { margin: 0; color: var(--soft); font-size: .95rem; font-weight: 600; }
+.doc-entry-actions { grid-area: actions; display: grid; align-content: start; justify-items: stretch; gap: 8px; min-width: 190px; }
+.doc-mark { min-height: 58px; font-size: 1.1rem; }
+.doc-open { min-height: 50px; }
+.doc-read { padding: 8px 10px; border-radius: 10px; background: #e6f5ec; color: #0f6b3c; font-size: .9rem; font-weight: 750; text-align: center; }
+.doc-unread { min-height: 36px; font-size: .84rem; }
+
+/* Ganze Akte */
+.doc-record { width: min(1100px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 1px solid var(--line); border-radius: 22px; background: var(--bg); color: var(--ink); }
+.doc-record::backdrop { background: rgba(12, 27, 46, .45); }
+.doc-record-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.doc-record-head h2 { font-size: clamp(1.4rem, 2vw, 2.2rem); }
+.doc-record-sub { color: var(--soft); font-weight: 650; }
+.doc-record-body { padding: 10px 24px 24px; }
+.doc-record-group { margin: 18px 0 8px; color: var(--soft); font-size: 1rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.doc-record .doc-entries { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; }
+.doc-record .doc-entry { grid-template-columns: 170px minmax(0, 1fr) auto; }
+
+@media (max-width: 1100px) {
+  .doc-entry { grid-template-columns: 1fr; grid-template-areas: "head" "title" "body" "actions"; }
+  .doc-entry-actions { grid-auto-flow: column; justify-content: start; }
+  .doc-search { margin-left: 0; width: 100%; }
+  .doc-search input { width: 100%; }
+  .doc-list { overflow: visible; }
+}
