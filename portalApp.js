@@ -2035,12 +2035,43 @@ if (!window.TerminContact) {
                 state.dataset.status = item.cancelled ? 'bekannt' : { offen: 'in Arbeit', zugesagt: 'erledigt', vorbehalt: 'bekannt', abgesagt: 'offen' }[item.response];
                 state.textContent = item.cancelled ? 'zurückgezogen' : [RESPONSE_LABEL[item.response], WORK_LABEL[item.work_status]].filter(Boolean).join(' · ');
                 entry.append(text, state);
+                // Die Akte des Patienten bleibt auch im Archiv offen (nur für eigene, zugesagte Aufträge – jeder Abruf wird festgehalten).
+                if (priorWanted(item) && window.PortalRecord) {
+                    const parsed = parseJobMessage(item.message);
+                    const facts = parsed?.facts || {};
+                    const patient = facts['Patient/in'] || facts['Hauptpatient/in'] || '';
+                    const number = facts['Aktennummer'] || '';
+                    if (number) {
+                        entry.classList.add('history-entry-record');
+                        const line = el('span', 'history-record');
+                        line.append(el('span', 'history-record-who', [patient, `Akte ${number}`].filter(Boolean).join(' · ')));
+                        const open = el('button', 'button-secondary history-record-open', 'Akte öffnen');
+                        open.type = 'button';
+                        open.addEventListener('click', () => openArchiveRecord(item, patient, open));
+                        line.append(open);
+                        entry.append(line);
+                    }
+                }
                 inner.append(entry);
             });
             fold.append(head, inner);
             holder.append(fold);
             history.append(holder);
         });
+    }
+
+    // Archiv: die ganze Akte des Patienten zu einem früheren Auftrag öffnen (Berichte, Rezepte, Überweisungen, Aktennummer).
+    async function openArchiveRecord(item, patientName, button) {
+        button.disabled = true;
+        const { data, error } = await client.rpc('tt_patient_history', { p_assignment: item.id });
+        button.disabled = false;
+        if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
+        if (!data?.allowed) { toast('Die Akte ist für diesen Auftrag nicht freigegeben. Bitte frag bei der Einsatzleitung nach.', 'info'); return; }
+        if (!data.patient_nr) { toast('Zu diesem Auftrag gibt es keine Aktennummer.', 'info'); return; }
+        const docs = data.documents || [];
+        if (!docs.length) { toast('Zu diesem Patienten gibt es noch keine Unterlagen in der Akte.', 'info'); return; }
+        const doctor = TerminContact.singleLine(parseJobMessage(item.message)?.sections.find(section => /ARZT/.test(section.title))?.fields.find(([label]) => label === 'Name')?.[1]) || '';
+        window.PortalRecord.open({ docs, patientNr: data.patient_nr, patientName, jobDoctor: doctor, toast });
     }
 
     // ---------- Fahrzeug ----------
