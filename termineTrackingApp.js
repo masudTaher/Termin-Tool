@@ -552,8 +552,12 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         if (target.classList.contains('status-select')) setTrackingStatus(Number(target.dataset.index), target.value);
         else if (target.classList.contains('interpreter-input')) updateInterpreterFromInput(target);
         else if (target.classList.contains('vehicle-select')) updateVehicleFromSelect(target);
-        else if (target.classList.contains('time-input')) updateTimeFromInput(target);
     });
+    // Startzeit: erst übernehmen, wenn das Feld verlassen wird (oder mit Enter). Der Browser meldet schon nach der ersten getippten
+    // Ziffer eine Änderung – würde die Tabelle dann neu sortiert, spränge der Cursor weg und die nächste Ziffer landete im falschen Teil
+    // (Minuten statt Stunden).
+    tableBody.addEventListener('focusout', event => { if (event.target.classList?.contains('time-input')) updateTimeFromInput(event.target); });
+    tableBody.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target.classList?.contains('time-input')) { event.preventDefault(); event.target.blur(); } });
     // Enter im Namensfeld springt zum nächsten sichtbaren Termin.
     tableBody.addEventListener('keydown', event => {
         if (event.key !== 'Enter' || !event.target.classList.contains('interpreter-input')) return;
@@ -1364,9 +1368,6 @@ function updateTimeFromInput(input) {
     termin.Termin_Uhrzeit = newValue;
     renderTrackingTable(trackingData);
     persistTerminRecords(trackingData, 'tracking');
-    // Der Termin kann durch die neue Zeit an eine andere Stelle gerutscht sein.
-    const newIndex = trackingData.indexOf(termin);
-    document.querySelector(`#tableBody .time-input[data-index="${newIndex}"]`)?.focus();
 }
 
 // Löschen ohne Rückfrage: Die Einblendung bietet „Rückgängig“ an.
