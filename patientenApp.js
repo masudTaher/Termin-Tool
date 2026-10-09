@@ -8,7 +8,7 @@
     // Arten von Unterlagen (wie im Portal) – ältere Bezeichnungen werden der heutigen Art zugeordnet.
     const KIND_ALIAS = { 'Überweisung MRT / CT / Röntgen': 'Überweisung Radiologie' };
     const kindKey = kind => { const text = String(kind ?? '').trim(); return KIND_ALIAS[text] || text; };
-    const ALL_KINDS = [...new Set([...((window.TERMIN_CLOUD_CONFIG || {}).documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges']), REPORT_KIND])];
+    const ALL_KINDS = [...new Set([...((window.TERMIN_CLOUD_CONFIG || {}).documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Logopädie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges']), REPORT_KIND])];
     const RECIPIENT_KEY = 'document_recipients';
     const LINK_SECONDS = 60 * 60 * 24 * 7;      // Links in der Nachricht gelten 7 Tage
     const MAIL_LIMIT = 1800;                    // längere Texte nimmt nicht jedes E-Mail-Programm über „mailto:“ an
@@ -1602,7 +1602,7 @@
 
     const HEADINGS = {
         berichte: ['ONLINE · EINGANG', 'Neue Berichte', 'Berichte der Dolmetscher und hochgeladene Krankenhausberichte: ansehen, prüfen, weiterleiten. Danach liegen sie in der Patientenakte.'],
-        rezepte: ['ONLINE · EINGANG', 'Neue Rezepte', 'Rezepte nach Kategorie (Medikamente, Physiotherapie, Hilfsmittel), dazu Überweisungen und Sonstiges: ansehen, prüfen, weiterleiten.'],
+        rezepte: ['ONLINE · EINGANG', 'Neue Rezepte', 'Rezepte nach Kategorie (Medikamente, Physiotherapie, Logopädie, Hilfsmittel), dazu Überweisungen und Sonstiges: ansehen, prüfen, weiterleiten.'],
         alles: ['ONLINE · PATIENTEN', 'Patienten und Unterlagen', 'Arztberichte, Rezepte, Überweisungen und Berichte der Dolmetscher – nach Patient geordnet.']
     };
     if (HEADINGS[VIEW] && $('viewTitle')) { $('viewKicker').textContent = HEADINGS[VIEW][0]; $('viewTitle').textContent = HEADINGS[VIEW][1]; $('viewLead').textContent = HEADINGS[VIEW][2]; }

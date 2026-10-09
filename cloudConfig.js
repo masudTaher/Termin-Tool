@@ -13,7 +13,7 @@ window.TERMIN_CLOUD_CONFIG = {
     // Schadensarten für die Schadenmeldung (kurz halten – „Sonstiges“ fängt den Rest auf).
     damageKinds: ['Kratzer', 'Schramme', 'Delle', 'Steinschlag', 'Unfall mit Bericht', 'Unfall ohne Bericht', 'Schiebetür defekt', 'Felge / Reifen', 'Sonstiges'],
     // Unterlagen, die Dolmetscher nach einem Termin fotografieren und als PDF schicken.
-    documentKinds: ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'],
+    documentKinds: ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Logopädie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'],
     alertKinds: ['Reifendruck', 'AdBlue nachfüllen', 'Serviceanzeige', 'Ölstand', 'Motorkontrollleuchte', 'Wischwasser', 'Sonstiges'],
     fuelLabels: ['Leer', '1/4', '1/2', '3/4', 'Voll'],
     // Arbeitszeit der Festangestellten – alles davor oder danach zählt als Überstunden.

@@ -12,6 +12,7 @@ const AkteLogic = (() => {
         { key: 'bild_code', kind: 'Befund Bildgebung Zugang', group: 'bild', label: 'Bilder-Zugang (QR-Code)', single: true },
         { key: 'rezept_med', kind: 'Rezept Medikamente', group: 'rezept', label: 'Rezept Medikamente', single: true },
         { key: 'rezept_physio', kind: 'Rezept Physiotherapie', group: 'rezept', label: 'Rezept Physiotherapie', single: true },
+        { key: 'rezept_logo', kind: 'Rezept Logopädie', group: 'rezept', label: 'Rezept Logopädie', single: true },
         { key: 'rezept_hilf', kind: 'Rezept Hilfsmittel', group: 'rezept', label: 'Rezept Hilfsmittel', single: true },
         { key: 'ueb_fach', kind: 'Überweisung Facharzt', group: 'ueberweisung', label: 'Überweisung', single: true },
         { key: 'ueb_radio', kind: 'Überweisung Radiologie', group: 'ueberweisung', label: 'Überweisung Radiologie', single: true },
@@ -107,7 +108,9 @@ const AkteLogic = (() => {
         ]
     };
     const FORMS = ['rezept', 'ueberweisung', 'termin'];
-    const PHYSIO = /krankengymnastik|physiotherap|manuelle therapie|massage|lymphdrainage|heilmittel|ergotherap|logopad|\bkg\b/;
+    const PHYSIO = /krankengymnastik|physiotherap|manuelle therapie|massage|lymphdrainage|heilmittel|ergotherap|\bkg\b/;
+    // Logopädie: Sprach-, Sprech-, Stimm- und Schlucktherapie (steht auf dem Heilmittel-Rezept)
+    const LOGO = /\[x\]\s*stimm|logopad|\bsprachtherapie|\bsprechtherapie|\bstimmtherapie/;   // das Formular nennt „Stimm-, Sprech-, Sprach- und Schlucktherapie“ immer – es zählt nur angekreuzt
     const HILFSMITTEL = /hilfsmittel|bandage|orthese|einlagen|rollstuhl|rollator|gehhilfe|kompressionsstrumpf|prothese|korsett|schiene|gehstutze/;
     const RADIO = /radiolog|\bmrt\b|\bct\b|rontgen|kernspin|nuklear|szinti|mammo|computertomogra|magnetresonanz/;
 
@@ -235,7 +238,7 @@ const AkteLogic = (() => {
             key = rest && rest[1] >= 4.5 ? rest[0] : 'sonst';
             score = rest ? rest[1] : 0;
         }
-        if (key === 'rezept') key = HILFSMITTEL.test(folded) ? 'rezept_hilf' : PHYSIO.test(folded) ? 'rezept_physio' : 'rezept_med';
+        if (key === 'rezept') key = HILFSMITTEL.test(folded) ? 'rezept_hilf' : LOGO.test(folded) ? 'rezept_logo' : PHYSIO.test(folded) ? 'rezept_physio' : 'rezept_med';
         if (key === 'ueberweisung') {
             // Wohin die Überweisung geht, entscheidet – nicht, ob im Text eine frühere MRT erwähnt ist.
             const target = referralTarget(lines.join('\n')), order = (folded.match(/\bauftrag\s*:?\s*([^\n]{0,80}(\n[^\n]{0,80})?)/) || [])[1] || '';
@@ -244,7 +247,7 @@ const AkteLogic = (() => {
         // Blatt mit dem Zugang zu den Bildern: kurzes Blatt mit QR-Code und einem Bezug zur Bildgebung – oder mit zwei klaren Hinweisen
         // auf einen Zugang. (Ein QR-Code allein reicht nicht: Auch E-Rezepte und Rechnungen tragen einen.)
         const cues = codeCues(folded);
-        if (words <= 260 && !['rezept_med', 'rezept_physio', 'rezept_hilf', 'rechnung', 'labor'].includes(key)
+        if (words <= 260 && !['rezept_med', 'rezept_physio', 'rezept_logo', 'rezept_hilf', 'rechnung', 'labor'].includes(key)
             && ((extra.qr && (cues >= 1 || RADIO.test(folded) || scores.bild >= 3)) || (cues >= 2 && (RADIO.test(folded) || /bild|aufnahme|images/.test(folded))))) { key = 'bild_code'; score = Math.max(score, 8); }
         const { start, follows } = startOf(lines, folded, counter);
         const closing = CLOSING.test(folded);

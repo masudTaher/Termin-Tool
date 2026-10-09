@@ -6,7 +6,7 @@ window.PortalDocs = (function () {
     const core = window.PortalCore;
     const $ = id => document.getElementById(id);
     const { client, toast, el, svgSpan } = core;
-    const KINDS = core.config.documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'];
+    const KINDS = core.config.documentKinds || ['Arztbericht', 'Rezept Medikamente', 'Rezept Physiotherapie', 'Rezept Logopädie', 'Rezept Hilfsmittel', 'Überweisung Facharzt', 'Überweisung Radiologie', 'Sonstiges'];
     const REPORT_KIND = 'Dolmetscherbericht';
     const MAX_PAGES = 20;
     const MAX_PDF_BYTES = 19 * 1024 * 1024;      // der Speicher nimmt höchstens 20 MB je Datei an
@@ -31,6 +31,7 @@ window.PortalDocs = (function () {
         'Arztbericht': icon('<path d="M7.500 3.500H14l4.500 4.500V19a1.500 1.500 0 0 1-1.500 1.500H7.500A1.500 1.500 0 0 1 6 19V5a1.500 1.500 0 0 1 1.500-1.500z"/><path d="M14 3.500V8h4.500"/><path d="M9 12.500h6M9 16h4"/>'),
         'Rezept Medikamente': icon('<rect x="3.500" y="8.500" width="17" height="7" rx="3.500" transform="rotate(-45 12 12)"/><path d="M9.500 9.500l5 5"/>'),
         'Rezept Physiotherapie': icon('<circle cx="12" cy="5.500" r="2"/><path d="M5 10.500l7-1.500 7 1.500M12 9v6l-3.500 5M12 15l3.500 5"/>'),
+        'Rezept Logopädie': icon('<path d="M20 11.500a7.500 7.500 0 0 1-11.200 6.500L4 19.500l1.500-4.300A7.500 7.500 0 1 1 20 11.500z"/><path d="M9 11.500h.01M12.500 11.500h.01M16 11.500h.01"/>'),
         'Überweisung Facharzt': icon('<path d="M4 12h13M12.500 7.500 17 12l-4.500 4.500"/><path d="M20 5v14"/>'),
         'Rezept Hilfsmittel': icon('<circle cx="9" cy="16.500" r="4"/><path d="M9 12.500V5.500H6.500M9 9.500h5.500l2 6H19"/><circle cx="18.500" cy="18.500" r="1.500"/>'),
         'Überweisung Radiologie': icon('<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="12" cy="12" r="3.500"/><path d="M12 5v2M12 17v2M4 12h2M18 12h2"/>'),
@@ -41,6 +42,7 @@ window.PortalDocs = (function () {
         'Arztbericht': 'Befund, Arztbrief, Entlassbericht',
         'Rezept Medikamente': 'für die Apotheke',
         'Rezept Physiotherapie': 'Krankengymnastik, Massage, Lymphdrainage',
+        'Rezept Logopädie': 'Sprach-, Sprech- und Schlucktherapie',
         'Rezept Hilfsmittel': 'z. B. Rollstuhl, Bandage, Einlagen',
         'Überweisung Facharzt': 'an einen anderen Arzt',
         'Überweisung Radiologie': 'MRT, CT, Röntgen'
