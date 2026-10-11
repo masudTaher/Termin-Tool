@@ -304,9 +304,12 @@ if (!window.TerminContact) {
         updateAppBadge();
     }
     // Zahl am Symbol der App auf dem Handy (wie bei WhatsApp): ungelesene Nachrichten + Aufträge, die auf eine Antwort warten.
+    // Die Zahl am App-Symbol (wie bei WhatsApp): nur Neues – Aufträge, die auf eine Antwort warten, und ungelesene Nachrichten.
+    // Liegen gebliebene Aufträge früherer Tage stehen in der App, zählen hier aber nicht mit.
+    let appBadgeOpen = 0;
     function updateAppBadge() {
         try {
-            const total = ['jobsBadge', 'messagesBadge'].reduce((sum, id) => { const node = $(id); return sum + (node && !node.hidden ? Number(node.textContent) || 0 : 0); }, 0);
+            const messages = $('messagesBadge'); const total = appBadgeOpen + (messages && !messages.hidden ? Number(messages.textContent) || 0 : 0);
             if (total > 0) navigator.setAppBadge?.(total)?.catch?.(() => null); else navigator.clearAppBadge?.()?.catch?.(() => null);
         } catch (error) { /* nicht jedes Handy kann das */ }
     }
@@ -397,6 +400,7 @@ if (!window.TerminContact) {
             item.append(button);
             return item;
         }));
+        appBadgeOpen = open;
         setBadge('jobs', open + late);
         setBadge('statement', waiting ? '!' : '');
         $('messagesBadge').hidden = !unread;
@@ -1944,6 +1948,7 @@ if (!window.TerminContact) {
         $('jobsSummary').textContent = upcoming.length
             ? `${upcoming.length} ${upcoming.length === 1 ? 'Auftrag' : 'Aufträge'}${open ? `, ${open} ${open === 1 ? 'wartet' : 'warten'} auf deine Antwort` : ''}`
             : 'Im Moment hast du keine Aufträge.';
+        appBadgeOpen = open;
         setBadge('jobs', open + lateJobs().length);
         renderLateJobs();
         window.setTimeout(checkDeparture, 1200);
@@ -3381,7 +3386,9 @@ if (!window.TerminContact) {
         const unreadChat = chatData.some(item => item.from_staff && !item.read_at);
         if (!unread.length && !unreadChat) return;
         const [reads, chat] = await Promise.all([
-            unread.length ? client.from('tt_message_reads').upsert(unread.map(item => ({ message_id: item.id, profile_id: profile.id })), { onConflict: 'message_id,profile_id' }) : { error: null },
+            // Nur einfügen, nie ändern: Auf tt_message_reads gibt es kein Änderungsrecht – ein „upsert“ mit Ändern schlug still fehl,
+            // und die Nachrichten blieben für immer „neu“ (Zahl am App-Symbol zählte alle Nachrichten von Anfang an).
+            unread.length ? client.from('tt_message_reads').upsert(unread.map(item => ({ message_id: item.id, profile_id: profile.id })), { onConflict: 'message_id,profile_id', ignoreDuplicates: true }) : { error: null },
             unreadChat ? client.rpc('tt_chat_read', { p_thread: null }) : { error: null }
         ]);
         if (!reads.error) unread.forEach(item => readIds.add(item.id));
