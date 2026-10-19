@@ -2870,3 +2870,16 @@ dialog.office-return .office-return-send input { width: 20px; height: 20px; marg
 .pay-step-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .pay-step-actions button { min-height: 38px; padding: 6px 12px; }
 @media (max-width: 720px) { .pay-step-head { grid-template-columns: 32px minmax(0, 1fr) auto; } .pay-step-hint { grid-column: 2 / -1; } .pay-step-body { padding-left: 14px; } }
+
+/* ===== 86. Portal: Info und Anweisung eines Arztes (Update 40) ===== */
+.doctor-question[data-kind="info"] { border-color: color-mix(in srgb, #64748b 35%, var(--line)); border-left-color: #64748b; background: color-mix(in srgb, #64748b 6%, var(--surface)); }
+.doctor-question[data-kind="anweisung"] { border-color: color-mix(in srgb, #b42318 45%, var(--line)); border-left-color: #b42318; background: color-mix(in srgb, #b42318 8%, var(--surface)); box-shadow: 0 8px 24px rgba(180, 35, 24, .12); }
+.doctor-question[data-kind="anweisung"][data-state="offen"] .doctor-question-head strong { color: #b42318; font-size: 1.05rem; text-transform: uppercase; letter-spacing: .04em; }
+.doctor-question[data-kind="anweisung"][data-state="offen"] .doctor-question-text { font-size: 1.12rem; font-weight: 700; border: 2px solid color-mix(in srgb, #b42318 40%, var(--line)); }
+.doctor-question[data-kind="anweisung"][data-state="beantwortet"], .doctor-question[data-kind="info"][data-state="beantwortet"] { border-color: color-mix(in srgb, #18794e 35%, var(--line)); border-left-color: #18794e; background: color-mix(in srgb, #18794e 6%, var(--surface)); box-shadow: none; }
+.doctor-order-ok { min-height: 54px; font-size: 1.08rem; font-weight: 850; background: #b42318; border-color: #b42318; }
+.doctor-order-ok:hover { background: #991b1b; border-color: #991b1b; }
+.doctor-info-ok { min-height: 44px; }
+.doctor-question-meta.is-ok { color: #18794e; }
+.doctor-question-reply summary { cursor: pointer; color: var(--muted); font-size: .86rem; font-weight: 700; }
+.doctor-question-reply[open] summary { margin-bottom: 8px; }

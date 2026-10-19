@@ -121,3 +121,18 @@
   .doc-search input { width: 100%; }
   .doc-list { overflow: visible; }
 }
+
+/* Frage / Info / Anweisung (Update 40) */
+.doc-question[data-kind="info"] { border-left-color: #64748b; background: #f4f6f9; }
+.doc-question[data-kind="anweisung"] { border-left-color: var(--warn); background: #fff1ef; }
+.doc-question[data-kind="anweisung"][data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-question-head.is-ok { color: var(--go); }
+.doc-order-open { min-height: 44px; font-size: .95rem; border-color: #f1b5ae; background: #fff1ef; color: var(--warn); font-weight: 850; }
+.doc-ask-kinds { display: grid; gap: 6px; margin: 6px 0 10px; }
+.doc-ask-kind { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.doc-ask-kind:has(input:checked) { border-color: var(--glow); background: #f1f7fd; }
+.doc-ask-kind[data-kind="anweisung"]:has(input:checked) { border-color: var(--warn); background: #fff1ef; }
+.doc-ask-kind input { margin: 3px 0 0; }
+.doc-ask-kind span { display: grid; gap: 1px; }
+.doc-ask-kind small { color: var(--soft); }
+.doc-ask[data-kind="anweisung"] .gate-button-main { background: var(--warn); border-color: var(--warn); }

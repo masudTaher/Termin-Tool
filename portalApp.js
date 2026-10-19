@@ -393,6 +393,9 @@ if (!window.TerminContact) {
         renderHomeJobs(today, open);
         const waiting = statementData.find(item => item.response === 'offen' && !item.data?.running);
         if (waiting && !isFest()) notices.push([`Deine Abrechnung für ${monthLabel(waiting.month)} wartet auf deine Bestätigung`, () => goTo('statement')]);
+        // Anweisung eines Arztes: ganz oben, bis sie bestätigt ist.
+        const orders = openOrders();
+        if (orders.length) notices.unshift([orders.length === 1 ? `Anweisung von ${orders[0].doctor_name || 'einem Arzt'} – bitte lesen und bestätigen` : `${orders.length} Anweisungen von Ärzten – bitte lesen und bestätigen`, () => goTo('messages')]);
         $('startNotices').replaceChildren(...notices.map(([text, action]) => {
             const item = document.createElement('li');
             const button = el('button', '', text);
@@ -3456,7 +3459,11 @@ if (!window.TerminContact) {
     let chatReady = true;        // false: die Tabelle fehlt noch (Update 21)
     let messagesShown = '';      // Stand der Anzeige – nur bei Änderungen wird neu gezeichnet
     let questionData = [];          // Fragen der Ärzte zu meinen Berichten (Update 36)
-    const unreadQuestions = () => questionData.filter(item => !item.seen_at && !item.answered_at).length;
+    // Art (Update 40): frage = antworten, info = „gelesen“ bestätigen, anweisung = „Verstanden“ bestätigen (groß und rot).
+    const questionKind = item => ['frage', 'info', 'anweisung'].includes(item.kind) ? item.kind : 'frage';
+    const questionOpen = item => questionKind(item) === 'frage' ? !item.answered_at && !item.seen_at : !item.acknowledged_at;
+    const openOrders = () => questionData.filter(item => questionKind(item) === 'anweisung' && !item.acknowledged_at);
+    const unreadQuestions = () => questionData.filter(questionOpen).length;
     const unreadMessages = () => messageData.filter(item => !readIds.has(item.id)).length + chatData.filter(item => item.from_staff && !item.read_at).length + unreadQuestions();
     async function loadMessages() {
         const [messages, reads, chat, questions] = await Promise.all([
@@ -3477,7 +3484,7 @@ if (!window.TerminContact) {
         chatReady = !chat.error;
         chatData = chat.error ? [] : [...chat.data].reverse();
         const unread = unreadMessages();
-        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? 'Ein Arzt hat eine Frage zu deinem Bericht.' : 'Neue Nachricht von der Einsatzleitung.', 'success', null, { label: 'Lesen', run: () => goTo('messages') });
+        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? (openOrders().length ? 'Ein Arzt hat dir eine Anweisung geschickt – bitte bestätigen.' : 'Ein Arzt hat dir zu deinem Bericht geschrieben.') : 'Neue Nachricht von der Einsatzleitung.', openOrders().length && unreadQuestions() > questionsBefore ? 'error' : 'success', null, { label: 'Lesen', run: () => goTo('messages') });
         loadMessages.loaded = true;
         if (currentView === 'messages') { renderMessages(); markMessagesRead(); }
     }
@@ -3495,18 +3502,56 @@ if (!window.TerminContact) {
         if (!box) return;
         box.hidden = !questionData.length;
         const list = $('doctorQuestionList');
-        const signature = JSON.stringify(questionData.map(item => [item.id, item.answer, item.seen_at, item.answered_at]));
+        const signature = JSON.stringify(questionData.map(item => [item.id, item.answer, item.seen_at, item.answered_at, item.acknowledged_at, item.kind]));
         if (list.dataset.signature === signature) return;
         list.dataset.signature = signature;
-        list.replaceChildren(...questionData.map(item => {
+        const DAY = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+        // Offene Anweisungen zuerst, dann offene Fragen und Infos, dann der Rest.
+        const weight = item => (questionOpen(item) ? 0 : 2) + (questionKind(item) === 'anweisung' ? 0 : 1);
+        list.replaceChildren(...[...questionData].sort((left, right) => weight(left) - weight(right) || new Date(right.created_at) - new Date(left.created_at)).map(item => {
+            const kind = questionKind(item);
             const card = el('li', 'doctor-question');
             card.dataset.id = item.id;
-            card.dataset.state = item.answered_at ? 'beantwortet' : 'offen';
+            card.dataset.kind = kind;
+            card.dataset.state = (kind === 'frage' ? item.answered_at : item.acknowledged_at) ? 'beantwortet' : 'offen';
             const head = el('div', 'doctor-question-head');
-            head.append(el('strong', '', `${item.doctor_name || 'Arzt'} fragt`), el('span', '', `${chatDay(item.created_at)} · ${clock(item.created_at)} Uhr`));
-            const about = el('p', 'doctor-question-about', [item.patient_name ? `Patient/in: ${item.patient_name}` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_title || item.document_kind, item.document_date ? `vom ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''].filter(Boolean).join(' · '));
+            const who = item.doctor_name || 'Arzt';
+            head.append(el('strong', '', kind === 'anweisung' ? `Anweisung von ${who}` : kind === 'info' ? `Info von ${who}` : `${who} fragt`), el('span', '', `${chatDay(item.created_at)} · ${clock(item.created_at)} Uhr`));
+            const about = el('p', 'doctor-question-about', [item.patient_name ? `Patient/in: ${item.patient_name}` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_title || item.document_kind, item.document_date ? `vom ${DAY(item.document_date)}` : ''].filter(Boolean).join(' · '));
             const question = el('p', 'doctor-question-text', item.question);
             card.append(head, about, question);
+            if (kind !== 'frage') {
+                // Info und Anweisung: bestätigen – bei einer Anweisung groß und deutlich. Eine Rückmeldung ist freiwillig.
+                if (item.acknowledged_at) card.append(el('span', 'doctor-question-meta is-ok', `${kind === 'anweisung' ? 'Verstanden' : 'Gelesen'} · ${chatDay(item.acknowledged_at)} ${clock(item.acknowledged_at)} Uhr`));
+                else {
+                    const ok = el('button', kind === 'anweisung' ? 'button-primary doctor-order-ok' : 'button-secondary doctor-info-ok', kind === 'anweisung' ? 'Verstanden – wird gemacht' : 'Gelesen');
+                    ok.type = 'button';
+                    ok.addEventListener('click', async () => {
+                        ok.disabled = true;
+                        const now = new Date().toISOString();
+                        const { error } = await client.from('tt_doctor_questions').update({ acknowledged_at: now, seen_at: item.seen_at || now }).eq('id', item.id);
+                        ok.disabled = false;
+                        if (error) { toast(/acknowledged_at|column/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 40). Bitte sag der Einsatzleitung Bescheid.' : TerminCloud.germanError(error), 'error'); return; }
+                        toast(kind === 'anweisung' ? `Bestätigt – ${who} sieht dein „Verstanden“.` : 'Als gelesen bestätigt.', 'success');
+                        await loadMessages();
+                        renderHome();
+                    });
+                    card.append(ok);
+                }
+                if (item.answered_at && !card.dataset.editing) {
+                    const answer = el('p', 'doctor-question-answer', item.answer);
+                    const meta = el('span', 'doctor-question-meta', `Deine Rückmeldung · ${chatDay(item.answered_at)} ${clock(item.answered_at)} Uhr`);
+                    const change = el('button', 'link-button', 'Rückmeldung ändern');
+                    change.type = 'button';
+                    change.addEventListener('click', () => { card.dataset.editing = 'ja'; card.append(answerForm(item, card, 'Rückmeldung speichern')); change.remove(); });
+                    card.append(meta, answer, change);
+                } else {
+                    const reply = el('details', 'doctor-question-reply');
+                    reply.append(el('summary', '', 'Rückfrage oder Rückmeldung schreiben …'), answerForm(item, card, 'Rückmeldung senden'));
+                    card.append(reply);
+                }
+                return card;
+            }
             if (item.answered_at && !card.dataset.editing) {
                 const answer = el('p', 'doctor-question-answer', item.answer);
                 const meta = el('span', 'doctor-question-meta', `Deine Antwort · ${chatDay(item.answered_at)} ${clock(item.answered_at)} Uhr`);
@@ -3518,13 +3563,13 @@ if (!window.TerminContact) {
             return card;
         }));
     }
-    function answerForm(item, card) {
+    function answerForm(item, card, label = '') {
         const form = el('form', 'doctor-question-form');
         form.noValidate = true;
         const text = el('textarea');
-        text.rows = 3; text.maxLength = 4000; text.placeholder = 'Deine Antwort an den Arzt'; text.value = item.answer || '';
+        text.rows = 3; text.maxLength = 4000; text.placeholder = label ? 'Deine Rückmeldung an den Arzt' : 'Deine Antwort an den Arzt'; text.value = item.answer || '';
         text.setAttribute('aria-label', `Antwort an ${item.doctor_name || 'den Arzt'}`);
-        const send = el('button', 'button-primary', item.answered_at ? 'Antwort speichern' : 'Antworten');
+        const send = el('button', 'button-primary', label || (item.answered_at ? 'Antwort speichern' : 'Antworten'));
         send.type = 'submit';
         form.append(text, send);
         form.addEventListener('submit', async event => {

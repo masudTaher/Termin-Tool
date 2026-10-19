@@ -257,8 +257,10 @@ Deno.serve(async (req) => {
       if (!(profile.role === 'arzt' || isStaff)) return json({ error: 'Nur Ärzte und die Einsatzleitung.' }, 403);
       const { data: question } = await admin.from('tt_doctor_questions').select('*').eq('id', String(input.questionId ?? '')).maybeSingle();
       if (!question || (question.doctor_id !== profile.id && !isStaff)) return json({ error: 'Frage nicht gefunden.' }, 404);
+      // Art (Update 40): Frage, Info oder Anweisung – die Anweisung bekommt die deutlichste Überschrift.
+      const kind = String(question.kind ?? 'frage');
       const result = await sendTo([question.interpreter_id], {
-        title: 'Frage eines Arztes zu deinem Bericht',
+        title: kind === 'anweisung' ? `ANWEISUNG von ${question.doctor_name || 'Arzt'} – bitte bestätigen` : kind === 'info' ? `Info von ${question.doctor_name || 'Arzt'} zu deinem Bericht` : 'Frage eines Arztes zu deinem Bericht',
         body: `${question.doctor_name || 'Arzt'}: ${String(question.question).slice(0, 200)}`,
         url: 'portal.html?seite=nachrichten', tag: `frage-${question.id}`,
       });

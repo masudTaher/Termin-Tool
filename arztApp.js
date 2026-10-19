@@ -96,21 +96,29 @@
         .filter(Boolean).join(' · ');
 
     // ---------- Fragen an den Dolmetscher ----------
+    // Drei Arten (Update 40): Frage (Antwort), Info (zur Kenntnis), Anweisung (muss mit „Verstanden“ bestätigt werden).
+    const KIND_WORD = { frage: 'Frage', info: 'Info', anweisung: 'Anweisung' };
+    const kindOf = item => KIND_WORD[item.kind] ? item.kind : 'frage';
     function questionBlock(doc) {
         const box = el('div', 'doc-questions');
         questionsOf(doc).forEach(item => {
+            const kind = kindOf(item);
             const card = el('div', 'doc-question');
-            card.dataset.state = item.answered_at ? 'beantwortet' : 'offen';
-            card.append(el('span', 'doc-question-head', `${item.doctor_id === profile.id ? 'Deine Frage' : `Frage von ${item.doctor_name || 'Arzt'}`} · ${german(item.created_at)} ${clock(item.created_at)} Uhr`), el('p', 'doc-question-text', item.question));
-            if (item.answered_at) card.append(el('span', 'doc-question-head', `Antwort von ${item.interpreter_name || 'Dolmetscher'} · ${german(item.answered_at)} ${clock(item.answered_at)} Uhr`), el('p', 'doc-question-answer', item.answer));
-            else {
-                const wait = el('span', 'doc-question-wait', item.seen_at ? 'Der Dolmetscher hat die Frage gesehen – noch keine Antwort.' : 'Noch nicht beantwortet.');
+            card.dataset.kind = kind;
+            const done = kind === 'frage' ? Boolean(item.answered_at) : Boolean(item.acknowledged_at);
+            card.dataset.state = done ? 'beantwortet' : 'offen';
+            const mine = item.doctor_id === profile.id;
+            card.append(el('span', 'doc-question-head', `${mine ? `Deine ${KIND_WORD[kind]}` : `${KIND_WORD[kind]} von ${item.doctor_name || 'Arzt'}`} · ${german(item.created_at)} ${clock(item.created_at)} Uhr`), el('p', 'doc-question-text', item.question));
+            if (kind !== 'frage' && item.acknowledged_at) card.append(el('span', 'doc-question-head is-ok', `${kind === 'anweisung' ? 'Verstanden' : 'Gelesen'} von ${item.interpreter_name || 'Dolmetscher'} · ${german(item.acknowledged_at)} ${clock(item.acknowledged_at)} Uhr`));
+            if (item.answered_at) card.append(el('span', 'doc-question-head', `${kind === 'frage' ? 'Antwort' : 'Rückmeldung'} von ${item.interpreter_name || 'Dolmetscher'} · ${german(item.answered_at)} ${clock(item.answered_at)} Uhr`), el('p', 'doc-question-answer', item.answer));
+            if (!done) {
+                const wait = el('span', 'doc-question-wait', kind === 'frage' ? (item.seen_at ? 'Der Dolmetscher hat die Frage gesehen – noch keine Antwort.' : 'Noch nicht beantwortet.') : kind === 'anweisung' ? (item.seen_at ? 'Der Dolmetscher hat die Anweisung gesehen – noch nicht bestätigt.' : 'Noch nicht bestätigt.') : (item.seen_at ? 'Gesehen – noch nicht als gelesen bestätigt.' : 'Noch nicht gelesen.'));
                 card.append(wait);
-                if (item.doctor_id === profile.id || isStaff()) {
-                    const undo = el('button', 'gate-button gate-button-quiet doc-question-undo', 'Frage zurückziehen');
+                if (mine || isStaff()) {
+                    const undo = el('button', 'gate-button gate-button-quiet doc-question-undo', `${KIND_WORD[kind]} zurückziehen`);
                     undo.type = 'button';
                     undo.addEventListener('click', async () => {
-                        if (!(await ask('Die Frage zurückziehen? Der Dolmetscher sieht sie dann nicht mehr.', 'Zurückziehen'))) return;
+                        if (!(await ask(`Die ${KIND_WORD[kind]} zurückziehen? Der Dolmetscher sieht sie dann nicht mehr.`, 'Zurückziehen'))) return;
                         const { error } = await client.from('tt_doctor_questions').delete().eq('id', item.id);
                         if (error) { banner(TerminCloud.germanError(error), 'error'); return; }
                         await load();
@@ -122,8 +130,24 @@
         });
         return box;
     }
-    function openAsk(doc) {
+    const ASK_TEXT = {
+        frage: { kicker: 'FRAGE AN DEN DOLMETSCHER', placeholder: 'Was möchtest du wissen? Der Dolmetscher sieht Patient, Bericht und Datum dazu.', send: 'Frage senden' },
+        info: { kicker: 'INFO AN DEN DOLMETSCHER', placeholder: 'Was soll der Dolmetscher wissen? Er bestätigt, dass er es gelesen hat.', send: 'Info senden' },
+        anweisung: { kicker: 'ANWEISUNG AN DEN DOLMETSCHER', placeholder: 'Was soll der Dolmetscher tun? Die Anweisung erscheint bei ihm groß und rot, er bestätigt mit „Verstanden“.', send: 'Anweisung senden' }
+    };
+    const askKind = () => document.querySelector('input[name=docAskKind]:checked')?.value || 'frage';
+    function applyAskKind() {
+        const kind = askKind();
+        $('docAsk').dataset.kind = kind;
+        $('docAskKicker').textContent = ASK_TEXT[kind].kicker;
+        $('docAskText').placeholder = ASK_TEXT[kind].placeholder;
+        $('docAskSend').textContent = ASK_TEXT[kind].send;
+    }
+    document.querySelectorAll('input[name=docAskKind]').forEach(input => input.addEventListener('change', applyAskKind));
+    function openAsk(doc, kind = 'frage') {
         const dialog = $('docAsk');
+        document.querySelector(`input[name=docAskKind][value="${kind}"]`).checked = true;
+        applyAskKind();
         $('docAskTitle').textContent = clean(doc.title) || kindLabel(doc);
         $('docAskAbout').textContent = [clean(doc.patient_name), clean(doc.patient_nr) ? `Akte ${clean(doc.patient_nr)}` : '', doc.uploader_name ? `Dolmetscher/in: ${doc.uploader_name}` : '', doc.date ? `Termin ${german(doc.date)}` : ''].filter(Boolean).join(' · ');
         $('docAskText').value = '';
@@ -136,17 +160,20 @@
     $('docAskForm').addEventListener('submit', async event => {
         event.preventDefault();
         const text = $('docAskText').value.trim();
-        if (!text) { $('docAskStatus').textContent = 'Bitte schreib deine Frage.'; $('docAskText').focus(); return; }
+        const kind = askKind();
+        if (!text) { $('docAskStatus').textContent = kind === 'frage' ? 'Bitte schreib deine Frage.' : kind === 'info' ? 'Bitte schreib die Info.' : 'Bitte schreib die Anweisung.'; $('docAskText').focus(); return; }
         const send = $('docAskSend');
         send.disabled = true;
-        const { data, error } = await client.from('tt_doctor_questions').insert({ document_id: $('docAsk').dataset.doc, question: text }).select().maybeSingle();
+        // Ohne Update 40 kennt die Datenbank die Spalte „kind“ noch nicht – dann geht der Text als Frage hinaus.
+        let { data, error } = await client.from('tt_doctor_questions').insert({ document_id: $('docAsk').dataset.doc, question: text, kind }).select().maybeSingle();
+        if (error && /kind|column/i.test(error.message || '') && kind !== 'frage') ({ data, error } = await client.from('tt_doctor_questions').insert({ document_id: $('docAsk').dataset.doc, question: text }).select().maybeSingle());
         send.disabled = false;
         if (error) { $('docAskStatus').textContent = /keinen Dolmetscher/.test(error.message || '') ? 'Zu dieser Unterlage gibt es keinen Dolmetscher, den man fragen könnte.' : /does not exist|schema cache|relation/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 36). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error); return; }
         $('docAsk').close();
         // Mitteilung aufs Handy des Dolmetschers (falls eingerichtet) – die Frage selbst steht sicher in seiner App.
         TerminCloud.callFunction?.({ action: 'question', questionId: data?.id })?.catch?.(() => null);
-        banner(`Frage an ${data?.interpreter_name || 'den Dolmetscher'} gesendet – die Antwort erscheint hier beim Bericht.`, 'info');
-        window.setTimeout(() => { if (!$('docStatus').hidden && /Frage an/.test($('docStatus').textContent)) banner(''); }, 6000);
+        banner(`${KIND_WORD[kind]} an ${data?.interpreter_name || 'den Dolmetscher'} gesendet – ${kind === 'frage' ? 'die Antwort' : 'die Bestätigung'} erscheint hier beim Bericht.`, 'info');
+        window.setTimeout(() => { if (!$('docStatus').hidden && / an .* gesendet/.test($('docStatus').textContent)) banner(''); }, 6000);
         await load();
     });
 
@@ -202,8 +229,12 @@
         if (doc.uploader_id && !inRecord) {
             const askButton = el('button', 'gate-button doc-ask-open', 'Dolmetscher fragen');
             askButton.type = 'button';
-            askButton.addEventListener('click', () => openAsk(doc));
-            actions.append(askButton);
+            askButton.addEventListener('click', () => openAsk(doc, 'frage'));
+            const orderButton = el('button', 'gate-button doc-order-open', 'Anweisung');
+            orderButton.type = 'button';
+            orderButton.title = 'Eine Anweisung an den Dolmetscher – erscheint bei ihm groß und rot, er bestätigt mit „Verstanden“';
+            orderButton.addEventListener('click', () => openAsk(doc, 'anweisung'));
+            actions.append(askButton, orderButton);
         }
         item.append(head, title, body, actions);
         return item;
@@ -237,7 +268,7 @@
             item.append(button);
             return item;
         }));
-        const askOpen = questions.filter(item => item.doctor_id === profile.id && !item.answered_at).length;
+        const askOpen = questions.filter(item => item.doctor_id === profile.id && (kindOf(item) === 'frage' ? !item.answered_at : !item.acknowledged_at)).length;
         $('docCountAsk').textContent = String(askOpen);
         $('docCountAskBox').dataset.open = askOpen ? 'ja' : '';
         $('docCountAskBox').classList.toggle('is-active', mode === 'ask');

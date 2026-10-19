@@ -87,11 +87,16 @@
 
       <!-- ===== Frage an den Dolmetscher ===== -->
       <dialog id="docAsk" class="gate-confirm doc-ask">
-         <p class="gate-kicker">FRAGE AN DEN DOLMETSCHER</p>
+         <p class="gate-kicker" id="docAskKicker">AN DEN DOLMETSCHER</p>
          <h2 id="docAskTitle">Frage</h2>
          <p id="docAskAbout" class="doc-record-sub"></p>
          <form id="docAskForm" novalidate>
-            <label for="docAskText" class="visually-hidden">Deine Frage</label>
+            <div class="doc-ask-kinds" role="radiogroup" aria-label="Art der Nachricht">
+               <label class="doc-ask-kind" data-kind="frage"><input type="radio" name="docAskKind" value="frage" checked><span><b>Frage</b><small>Der Dolmetscher antwortet dir hier beim Bericht.</small></span></label>
+               <label class="doc-ask-kind" data-kind="info"><input type="radio" name="docAskKind" value="info"><span><b>Info</b><small>Ein Hinweis zur Kenntnis – der Dolmetscher bestätigt „gelesen“.</small></span></label>
+               <label class="doc-ask-kind" data-kind="anweisung"><input type="radio" name="docAskKind" value="anweisung"><span><b>Anweisung</b><small>Erscheint beim Dolmetscher groß und rot – er bestätigt mit „Verstanden“.</small></span></label>
+            </div>
+            <label for="docAskText" class="visually-hidden">Dein Text</label>
             <textarea id="docAskText" rows="4" maxlength="2000" placeholder="Was möchtest du wissen? Der Dolmetscher sieht Patient, Bericht und Datum dazu."></textarea>
             <p id="docAskStatus" class="gate-status" role="alert"></p>
             <div class="gate-confirm-buttons"><button type="button" id="docAskCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="docAskSend" class="gate-button gate-button-main">Frage senden</button></div>
