@@ -38,6 +38,7 @@
                <button type="button" class="gate-count is-ask doc-count-button" id="docCountAskBox" title="Meine Fragen an die Dolmetscher"><b id="docCountAsk">0</b><span>Fragen offen</span></button>
             </div>
             <div class="gate-tools">
+               <button type="button" id="docFeedbackOpen" class="gate-button doc-feedback-open" title="Der Einsatzleitung etwas melden – zu Berichten, Terminen oder Patienten">An die Einsatzleitung <b id="docFeedbackBadge" class="doc-feedback-badge" hidden>0</b></button>
                <button type="button" id="docFull" class="gate-button">Vollbild</button>
                <a id="docOffice" class="gate-button gate-button-quiet" href="index.html" hidden>Zur Einsatzleitung</a>
                <button type="button" id="docSignOut" class="gate-button gate-button-quiet">Abmelden</button>
@@ -101,6 +102,29 @@
             <p id="docAskStatus" class="gate-status" role="alert"></p>
             <div class="gate-confirm-buttons"><button type="button" id="docAskCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="docAskSend" class="gate-button gate-button-main">Frage senden</button></div>
          </form>
+      </dialog>
+
+      <!-- Meldung des Arztes an die Einsatzleitung (Update 42): Rückmeldung zu Berichten, Terminen, Patienten -->
+      <dialog id="docFeedback" class="gate-confirm doc-ask doc-feedback">
+         <p class="gate-kicker">AN DIE EINSATZLEITUNG</p>
+         <h2 id="docFeedbackTitle">Meldung an die Einsatzleitung</h2>
+         <p id="docFeedbackAbout" class="doc-record-sub"></p>
+         <form id="docFeedbackForm" novalidate>
+            <div class="doc-ask-kinds doc-feedback-topics" role="radiogroup" aria-label="Worum geht es?">
+               <label class="doc-ask-kind"><input type="radio" name="docFeedbackTopic" value="bericht"><span><b>Bericht</b><small>Etwas zu einem Dolmetscherbericht oder Arztbericht.</small></span></label>
+               <label class="doc-ask-kind"><input type="radio" name="docFeedbackTopic" value="termin"><span><b>Termin</b><small>Etwas zu einem Termin – Zeit, Ort, Dolmetscher.</small></span></label>
+               <label class="doc-ask-kind"><input type="radio" name="docFeedbackTopic" value="patient"><span><b>Patient</b><small>Etwas zu einem Patienten oder einer Akte.</small></span></label>
+               <label class="doc-ask-kind"><input type="radio" name="docFeedbackTopic" value="sonstiges" checked><span><b>Sonstiges</b><small>Rückmeldung, Wunsch, Hinweis.</small></span></label>
+            </div>
+            <label class="doc-feedback-ref" id="docFeedbackRefRow"><span>Patient oder Akte (freiwillig)</span><input id="docFeedbackRef" type="text" maxlength="60" autocomplete="off" placeholder="Name oder Akte-Nr."></label>
+            <textarea id="docFeedbackText" rows="4" maxlength="2000" placeholder="Was möchtest du der Einsatzleitung mitteilen?"></textarea>
+            <p id="docFeedbackStatus" class="gate-status" role="alert"></p>
+            <div class="gate-confirm-buttons"><button type="button" id="docFeedbackCancel" class="gate-button gate-button-quiet">Schließen</button><button type="submit" id="docFeedbackSend" class="gate-button gate-button-main">Meldung senden</button></div>
+         </form>
+         <section class="doc-feedback-history" id="docFeedbackHistory" hidden>
+            <h3>Deine bisherigen Meldungen</h3>
+            <ul id="docFeedbackList" class="doc-feedback-list"></ul>
+         </section>
       </dialog>
 
       <dialog id="docConfirm" class="gate-confirm">

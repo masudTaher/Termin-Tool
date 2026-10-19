@@ -190,6 +190,12 @@
                   </section>
                </div>
 
+               <!-- Meldungen der Nachfolger über die eigene Rückgabe (Update 42) -->
+               <section id="driverNotesBox" class="directory-card driver-notes" aria-labelledby="driverNotesTitle" hidden>
+                  <h2 id="driverNotesTitle" class="card-title">Meldungen zu deinen Rückgaben</h2>
+                  <p class="wizard-hint">Was der nächste Fahrer nach dir vorgefunden hat. Bitte lesen und mit „Gesehen“ bestätigen.</p>
+                  <ul id="driverNotesList" class="directory-list portal-list"></ul>
+               </section>
                <ul id="returnNotes" class="directory-list portal-list"></ul>
             </section>
 
@@ -224,8 +230,17 @@
                      <button type="button" class="choice-button choice-warn" id="takeNotFine">Nein, etwas stimmt nicht</button>
                   </div>
                   <div id="takeNoteRow" class="fleet-form" hidden>
-                     <label for="takeStartNote">Was stimmt nicht? <span class="optional-label">geht an die Einsatzleitung und den letzten Fahrer</span></label>
+                     <span class="field-label">Was stimmt nicht? <span class="optional-label">geht sofort an den letzten Fahrer und die Einsatzleitung</span></span>
+                     <div class="take-note-kinds" id="takeNoteKinds">
+                        <label class="take-note-kind"><input type="checkbox" name="takeNoteKind" value="unsauber_innen"><span>Innen nicht sauber</span></label>
+                        <label class="take-note-kind"><input type="checkbox" name="takeNoteKind" value="unsauber_aussen"><span>Außen nicht sauber</span></label>
+                        <label class="take-note-kind"><input type="checkbox" name="takeNoteKind" value="tank"><span>Tank fast leer</span></label>
+                        <label class="take-note-kind"><input type="checkbox" name="takeNoteKind" value="schaden"><span>Neuer Schaden</span></label>
+                     </div>
+                     <label for="takeStartNote">Kurz beschreiben</label>
                      <textarea id="takeStartNote" rows="3" maxlength="500" placeholder="Zum Beispiel: Tank ist fast leer, innen nicht sauber"></textarea>
+                     <label for="takeNotePhoto">Fotos <span class="optional-label">bis zu 3 – der letzte Fahrer und die Einsatzleitung sehen sie</span></label>
+                     <input id="takeNotePhoto" type="file" accept="image/*" multiple>
                      <button type="button" class="button-primary big-button" id="takeNoteNext">Weiter</button>
                   </div>
                </div>
@@ -308,6 +323,7 @@
                   <input id="damagePhoto" type="file" accept="image/*" multiple>
                   <label for="damageDescription"><b class="step-dot">4</b> Was ist passiert? <span class="optional-label">optional</span></label>
                   <textarea id="damageDescription" rows="3" maxlength="600" placeholder="Zum Beispiel: beim Einparken bemerkt"></textarea>
+                  <label class="take-note-kind damage-previous" id="damagePreviousRow" hidden><input type="checkbox" id="damagePrevious"><span>Der Schaden war schon da, als ich das Auto übernommen habe – Meldung an den letzten Fahrer (<b id="damagePreviousName"></b>) und die Einsatzleitung</span></label>
                   <button type="submit" class="button-primary big-button">Schaden melden</button>
                </form>
             </section>

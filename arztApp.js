@@ -177,6 +177,91 @@
         await load();
     });
 
+    // ---------- Meldung an die Einsatzleitung (Update 42) ----------
+    const TOPIC_WORD = { bericht: 'Bericht', termin: 'Termin', patient: 'Patient', sonstiges: 'Sonstiges' };
+    let feedback = [];
+    let feedbackReady = true;
+    const newAnswers = () => feedback.filter(item => item.answered_at && !item.doctor_seen_at);
+    const feedbackTopic = () => document.querySelector('input[name=docFeedbackTopic]:checked')?.value || 'sonstiges';
+    function openFeedback(doc = null, topic = null) {
+        const dialog = $('docFeedback');
+        document.querySelector(`input[name=docFeedbackTopic][value="${topic || (doc ? 'bericht' : 'sonstiges')}"]`).checked = true;
+        $('docFeedbackAbout').textContent = doc ? ['Zu: ' + (clean(doc.title) || kindLabel(doc)), clean(doc.patient_name), clean(doc.patient_nr) ? `Akte ${clean(doc.patient_nr)}` : '', doc.uploader_name ? `Dolmetscher/in: ${doc.uploader_name}` : '', doc.date ? `Termin ${german(doc.date)}` : ''].filter(Boolean).join(' · ') : 'Die Einsatzleitung sieht deine Meldung sofort auf ihrer Startseite und kann dir hier antworten.';
+        $('docFeedbackRefRow').hidden = Boolean(doc);
+        $('docFeedbackRef').value = '';
+        $('docFeedbackText').value = '';
+        $('docFeedbackStatus').textContent = !feedbackReady ? 'Dafür fehlt noch ein Datenbank-Update (Update 42). Bitte der Einsatzleitung Bescheid sagen.' : '';
+        $('docFeedbackSend').disabled = !feedbackReady;
+        dialog.dataset.doc = doc?.id || '';
+        renderFeedbackList();
+        dialog.showModal();
+        $('docFeedbackText').focus();
+    }
+    function renderFeedbackList() {
+        const list = $('docFeedbackList');
+        $('docFeedbackHistory').hidden = !feedback.length;
+        $('docFeedbackBadge').hidden = !newAnswers().length;
+        $('docFeedbackBadge').textContent = String(newAnswers().length);
+        list.replaceChildren(...feedback.slice(0, 20).map(item => {
+            const entry = el('li', 'doc-feedback-item');
+            entry.dataset.answered = item.answered_at ? 'ja' : '';
+            entry.append(el('small', '', [`${TOPIC_WORD[item.topic] || 'Sonstiges'}`, item.document_title ? `zu „${item.document_title}“` : '', item.patient_name || item.patient_nr ? [item.patient_name, item.patient_nr ? `Akte ${item.patient_nr}` : ''].filter(Boolean).join(', ') : '', `${german(item.created_at)} ${clock(item.created_at)} Uhr`, item.seen_at ? 'von der Einsatzleitung gesehen' : 'noch nicht gesehen'].filter(Boolean).join(' · ')),
+                el('p', '', item.text));
+            if (item.answered_at) {
+                const answer = el('div', 'doc-feedback-answer');
+                answer.append(el('b', '', `Antwort von ${item.answered_by || 'der Einsatzleitung'} · ${german(item.answered_at)} ${clock(item.answered_at)} Uhr`), el('span', '', item.answer));
+                entry.append(answer);
+                if (!item.doctor_seen_at) {
+                    const seen = el('button', 'gate-button gate-button-main doc-feedback-seen', 'Antwort gelesen');
+                    seen.type = 'button';
+                    seen.addEventListener('click', async () => {
+                        seen.disabled = true;
+                        const { error } = await client.from('tt_doctor_feedback').update({ doctor_seen_at: new Date().toISOString() }).eq('id', item.id);
+                        if (error) { seen.disabled = false; banner(TerminCloud.germanError(error), 'error', $('docFeedbackStatus')); return; }
+                        item.doctor_seen_at = new Date().toISOString();
+                        renderFeedbackList();
+                    });
+                    entry.append(seen);
+                }
+            }
+            if (!item.answered_at) {
+                const undo = el('button', 'gate-button gate-button-quiet doc-feedback-undo', 'Zurückziehen');
+                undo.type = 'button';
+                undo.addEventListener('click', async () => {
+                    if (!(await ask('Die Meldung zurückziehen? Die Einsatzleitung sieht sie dann nicht mehr.', 'Zurückziehen'))) return;
+                    const { error } = await client.from('tt_doctor_feedback').delete().eq('id', item.id);
+                    if (error) { banner(TerminCloud.germanError(error), 'error', $('docFeedbackStatus')); return; }
+                    feedback = feedback.filter(other => other.id !== item.id);
+                    renderFeedbackList();
+                });
+                entry.append(undo);
+            }
+            return entry;
+        }));
+    }
+    $('docFeedbackOpen').addEventListener('click', () => openFeedback());
+    $('docFeedbackCancel').addEventListener('click', () => $('docFeedback').close());
+    $('docFeedbackForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const text = $('docFeedbackText').value.trim();
+        if (!text) { $('docFeedbackStatus').textContent = 'Bitte schreib, was du melden möchtest.'; $('docFeedbackText').focus(); return; }
+        const send = $('docFeedbackSend');
+        send.disabled = true;
+        const ref = $('docFeedbackRef').value.trim();
+        const row = { topic: feedbackTopic(), text, document_id: $('docFeedback').dataset.doc || null, patient_nr: /^\d{2,}$/.test(ref) ? ref : '', patient_name: /^\d{2,}$/.test(ref) ? '' : ref };
+        const { data, error } = await client.from('tt_doctor_feedback').insert(row).select().maybeSingle();
+        send.disabled = false;
+        if (error) { $('docFeedbackStatus').textContent = missing(error) ? 'Dafür fehlt noch ein Datenbank-Update (Update 42). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error); return; }
+        if (data) feedback.unshift(data);
+        $('docFeedbackText').value = '';
+        $('docFeedbackStatus').textContent = '';
+        renderFeedbackList();
+        TerminCloud.callFunction?.({ action: 'doctorFeedback', feedbackId: data?.id })?.catch?.(() => null);
+        $('docFeedback').close();
+        banner('Meldung an die Einsatzleitung gesendet – die Antwort erscheint unter „An die Einsatzleitung“.', 'info');
+        window.setTimeout(() => { if (!$('docStatus').hidden && /Meldung an die Einsatzleitung gesendet/.test($('docStatus').textContent)) banner(''); }, 6000);
+    });
+
     function docEntry(doc, { inRecord = false, withDay = false } = {}) {
         const item = el('li', 'doc-entry');
         item.dataset.id = doc.id;
@@ -235,6 +320,13 @@
             orderButton.title = 'Eine Anweisung an den Dolmetscher – erscheint bei ihm groß und rot, er bestätigt mit „Verstanden“';
             orderButton.addEventListener('click', () => openAsk(doc, 'anweisung'));
             actions.append(askButton, orderButton);
+        }
+        if (!inRecord) {
+            const officeButton = el('button', 'gate-button gate-button-quiet doc-feedback-open-doc', 'Einsatzleitung');
+            officeButton.type = 'button';
+            officeButton.title = 'Der Einsatzleitung etwas zu dieser Unterlage melden';
+            officeButton.addEventListener('click', () => openFeedback(doc, 'bericht'));
+            actions.append(officeButton);
         }
         item.append(head, title, body, actions);
         return item;
@@ -341,11 +433,15 @@
         try {
             const from = windowStart();
             const base = () => client.from('tt_documents').select('*').is('replaced_by', null).neq('status', 'archiv').order('created_at', { ascending: false });
-            const [docsResult, marksResult, questionResult] = await Promise.all([
+            const [docsResult, marksResult, questionResult, feedbackResult] = await Promise.all([
                 base().gte('created_at', from.toISOString()).limit(800),
                 client.from('tt_doctor_marks').select('*').eq('action', 'gelesen').gte('at', from.toISOString()).limit(2000),
-                client.from('tt_doctor_questions').select('*').order('created_at', { ascending: false }).limit(400)
+                client.from('tt_doctor_questions').select('*').order('created_at', { ascending: false }).limit(400),
+                client.from('tt_doctor_feedback').select('*').order('created_at', { ascending: false }).limit(60)
             ]);
+            feedbackReady = !feedbackResult.error;
+            feedback = feedbackReady ? (feedbackResult.data || []) : [];
+            if (!$('docFeedback').open) renderFeedbackList();
             if (docsResult.error) {
                 banner(/row-level security|permission denied/i.test(docsResult.error.message || '') || missing(docsResult.error) ? 'Die Anzeige ist in der Datenbank noch nicht eingerichtet (Update 34 fehlt). Bitte der Einsatzleitung Bescheid sagen.' : `Keine Verbindung: ${TerminCloud.germanError(docsResult.error)}`, 'error');
                 return;

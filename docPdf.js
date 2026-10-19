@@ -607,5 +607,57 @@ window.DocPdf = (function () {
         return save(pdf);
     }
 
-    return { ready, build, report, bundle, fileName, canShow };
+    // Vorschau vor der Sammel-PDF: Welche Belege sollen hinein? (Was jemand im Original hat, bleibt draußen.)
+    // rows: [{ id, label, sub, amount, checked, note }] → Promise mit den gewählten ids, oder null bei „Abbrechen“.
+    function pick({ title = 'Belege auswählen', hint = '', rows = [], confirm = 'PDF erstellen', sumOf = null } = {}) {
+        return new Promise(resolve => {
+            const node = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
+            const dialog = node('dialog', 'confirm-dialog receipt-pick');
+            dialog.setAttribute('aria-label', title);
+            dialog.append(node('h2', '', title));
+            if (hint) dialog.append(node('p', 'receipt-pick-hint', hint));
+            const tools = node('div', 'receipt-pick-tools');
+            const all = node('button', 'button-quiet', 'Alle'); all.type = 'button';
+            const none = node('button', 'button-quiet', 'Keinen'); none.type = 'button';
+            tools.append(all, none);
+            const list = node('ul', 'receipt-pick-list');
+            const boxes = rows.map(row => {
+                const item = node('li', 'receipt-pick-item');
+                const box = node('input'); box.type = 'checkbox'; box.checked = row.checked !== false; box.value = String(row.id); box.setAttribute('aria-label', row.label || '');
+                const text = node('span');
+                text.append(node('strong', '', row.label || ''));
+                if (row.sub || row.note) text.append(node('small', '', [row.sub, row.note].filter(Boolean).join(' · ')));
+                item.append(box, text);
+                if (row.amount != null) item.append(node('b', '', String(row.amount)));
+                list.append(item);
+                return box;
+            });
+            const foot = node('div', 'receipt-pick-foot');
+            const sum = node('span', 'receipt-pick-sum');
+            const buttons = node('div', 'modal-buttons');
+            const cancel = node('button', 'button-secondary', 'Abbrechen'); cancel.type = 'button';
+            const ok = node('button', 'button-primary receipt-pick-ok', confirm); ok.type = 'button';
+            buttons.append(cancel, ok);
+            foot.append(sum, buttons);
+            dialog.append(tools, list, foot);
+            const update = () => {
+                const chosen = boxes.filter(box => box.checked);
+                ok.disabled = !chosen.length;
+                ok.textContent = `${confirm} (${chosen.length})`;
+                sum.textContent = `${chosen.length} von ${rows.length} ${rows.length === 1 ? 'Beleg' : 'Belegen'}${sumOf ? ` · ${sumOf(chosen.map(box => box.value))}` : ''}`;
+            };
+            boxes.forEach(box => box.addEventListener('change', update));
+            all.addEventListener('click', () => { boxes.forEach(box => { box.checked = true; }); update(); });
+            none.addEventListener('click', () => { boxes.forEach(box => { box.checked = false; }); update(); });
+            const finish = value => { dialog.close(); dialog.remove(); resolve(value); };
+            cancel.addEventListener('click', () => finish(null));
+            dialog.addEventListener('cancel', event => { event.preventDefault(); finish(null); });
+            ok.addEventListener('click', () => finish(boxes.filter(box => box.checked).map(box => box.value)));
+            update();
+            document.body.append(dialog);
+            dialog.showModal();
+        });
+    }
+
+    return { ready, build, report, bundle, fileName, canShow, pick };
 })();

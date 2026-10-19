@@ -136,3 +136,20 @@
 .doc-ask-kind span { display: grid; gap: 1px; }
 .doc-ask-kind small { color: var(--soft); }
 .doc-ask[data-kind="anweisung"] .gate-button-main { background: var(--warn); border-color: var(--warn); }
+
+/* Meldung an die Einsatzleitung (Update 42) */
+.doc-feedback-open { position: relative; }
+.doc-feedback-badge { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--warn, #b42318); color: #fff; font-size: .8rem; line-height: 22px; text-align: center; }
+.doc-feedback-ref { display: grid; gap: 4px; margin-top: 8px; font-size: .9rem; color: var(--muted, #64748b); }
+.doc-feedback-ref input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; font-size: 1rem; }
+.doc-feedback-history { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.doc-feedback-history h3 { margin: 0 0 8px; font-size: 1rem; }
+.doc-feedback-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 40vh; overflow: auto; }
+.doc-feedback-item { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-left: 5px solid #1d4ed8; border-radius: 10px; }
+.doc-feedback-item[data-answered="ja"] { border-left-color: #18794e; }
+.doc-feedback-item small { color: var(--muted, #64748b); }
+.doc-feedback-item p { margin: 0; white-space: pre-line; }
+.doc-feedback-answer { padding: 6px 10px; border-radius: 8px; background: #ecfdf3; color: #14532d; }
+.doc-feedback-answer b { display: block; font-size: .82rem; }
+.doc-feedback-item .gate-button { min-height: 36px; justify-self: start; font-size: .9rem; }
+.doc-feedback-open-doc { min-height: 44px; font-size: .95rem; }

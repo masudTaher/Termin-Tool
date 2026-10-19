@@ -242,6 +242,7 @@ if (!window.TerminContact) {
         else if (wanted === 'auftraege') { history.replaceState(null, '', location.pathname); goTo('jobs'); }
         else if (wanted === 'rueckfragen') { history.replaceState(null, '', location.pathname); goTo('requests'); }
         else if (wanted === 'abrechnung') { history.replaceState(null, '', location.pathname); goTo('statement'); }
+        else if (wanted === 'fahrzeug') { history.replaceState(null, '', location.pathname); goTo('vehicle'); window.requestAnimationFrame(() => $('driverNotesBox')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }
         else if (wanted === 'arbeitstage') { history.replaceState(null, '', location.pathname); goTo(isFest() ? 'overtime' : 'workdays'); }
         else if (wanted === 'zeiten') {
             // Antwort der Einsatzleitung auf einen Urlaubsantrag: direkt zu „Meine Anträge und Meldungen“
@@ -393,6 +394,8 @@ if (!window.TerminContact) {
         renderHomeJobs(today, open);
         const waiting = statementData.find(item => item.response === 'offen' && !item.data?.running);
         if (waiting && !isFest()) notices.push([`Deine Abrechnung für ${monthLabel(waiting.month)} wartet auf deine Bestätigung`, () => goTo('statement')]);
+        const notes = unseenDriverNotes();
+        if (notes.length) notices.unshift([notes.length === 1 ? `Meldung zu deiner Rückgabe von ${notes[0].plate || 'einem Fahrzeug'} (${DRIVER_NOTE_KIND[notes[0].kind] || 'Hinweis'}) – bitte ansehen` : `${notes.length} Meldungen zu deinen Rückgaben – bitte ansehen`, () => { goTo('vehicle'); window.requestAnimationFrame(() => $('driverNotesBox')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); }]);
         // Anweisung eines Arztes: ganz oben, bis sie bestätigt ist.
         const orders = openOrders();
         if (orders.length) notices.unshift([orders.length === 1 ? `Anweisung von ${orders[0].doctor_name || 'einem Arzt'} – bitte lesen und bestätigen` : `${orders.length} Anweisungen von Ärzten – bitte lesen und bestätigen`, () => goTo('messages')]);
@@ -2228,6 +2231,8 @@ if (!window.TerminContact) {
             ]);
             const label = myVehicle ? vehicleLabel(myVehicle) : 'dein Fahrzeug';
             $('damageVehicleLabel').textContent = `${label} – schau zuerst, ob der Schaden schon markiert ist.`;
+            $('damagePreviousRow').hidden = !myHandover.previous_driver_id;
+            $('damagePreviousName').textContent = myHandover.previous_driver_name || 'unbekannt';
             $('alertVehicleLabel').textContent = `${label} – Warnleuchte oder Hinweis im Display.`;
             loadHeroDamages();
         } else {
@@ -2381,13 +2386,75 @@ if (!window.TerminContact) {
         }
     }
 
+    // Meldung über den Vorfahrer (Update 42): Fotos hochladen, Eintrag anlegen, Mitteilung an Vorfahrer und Einsatzleitung.
+    async function sendDriverNote({ handoverId = null, damageId = null, kind, text, files = [], paths = null }) {
+        try {
+            const photoPaths = paths || [];
+            if (!paths) for (const file of files) photoPaths.push(await TerminCloud.uploadPhoto(file, profile.id));
+            const { data, error } = await client.from('tt_driver_notes').insert({ handover_id: handoverId, damage_id: damageId, kind, text, photo_paths: photoPaths }).select().maybeSingle();
+            if (error) {
+                if (/does not exist|schema cache|relation|PGRST205/i.test(`${error.code || ''} ${error.message || ''}`)) return;   // Update 42 fehlt noch: nur der Hinweis an der Übergabe bleibt
+                throw error;
+            }
+            TerminCloud.callFunction?.({ action: 'driverNote', noteId: data?.id })?.catch?.(() => null);
+            toast(`Meldung an ${data?.driver_name || 'den letzten Fahrer'} und die Einsatzleitung gesendet.`, 'success');
+        } catch (error) { toast(`Die Meldung an den letzten Fahrer ging nicht hinaus: ${TerminCloud.germanError(error)}`, 'error'); }
+    }
+    const DRIVER_NOTE_KIND = { unsauber: 'Nicht sauber', tank: 'Tank fast leer', schaden: 'Neuer Schaden', hinweis: 'Hinweis' };
+    let driverNoteData = [];
+    const unseenDriverNotes = () => driverNoteData.filter(item => !item.seen_at);
+    async function loadDriverNotes() {
+        const box = $('driverNotesBox');
+        if (!box) return;
+        const { data, error } = await client.from('tt_driver_notes').select('*').eq('driver_id', profile.id).order('created_at', { ascending: false }).limit(30);
+        driverNoteData = error ? [] : (data || []);
+        box.hidden = !driverNoteData.length;
+        const list = $('driverNotesList');
+        list.replaceChildren(...driverNoteData.map(item => {
+            const entry = el('li', 'directory-entry damage-entry driver-note');
+            entry.dataset.kind = item.kind;
+            entry.dataset.seen = item.seen_at ? 'ja' : '';
+            const main = el('div', 'driver-note-main');
+            main.append(el('strong', '', `${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} · ${item.plate || 'Fahrzeug'}`),
+                el('span', 'driver-note-meta', `${new Date(item.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${clock(item.created_at)} Uhr · gemeldet von ${item.reporter_name || 'dem nächsten Fahrer'}`),
+                el('p', 'driver-note-text', item.text ? `„${item.text}“` : ''));
+            const photos = Array.isArray(item.photo_paths) ? item.photo_paths : [];
+            if (photos.length) {
+                const row = el('div', 'driver-note-photos');
+                photos.forEach((path, index) => {
+                    const open = el('button', 'button-secondary', photos.length > 1 ? `Foto ${index + 1}` : 'Foto');
+                    open.type = 'button';
+                    open.addEventListener('click', async () => { const url = await TerminCloud.photoUrl(path); if (!url) { toast('Das Foto konnte nicht geladen werden.', 'error'); return; } window.ScanCam?.look ? ScanCam.look({ url, title: `Foto ${index + 1}` }) : window.open(url, '_blank', 'noopener'); });
+                    row.append(open);
+                });
+                main.append(row);
+            }
+            entry.append(main);
+            if (!item.seen_at) {
+                const seen = el('button', 'button-primary driver-note-seen', 'Gesehen');
+                seen.type = 'button';
+                seen.addEventListener('click', async () => {
+                    seen.disabled = true;
+                    const { error: seenError } = await client.from('tt_driver_notes').update({ seen_at: new Date().toISOString() }).eq('id', item.id);
+                    if (seenError) { seen.disabled = false; toast(TerminCloud.germanError(seenError), 'error'); return; }
+                    await loadDriverNotes();
+                    renderHome();
+                });
+                entry.append(seen);
+            } else entry.append(el('span', 'status-pill', 'gesehen'));
+            return entry;
+        }));
+    }
+
     // Hinweise der Nachfolger zu den eigenen Rückgaben ("Tank war leer …").
     async function loadReturnNotes() {
+        await loadDriverNotes();
         const list = $('returnNotes');
         const { data, error } = await client.from('tt_handovers').select('*').eq('previous_driver_id', profile.id).order('created_at', { ascending: false }).limit(20);
         list.replaceChildren();
         if (error) return;
-        data.filter(item => item.start_note).slice(0, 3).forEach(item => {
+        // Was schon als Meldung (mit Fotos und „Gesehen“) oben steht, erscheint hier nicht noch einmal.
+        data.filter(item => item.start_note && !driverNoteData.some(note => note.handover_id === item.id)).slice(0, 3).forEach(item => {
             const entry = el('li', 'directory-entry damage-entry');
             entry.append(el('span', 'directory-entry-name', `Hinweis zu deiner Rückgabe (${vehicleById(item.vehicle_id)?.plate || 'Fahrzeug'}, ${new Date(item.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}): „${item.start_note}“ – ${item.driver_name}`));
             list.append(entry);
@@ -2439,6 +2506,8 @@ if (!window.TerminContact) {
         take.vehicle = null;
         $('takeVehicleForm').reset();
         $('takeStartNote').value = '';
+        $('takeNotePhoto').value = ''; showTakeNotePicks?.();
+        document.querySelectorAll('input[name="takeNoteKind"]').forEach(input => { input.checked = false; });
         $('takeNoteRow').hidden = true;
         $('takeMileageError').hidden = true;
         $('takeEmergencyRow').hidden = !isFest();
@@ -2528,8 +2597,10 @@ if (!window.TerminContact) {
 
     $('takeAllFine').addEventListener('click', () => { $('takeStartNote').value = ''; takeWizard.show(3); $('takeVehicleMileage').focus(); });
     $('takeNotFine').addEventListener('click', () => { $('takeNoteRow').hidden = false; $('takeStartNote').focus(); });
+    const takeNoteKinds = () => [...document.querySelectorAll('input[name="takeNoteKind"]:checked')].map(input => input.value);
+    const TAKE_KIND_TEXT = { unsauber_innen: 'innen nicht sauber', unsauber_aussen: 'außen nicht sauber', tank: 'Tank fast leer', schaden: 'neuer Schaden' };
     $('takeNoteNext').addEventListener('click', () => {
-        if (!$('takeStartNote').value.trim()) { toast('Bitte schreib kurz, was nicht stimmt.', 'error', '#takeStartNote'); $('takeStartNote').focus(); return; }
+        if (!$('takeStartNote').value.trim() && !takeNoteKinds().length) { toast('Bitte wähle aus, was nicht stimmt, oder schreib es kurz.', 'error', '#takeStartNote'); $('takeStartNote').focus(); return; }
         takeWizard.show(3);
         $('takeVehicleMileage').focus();
     });
@@ -2553,9 +2624,11 @@ if (!window.TerminContact) {
         const button = event.target.querySelector('button[type="submit"]');
         button.disabled = true;
         try {
-            const { error } = await client.rpc('tt_take_vehicle', {
+            const kinds = takeNoteKinds();
+            const noteText = [kinds.map(kind => TAKE_KIND_TEXT[kind]).join(', '), $('takeStartNote').value.trim()].filter(Boolean).join(' – ');
+            const { data: handover, error } = await client.rpc('tt_take_vehicle', {
                 p_vehicle: take.vehicle.id, p_mileage: Number($('takeVehicleMileage').value), p_note: 'Im Portal übernommen',
-                p_emergency: isFest() && $('takeEmergency').checked, p_start_note: $('takeStartNote').value.trim()
+                p_emergency: isFest() && $('takeEmergency').checked, p_start_note: noteText
             });
             if (error) {
                 $('takeMileageError').hidden = false;
@@ -2563,6 +2636,8 @@ if (!window.TerminContact) {
                 return;
             }
             const plate = take.vehicle.plate;
+            // Etwas stimmt nicht: Meldung mit Fotos an den letzten Fahrer und die Einsatzleitung – bleibt in seiner Akte (Update 42).
+            if (noteText && handover?.previous_driver_id) await sendDriverNote({ handoverId: handover.id, kind: kinds.includes('schaden') ? 'schaden' : kinds.some(kind => /unsauber/.test(kind)) ? 'unsauber' : kinds.includes('tank') ? 'tank' : 'hinweis', text: noteText, files: [...($('takeNotePhoto').files || [])].slice(0, 3) });
             // Eigene Mitteilung „FAHRZEUG · übernommen“ an die Einsatzleitung (falls dort eingeschaltet).
             TerminCloud.callFunction?.({ action: 'vehicle', kind: 'take' })?.catch?.(() => null);
             await loadFleet();
@@ -2726,6 +2801,12 @@ if (!window.TerminContact) {
                 photo_path: paths[0] || '', photo_paths: paths
             });
             if (error) throw error;
+            // Der Schaden war schon da: Meldung an den letzten Fahrer (mit denselben Fotos) – bleibt in seiner Akte (Update 42).
+            if ($('damagePrevious').checked && myHandover.previous_driver_id) {
+                const { data: fresh } = await client.from('tt_damages').select('id').eq('vehicle_id', myHandover.vehicle_id).eq('reporter_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+                await sendDriverNote({ handoverId: myHandover.id, damageId: fresh?.id || null, kind: 'schaden', text: `${category}${description ? ` – ${description}` : ''} (bei der Übernahme vorgefunden)`, paths });
+            }
+            $('damagePrevious').checked = false;
             $('damageDescription').value = '';
             $('damagePhoto').value = '';
             showDamagePicks();
@@ -2829,6 +2910,7 @@ if (!window.TerminContact) {
         return render;
     }
     const showDamagePicks = photoPicks($('damagePhoto'), 'Foto');
+    const showTakeNotePicks = photoPicks($('takeNotePhoto'), 'Foto');
     photoPicks($('alertPhoto'), 'Foto');
 
     // ---------- Belege (mit automatischem Auslesen des Fotos) ----------
@@ -2898,8 +2980,21 @@ if (!window.TerminContact) {
             if (kind) query = query.eq('kind', kind);
             const { data, error } = await query;
             if (error) throw error;
-            const list = (data || []).filter(item => item.status !== 'abgelehnt');
-            if (!list.length) { status.textContent = `Für ${monthName} gibt es keine ${kindName}.`; return; }
+            const found = (data || []).filter(item => item.status !== 'abgelehnt');
+            if (!found.length) { status.textContent = `Für ${monthName} gibt es keine ${kindName}.`; return; }
+            // Vorschau: Was soll in die PDF? Belege, die man im Original hat, nimmt man heraus.
+            status.textContent = 'Bitte auswählen, was in die PDF soll …';
+            const shortDate = item => new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const chosen = await DocPdf.pick({
+                title: `${kindName} ${monthName} – was soll in die PDF?`,
+                hint: 'Hake ab, was in die PDF soll. Belege, die du im Original hast, nimm heraus – sie bleiben in der App gespeichert. Schon gedruckte Belege sind nicht angehakt.',
+                rows: found.map(item => ({ id: item.id, label: `${shortDate(item)} · ${item.place || '–'} · ${item.kind}`, sub: item.status === 'geprüft' ? 'geprüft' : item.status, note: item.printed_at ? 'schon gedruckt' : (item.photo_path ? '' : 'ohne Foto'), amount: money(item.amount), checked: !item.printed_at })),
+                confirm: 'PDF erstellen',
+                sumOf: ids => money(found.filter(item => ids.includes(String(item.id))).reduce((total, item) => total + Number(item.amount), 0))
+            });
+            if (!chosen) { status.textContent = ''; return; }
+            const list = found.filter(item => chosen.includes(String(item.id)));
+            if (!list.length) { status.textContent = ''; return; }
             const items = [];
             for (const [index, item] of list.entries()) {
                 status.textContent = `Beleg ${index + 1} von ${list.length} wird geladen …`;

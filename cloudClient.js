@@ -104,7 +104,6 @@ const TerminCloud = (() => {
             client.from('tt_profiles').select('*').eq('active', false)
         ]);
         if (damages.error || alerts.error || accounts.error) return null;
-        const openNotes = notes.error ? 0 : notes.data.filter(item => item.start_note).length;
         const [newReceipts, objections] = await Promise.all([
             client.from('tt_receipts').select('id').eq('status', 'eingereicht'),
             client.from('tt_statements').select('month').eq('response', 'einwand')
@@ -133,9 +132,18 @@ const TerminCloud = (() => {
         const unreadChat = await client.from('tt_chat').select('id').eq('from_staff', false).is('read_at', null);
         // Korrekturen der Dolmetscher (zurückgenommen, geändert, gelöscht), die noch niemand gesehen hat (Update 37). Fehlt die Tabelle: 0.
         const corrections = await client.from('tt_corrections').select('id').is('seen_at', null);
+        // Meldungen über einen Vorfahrer (Fahrerakte) und Meldungen des Arztes an die Einsatzleitung (Update 42). Fehlt die Tabelle: 0.
+        const [driverNotes, doctorNotes] = await Promise.all([
+            client.from('tt_driver_notes').select('id, handover_id').is('office_seen_at', null),
+            client.from('tt_doctor_feedback').select('id').is('seen_at', null)
+        ]);
+        const openDriverNotes = driverNotes.error ? 0 : driverNotes.data.length;
+        // Ein Übernahme-Hinweis, der schon als Meldung an den Vorfahrer ging, zählt nur einmal.
+        const notedHandovers = new Set(driverNotes.error ? [] : driverNotes.data.map(item => item.handover_id));
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
         const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
-        return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length, reports: newReports, prescriptions: newDocuments.error ? 0 : newDocuments.data.length - newReports,
+        const openNotes = notes.error ? 0 : notes.data.filter(item => item.start_note && !notedHandovers.has(item.id)).length;
+        return { damages: damages.data.length, alerts: alerts.data.length + openNotes + openDriverNotes, driverNotes: openDriverNotes, doctor: doctorNotes.error ? 0 : doctorNotes.data.length, documents: newDocuments.error ? 0 : newDocuments.data.length, reports: newReports, prescriptions: newDocuments.error ? 0 : newDocuments.data.length - newReports,
             requests: newPhotos.error ? 0 : newPhotos.data.filter(item => item.kind === 'schaden' || item.kind === 'meldung').length,
             accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),

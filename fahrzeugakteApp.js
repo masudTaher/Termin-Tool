@@ -13,6 +13,8 @@
     let alerts = [];
     let openHandovers = [];
     let takeoverNotes = [];
+    let driverNotes = [];           // Meldungen über den Vorfahrer (Update 42)
+    let driverNotesReady = false;
     let selectedId = null;
     let fileTab = 'current';
     let sketch = null;
@@ -81,6 +83,11 @@
         fuelLog = cardLogResult.error ? [] : cardLogResult.data;
         const noteResult = await client.from('tt_handovers').select('*').eq('note_seen', false).order('created_at', { ascending: false }).limit(200);
         takeoverNotes = noteResult.error ? [] : noteResult.data.filter(item => item.start_note);
+        const driverNoteResult = await client.from('tt_driver_notes').select('*').order('created_at', { ascending: false }).limit(500);
+        driverNotesReady = !driverNoteResult.error;
+        driverNotes = driverNotesReady ? driverNoteResult.data : [];
+        // Ein Übernahme-Hinweis, der schon als Meldung an den Vorfahrer ging, erscheint nur einmal (als Meldung).
+        takeoverNotes = takeoverNotes.filter(item => !driverNotes.some(note => note.handover_id === item.id));
         // Letzte Rückgabe je Fahrzeug – für „zuletzt Ahmad, 04.10. 17:40“ bei freien Fahrzeugen
         const returnResult = await client.from('tt_handovers').select('*').not('end_time', 'is', null).order('created_at', { ascending: false }).limit(400);
         lastReturns.clear();
@@ -102,6 +109,7 @@
         renderFuel();
         renderGrid();
         renderStation();
+        renderDriverFile();
         renderRetired();
         loadPhotoUrls();
         loadTyre();
@@ -307,15 +315,36 @@
         const newDamages = damages.filter(item => item.status === 'offen');
         const now = new Date();
         const overdue = openHandovers.filter(item => !item.emergency && !TerminCloud.keepsOvernight(item) && item.driver_id && (item.date < TerminCloud.todayIso() || now.getHours() >= 16));
-        $('inboxSummary').textContent = openAlerts.length || newDamages.length || takeoverNotes.length || overdue.length
+        const newDriverNotes = driverNotes.filter(item => !item.office_seen_at);
+        $('inboxSummary').textContent = openAlerts.length || newDamages.length || takeoverNotes.length || overdue.length || newDriverNotes.length
             ? [
                 `${openAlerts.length} ${openAlerts.length === 1 ? 'offene Meldung' : 'offene Meldungen'}`,
                 `${newDamages.length} ${newDamages.length === 1 ? 'neuer Schaden' : 'neue Schäden'}`,
+                newDriverNotes.length ? `${newDriverNotes.length} ${newDriverNotes.length === 1 ? 'Meldung' : 'Meldungen'} über einen Vorfahrer` : '',
                 takeoverNotes.length ? `${takeoverNotes.length} ${takeoverNotes.length === 1 ? 'Hinweis' : 'Hinweise'} zur Übernahme` : '',
                 overdue.length ? `${overdue.length} nicht zurückgegeben` : ''
             ].filter(Boolean).join(', ')
             : 'Alles erledigt – es gibt nichts Offenes.';
         const vehicleOf = item => vehicles.find(vehicle => vehicle.id === item.vehicle_id);
+
+        // Meldungen über den Vorfahrer (nicht sauber, Tank leer, Schaden) – neu für das Büro
+        newDriverNotes.forEach(item => {
+            const row = el('li', 'vehicle-entry inbox-entry driver-note-inbox');
+            const meta = el('span');
+            meta.append(el('strong', 'driver-file-inbox', `${item.plate || vehicleOf(item)?.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} · Vorfahrer ${item.driver_name || 'unbekannt'}`),
+                el('small', null, [item.text ? `„${item.text}“` : '', `gemeldet von ${item.reporter_name || 'unbekannt'}`, formatDateTime(item.created_at), item.seen_at ? 'vom Vorfahrer gesehen' : 'vom Vorfahrer noch nicht gesehen'].filter(Boolean).join(' · ')));
+            const actions = el('span', 'vehicle-entry-actions');
+            actions.append(photoButtons(Array.isArray(item.photo_paths) ? item.photo_paths : []));
+            const seen = el('button', 'button-primary account-approve', 'Gesehen');
+            seen.type = 'button';
+            seen.addEventListener('click', () => markDriverNoteSeen(item, seen));
+            const file = el('button', 'button-quiet', 'Fahrerakte');
+            file.type = 'button';
+            file.addEventListener('click', () => openDriverFile(item.driver_id));
+            actions.append(seen, file);
+            row.append(pill('offen', 'Vorfahrer'), meta, actions);
+            list.append(row);
+        });
 
         // Auf Bitte neu geschickte Fotos (Schaden oder Meldung): ansehen und abhaken
         const answeredPhotos = window.PhotoRequest ? PhotoRequest.unseen().filter(item => item.kind === 'schaden' || item.kind === 'meldung') : [];
@@ -1479,6 +1508,127 @@
     let tyreReady = false;
     const tyreLink = campaign => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}reifen.html?k=${encodeURIComponent(campaign.token)}`;
     const tyreToken = () => { const bytes = new Uint8Array(24); crypto.getRandomValues(bytes); return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    // ---------- Fahrerakte: Meldungen über den Vorfahrer (Update 42) ----------
+    const DRIVER_NOTE_KIND = { unsauber: 'Nicht sauber', tank: 'Tank fast leer', schaden: 'Neuer Schaden', hinweis: 'Hinweis' };
+    const officeName = () => profile?.full_name || 'Einsatzleitung';
+    async function saveDriverNote(item, changes, button) {
+        if (button) button.disabled = true;
+        const { error } = await client.from('tt_driver_notes').update(changes).eq('id', item.id);
+        if (button) button.disabled = false;
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return false; }
+        Object.assign(item, changes);
+        renderInbox();
+        renderDriverFile();
+        window.refreshCloudInbox?.();
+        return true;
+    }
+    const markDriverNoteSeen = (item, button) => saveDriverNote(item, { office_seen_at: new Date().toISOString(), office_seen_by: officeName() }, button);
+    let admonishItem = null;
+    function openAdmonish(item) {
+        admonishItem = item;
+        $('admonishInfo').textContent = `${item.driver_name || 'Fahrer'} · ${item.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} vom ${formatDateTime(item.created_at)}`;
+        $('admonishNote').value = item.office_note || '';
+        $('admonishDialog').showModal();
+        $('admonishNote').focus();
+    }
+    $('admonishCancel').addEventListener('click', () => $('admonishDialog').close());
+    $('admonishForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!admonishItem) return;
+        const now = new Date().toISOString();
+        const ok = await saveDriverNote(admonishItem, { admonished_at: now, admonished_by: officeName(), office_note: $('admonishNote').value.trim(), office_seen_at: admonishItem.office_seen_at || now, office_seen_by: admonishItem.office_seen_by || officeName() }, $('admonishSave'));
+        if (!ok) return;
+        $('admonishDialog').close();
+        showToast(`Ermahnung für ${admonishItem.driver_name || 'den Fahrer'} vermerkt.`, 'success');
+    });
+    function openDriverFile(driverId) {
+        const section = $('driverFileSection');
+        section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        const card = section.querySelector(`.driver-file-card[data-driver="${driverId}"]`);
+        if (card) { card.querySelector('details').open = true; card.focus?.(); }
+    }
+    function renderDriverFile() {
+        const section = $('driverFileSection');
+        if (!section) return;
+        const cards = $('driverFileCards');
+        const wasOpen = new Set([...cards.querySelectorAll('.driver-file-card')].filter(card => card.querySelector('details')?.open).map(card => card.dataset.driver));
+        cards.replaceChildren();
+        if (!driverNotesReady) { $('driverFileSummary').textContent = 'Noch nicht eingerichtet – dafür fehlt Update 42 in der Datenbank.'; return; }
+        if (!driverNotes.length) { $('driverFileSummary').textContent = 'Keine Meldungen – bisher hat niemand ein Auto schmutzig, leer oder beschädigt vorgefunden.'; return; }
+        const byDriver = new Map();
+        driverNotes.forEach(item => {
+            const key = item.driver_id || item.driver_name || '?';
+            if (!byDriver.has(key)) byDriver.set(key, { id: item.driver_id, name: item.driver_name || profiles.find(person => person.id === item.driver_id)?.full_name || 'Unbekannt', items: [] });
+            byDriver.get(key).items.push(item);
+        });
+        const groups = [...byDriver.values()].sort((a, b) => (b.items.filter(item => !item.office_seen_at).length - a.items.filter(item => !item.office_seen_at).length) || (b.items.length - a.items.length) || a.name.localeCompare(b.name, 'de'));
+        const unseenTotal = driverNotes.filter(item => !item.office_seen_at).length;
+        $('driverFileSummary').textContent = `${driverNotes.length} ${driverNotes.length === 1 ? 'Meldung' : 'Meldungen'} bei ${groups.length} ${groups.length === 1 ? 'Fahrer' : 'Fahrern'}${unseenTotal ? ` · ${unseenTotal} noch nicht gesehen` : ' · alles gesehen'}`;
+        groups.forEach(group => {
+            const unseen = group.items.filter(item => !item.office_seen_at).length;
+            const admonished = group.items.filter(item => item.admonished_at).length;
+            const card = el('article', 'driver-file-card');
+            card.dataset.driver = group.id || '';
+            card.dataset.open = unseen ? 'ja' : '';
+            card.tabIndex = -1;
+            const head = el('div', 'driver-file-head');
+            head.append(el('strong', null, group.name), el('span', 'driver-file-count', String(group.items.length)));
+            const sum = el('div', 'driver-file-sum');
+            const counts = { unsauber: 0, tank: 0, schaden: 0, hinweis: 0 };
+            group.items.forEach(item => { counts[item.kind in counts ? item.kind : 'hinweis'] += 1; });
+            sum.append(...Object.entries(counts).filter(([, n]) => n).map(([kind, n]) => { const s = el('span'); s.append(el('b', null, String(n)), ` ${DRIVER_NOTE_KIND[kind]}`); return s; }));
+            const state = el('div', 'driver-file-sum');
+            state.append(el('span', null, `zuletzt ${formatDateTime(group.items[0].created_at)}`));
+            if (unseen) { const s = el('span', 'driver-file-inbox', `${unseen} neu`); state.append(s); }
+            if (admonished) { const s = el('span', 'driver-file-note', `${admonished} ${admonished === 1 ? 'Ermahnung' : 'Ermahnungen'}`); state.append(s); }
+            const details = el('details');
+            details.open = wasOpen.has(group.id || '');
+            details.append(el('summary', null, 'Alle Meldungen ansehen'));
+            const entries = el('ul', 'driver-file-entries');
+            group.items.forEach(item => {
+                const entry = el('li', 'driver-file-entry');
+                entry.dataset.kind = item.kind;
+                entry.dataset.admonished = item.admonished_at ? 'ja' : '';
+                entry.append(el('strong', null, `${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} · ${item.plate || 'Fahrzeug'}`),
+                    el('span', 'driver-file-meta', [`${formatDateTime(item.created_at)} Uhr`, `gemeldet von ${item.reporter_name || 'unbekannt'}`, item.seen_at ? `vom Fahrer gesehen ${formatDateTime(item.seen_at)}` : 'vom Fahrer noch nicht gesehen'].join(' · ')));
+                if (item.text) entry.append(el('p', 'driver-file-text', `„${item.text}“`));
+                const photos = Array.isArray(item.photo_paths) ? item.photo_paths : [];
+                if (photos.length) entry.append(photoButtons(photos));
+                if (item.admonished_at) entry.append(el('span', 'driver-file-note', `Ermahnt am ${formatDateTime(item.admonished_at)} von ${item.admonished_by || 'Einsatzleitung'}${item.office_note ? ` – „${item.office_note}“` : ''}`));
+                else if (item.office_seen_at) entry.append(el('span', 'driver-file-meta', `gesehen von ${item.office_seen_by || 'Einsatzleitung'} ${formatDateTime(item.office_seen_at)}`));
+                const actions = el('div', 'driver-file-actions');
+                if (!item.office_seen_at) { const seen = el('button', 'button-primary', 'Gesehen'); seen.type = 'button'; seen.addEventListener('click', () => markDriverNoteSeen(item, seen)); actions.append(seen); }
+                const warn = el('button', item.admonished_at ? 'button-quiet' : 'button-secondary', item.admonished_at ? 'Vermerk ändern' : 'Ermahnung vermerken');
+                warn.type = 'button';
+                warn.addEventListener('click', () => openAdmonish(item));
+                actions.append(warn);
+                if (item.admonished_at) {
+                    const undo = el('button', 'button-quiet', 'Ermahnung zurücknehmen');
+                    undo.type = 'button';
+                    undo.addEventListener('click', async () => { if (await confirmDialog(`Die Ermahnung für ${item.driver_name || 'den Fahrer'} zurücknehmen? Die Meldung selbst bleibt in der Akte.`, 'Zurücknehmen')) await saveDriverNote(item, { admonished_at: null, admonished_by: '', office_note: '' }, undo); });
+                    actions.append(undo);
+                }
+                if (isAdmin()) {
+                    const remove = el('button', 'button-quiet', 'Löschen');
+                    remove.type = 'button';
+                    remove.addEventListener('click', async () => {
+                        if (!await confirmDialog(`Diese Meldung aus der Akte von ${item.driver_name || 'dem Fahrer'} endgültig löschen?\n\nDas lässt sich nicht rückgängig machen.`, 'Endgültig löschen')) return;
+                        const { error } = await client.from('tt_driver_notes').delete().eq('id', item.id);
+                        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                        driverNotes = driverNotes.filter(note => note.id !== item.id);
+                        renderInbox(); renderDriverFile();
+                    });
+                    actions.append(remove);
+                }
+                entry.append(actions);
+                entries.append(entry);
+            });
+            details.append(entries);
+            card.append(head, sum, state, details);
+            cards.append(card);
+        });
+    }
+
     async function loadTyre() {
         const [campaigns, items] = await Promise.all([
             client.from('tt_tyre_campaigns').select('*').order('created_at', { ascending: false }).limit(30),

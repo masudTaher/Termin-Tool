@@ -215,6 +215,7 @@
         const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0) + (countsOnline.requests || 0) + (countsOnline.appointments || 0) + (countsOnline.chat || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
+            ...(countsOnline.doctor ? [todoItem('Meldungen des Arztes ansehen und beantworten', countsOnline.doctor, '#arzt')] : []),
             ...(countsOnline.corrections ? [todoItem('Korrekturen der Dolmetscher ansehen', countsOnline.corrections, '#korrekturen')] : []),
             ...(countsOnline.chat ? [todoItem('Neue Nachrichten der Dolmetscher', countsOnline.chat, 'nachrichten.html')] : []),
             ...(countsOnline.appointments ? [todoItem('Neue Termine der Dolmetscher eintragen', countsOnline.appointments, 'neueTermine.html')] : []),
@@ -293,4 +294,112 @@
     });
     loadCorrections();
     window.setInterval(() => { if (!document.hidden) loadCorrections(); }, 60000);
+
+    // ---------- Meldungen des Arztes (Update 42) ----------
+    // Der Arzt meldet der Einsatzleitung etwas (Bericht, Termin, Patient, Sonstiges) – hier abhaken und antworten.
+    // Darunter: was er den Dolmetschern geschrieben hat (Frage, Info, Anweisung) und ob sie geantwortet/bestätigt haben.
+    const TOPIC_WORD = { bericht: 'Bericht', termin: 'Termin', patient: 'Patient', sonstiges: 'Sonstiges' };
+    const QUESTION_WORD = { frage: 'Frage', info: 'Info', anweisung: 'Anweisung' };
+    let doctorAll = false;
+    const stamp = iso => { const at = new Date(iso); return `${at.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`; };
+    const node = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
+    async function loadDoctor() {
+        const card = $('startDoctor');
+        if (!card || typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
+        let profile = null;
+        try { profile = await TerminCloud.getProfile(); } catch (error) { return; }
+        if (!TerminCloud.isStaff(profile)) return;
+        const [feedbackResult, questionResult] = await Promise.all([
+            TerminCloud.client.from('tt_doctor_feedback').select('*').order('created_at', { ascending: false }).limit(80),
+            TerminCloud.client.from('tt_doctor_questions').select('*').order('created_at', { ascending: false }).limit(40)
+        ]);
+        const feedback = feedbackResult.error ? [] : (feedbackResult.data || []);   // Update 42 fehlt noch: nur die Nachrichten an Dolmetscher
+        const questions = questionResult.error ? [] : (questionResult.data || []);
+        card.hidden = !feedback.length && !questions.length;
+        if (card.hidden) return;
+        const unseen = feedback.filter(item => !item.seen_at);
+        $('startDoctorInfo').textContent = unseen.length ? `${plural(unseen.length, 'neue Meldung', 'neue Meldungen')} des Arztes – bitte ansehen und antworten.` : feedback.length ? 'Alle Meldungen gesehen. Die letzten bleiben zur Nachschau stehen.' : 'Keine Meldung des Arztes an die Einsatzleitung. Darunter: was er den Dolmetschern geschrieben hat.';
+        const shown = doctorAll ? feedback : feedback.slice(0, unseen.length ? 80 : 6);
+        $('startDoctorMore').hidden = feedback.length <= shown.length;
+        $('startDoctorMore').textContent = doctorAll ? 'Weniger anzeigen' : 'Alle anzeigen';
+        $('startDoctorList').replaceChildren(...shown.map(item => {
+            const row = node('li', 'start-doctor-entry');
+            row.dataset.seen = item.seen_at ? 'ja' : '';
+            row.dataset.topic = item.topic;
+            row.append(node('strong', '', `${item.doctor_name || 'Arzt'} · ${TOPIC_WORD[item.topic] || 'Sonstiges'}${item.document_title ? ` · „${item.document_title}“` : ''}`),
+                node('span', 'start-doctor-meta', [item.patient_name || item.patient_nr ? [item.patient_name, item.patient_nr ? `Akte ${item.patient_nr}` : ''].filter(Boolean).join(', ') : '', item.interpreter_name ? `Dolmetscher/in: ${item.interpreter_name}` : '', item.document_date ? `Termin ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '', stamp(item.created_at), item.seen_at ? `gesehen${item.seen_by ? ` von ${item.seen_by}` : ''}` : 'neu'].filter(Boolean).join(' · ')),
+                node('p', 'start-doctor-text', item.text));
+            if (item.answered_at) row.append(node('span', 'start-doctor-reply', `Antwort von ${item.answered_by || 'Einsatzleitung'} (${stamp(item.answered_at)}${item.doctor_seen_at ? ', vom Arzt gelesen' : ''}): „${item.answer}“`));
+            const actions = node('div', 'start-doctor-actions');
+            if (!item.seen_at) {
+                const seen = node('button', 'button-secondary', 'Gesehen');
+                seen.type = 'button';
+                seen.addEventListener('click', () => saveDoctor(item.id, { seen_at: new Date().toISOString(), seen_by: profile.full_name || '' }, seen));
+                actions.append(seen);
+            }
+            const reply = node('button', 'button-quiet', item.answered_at ? 'Antwort ändern' : 'Antworten');
+            reply.type = 'button';
+            reply.addEventListener('click', () => {
+                if (row.querySelector('.start-doctor-answer')) { row.querySelector('.start-doctor-answer').remove(); return; }
+                const form = node('form', 'start-doctor-answer');
+                const area = node('textarea');
+                area.maxLength = 1000; area.placeholder = 'Deine Antwort an den Arzt'; area.value = item.answer || '';
+                const buttons = node('div', 'start-doctor-actions');
+                const send = node('button', 'button-primary', 'Antwort senden'); send.type = 'submit';
+                const cancel = node('button', 'button-quiet', 'Abbrechen'); cancel.type = 'button';
+                cancel.addEventListener('click', () => form.remove());
+                buttons.append(send, cancel);
+                form.append(area, buttons);
+                form.addEventListener('submit', async event => {
+                    event.preventDefault();
+                    const text = area.value.trim();
+                    if (!text) { area.focus(); return; }
+                    const ok = await saveDoctor(item.id, { answer: text, seen_at: item.seen_at || new Date().toISOString(), seen_by: item.seen_by || profile.full_name || '' }, send);
+                    if (ok) TerminCloud.callFunction?.({ action: 'doctorAnswer', feedbackId: item.id })?.catch?.(() => null);
+                });
+                row.append(form);
+                area.focus();
+            });
+            actions.append(reply);
+            if (TerminCloud.isAdmin(profile)) {
+                const remove = node('button', 'button-quiet', 'Löschen');
+                remove.type = 'button';
+                remove.addEventListener('click', async () => {
+                    // Zweiter Klick bestätigt – ohne Browser-Fenster.
+                    if (remove.dataset.sure !== 'ja') { remove.dataset.sure = 'ja'; remove.textContent = 'Wirklich endgültig löschen?'; remove.classList.add('button-danger'); window.setTimeout(() => { remove.dataset.sure = ''; remove.textContent = 'Löschen'; remove.classList.remove('button-danger'); }, 5000); return; }
+                    const { error } = await TerminCloud.client.from('tt_doctor_feedback').delete().eq('id', item.id);
+                    if (error) { window.showToast?.(TerminCloud.germanError(error), 'error'); return; }
+                    await loadDoctor();
+                });
+                actions.append(remove);
+            }
+            row.append(actions);
+            return row;
+        }));
+        $('startDoctorToTitle').hidden = !questions.length;
+        $('startDoctorToList').replaceChildren(...questions.slice(0, doctorAll ? 40 : 8).map(item => {
+            const row = node('li', 'start-doctor-entry');
+            const kind = QUESTION_WORD[item.kind] ? item.kind : 'frage';
+            row.dataset.kind = kind;
+            const done = kind === 'frage' ? Boolean(item.answered_at) : Boolean(item.acknowledged_at);
+            row.dataset.seen = done ? 'ja' : '';
+            row.append(node('strong', '', `${QUESTION_WORD[kind]} von ${item.doctor_name || 'Arzt'} an ${item.interpreter_name || 'Dolmetscher'}`),
+                node('span', 'start-doctor-meta', [item.document_title ? `zu „${item.document_title}“` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_date ? `Termin ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '', stamp(item.created_at), done ? (kind === 'frage' ? `beantwortet ${stamp(item.answered_at)}` : kind === 'info' ? `gelesen ${stamp(item.acknowledged_at)}` : `„Verstanden“ ${stamp(item.acknowledged_at)}`) : item.seen_at ? 'vom Dolmetscher gesehen, noch nicht ' + (kind === 'frage' ? 'beantwortet' : 'bestätigt') : 'vom Dolmetscher noch nicht gesehen'].filter(Boolean).join(' · ')),
+                node('p', 'start-doctor-text', item.question));
+            if (item.answer) row.append(node('span', 'start-doctor-reply', `Antwort: „${item.answer}“`));
+            return row;
+        }));
+    }
+    async function saveDoctor(id, changes, button) {
+        if (button) button.disabled = true;
+        const { error } = await TerminCloud.client.from('tt_doctor_feedback').update(changes).eq('id', id);
+        if (button) button.disabled = false;
+        if (error) { window.showToast?.(TerminCloud.germanError(error), 'error'); return false; }
+        await loadDoctor();
+        window.refreshCloudInbox?.();
+        return true;
+    }
+    $('startDoctorMore')?.addEventListener('click', () => { doctorAll = !doctorAll; loadDoctor(); });
+    loadDoctor();
+    window.setInterval(() => { if (!document.hidden) loadDoctor(); }, 60000);
 })();

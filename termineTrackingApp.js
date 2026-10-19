@@ -155,6 +155,11 @@ function getTrackingStatusClass(termin) {
     return 'tracking-status-open';
 }
 
+// Art der Stornierung: 'termin' (der Termin findet nicht statt – rot) oder 'dolmetscher' (die Person kann nicht – lila).
+function stornoKind(termin) {
+    return String(termin?.Storno_Art || '').trim().toLocaleLowerCase('de-DE') === 'dolmetscher' ? 'dolmetscher' : 'termin';
+}
+
 function applyTrackingStatusColor(row, termin) {
     row.classList.remove(
         'tracking-status-open',
@@ -163,6 +168,7 @@ function applyTrackingStatusColor(row, termin) {
         'tracking-status-cancelled'
     );
     row.classList.add(getTrackingStatusClass(termin));
+    if (String(termin?.Status || '').trim().toLocaleLowerCase('de-DE') === 'storniert') row.dataset.storno = stornoKind(termin); else delete row.dataset.storno;
 }
 
 function getTrackingStatusGroup(termin) {
@@ -277,13 +283,14 @@ function renderTrackingTable(data) {
         clip: rowIcon('<path d="M20 11.5 12.5 19a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.700 4.700l-8 8a1.700 1.700 0 0 1-2.400-2.400l7.200-7.200"/>')
     };
     const cloudReady = typeof window.sendTrackingAssignment === 'function';
-    const statusOptions = [['offen', 'Offen'], ['losgefahren', 'Losgefahren'], ['beendet', 'Beendet'], ['alleine', 'Alleine'], ['storniert', 'Storniert']];
+    const statusOptions = [['offen', 'Offen'], ['losgefahren', 'Losgefahren'], ['beendet', 'Beendet'], ['alleine', 'Alleine'], ['storniert', 'Storniert: Termin'], ['storniert_dolmetscher', 'Storniert: Dolmetscher']];
 
     tableBody.innerHTML = data.map((termin, index) => {
         const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']]
             .map(value => String(value || '').trim()).filter(Boolean).join(' ');
         const gender = String(termin['Patienten Nr::Patienten_Geschlecht'] || '').trim().charAt(0).toLocaleUpperCase('de-DE');
         const status = String(termin.Status || 'offen').trim().toLocaleLowerCase('de-DE');
+        const selectedStatus = status === 'storniert' && stornoKind(termin) === 'dolmetscher' ? 'storniert_dolmetscher' : status;
         const group = getTrackingStatusGroup(termin);
         const special = Number(termin.Sonderbetrag) > 0 ? Number(termin.Sonderbetrag) : 0;
         const quickStatus = group === 'offen'
@@ -303,13 +310,17 @@ function renderTrackingTable(data) {
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
                 + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button>`
                 + `</div>`
+                // Zurückgezogener Auftrag: Die letzte Rückmeldung (z. B. „Absage – krank“) bleibt sichtbar – auch im Archiv.
+                + (!termin['Rückmeldung'] && termin['Letzte_Rückmeldung'] ? `<span class="response-pill" data-response="Zurückgezogen" title="Der Auftrag wurde zurückgezogen – das war die letzte Rückmeldung aus dem Portal">Zurückgezogen · ${escapeHtml(termin['Letzte_Rückmeldung'])}</span>` : '')
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>`
                     + (cloudReady ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : '')
                 // Zweite Person im Auftrag – oder der Knopf, um eine einzutragen.
                 + (termin._zweit ? `<button type="button" class="second-line" data-index="${index}" title="Zweite Person im Auftrag – ändern oder entfernen"><span class="second-mark" aria-hidden="true">+</span><b>${escapeHtml(termin._zweit)}</b><span class="second-role">${escapeHtml(termin._zweitAufgabe || 'Transport')}${termin._zweitAuto ? ` · ${escapeHtml(termin._zweitAuto)}` : ''}</span>${termin._zweitAntwort ? `<span class="response-pill" data-response="${escapeHtml(String(termin._zweitAntwort).split(' – ')[0])}">${escapeHtml(termin._zweitAntwort)}</span>` : ''}</button>` : '')
                 + (termin._zweit ? '' : `<button type="button" class="second-add" data-index="${index}" title="Zweite Person für diesen Auftrag: zum Beispiel eine Person fährt und eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen">+ zweite Person</button>`),
-            `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
-                + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : ''),
+            `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${selectedStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
+                + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : '')
+                // Art der Stornierung und Notiz – bleiben am Termin, auch nach dem Zurückziehen des Auftrags und im Archiv.
+                + (status === 'storniert' ? `<button type="button" class="storno-note" data-index="${index}" title="Art der Stornierung und Notiz ändern"><b>${stornoKind(termin) === 'dolmetscher' ? 'Dolmetscher kann nicht' : 'Termin komplett'}</b>${termin.Storno_Notiz ? ` · „${escapeHtml(termin.Storno_Notiz)}“` : ' · Notiz …'}</button>` : ''),
             `<div class="tracking-row-actions">`
                 // Online gehen die Aufträge direkt in die App der Dolmetscher – WhatsApp gibt es nur noch ohne Online-Anmeldung.
                 + (cloudReady ? '' : `<button type="button" class="whatsapp-button" data-index="${index}" title="Nachricht an den Dolmetscher vorbereiten">${ROW_ICONS.chat}<span>WhatsApp</span></button>`)
@@ -319,7 +330,7 @@ function renderTrackingTable(data) {
                 + (cloudReady ? `<button type="button" class="assign-note-button${termin._hinweis || termin._anhang ? ' has-note' : ''}" data-index="${index}" title="${termin._hinweis || termin._anhang ? `${termin._hinweis ? `Bemerkung: ${escapeHtml(termin._hinweis)}` : ''}${termin._hinweis && termin._anhang ? ' · ' : ''}${termin._anhang ? `Anhang: ${escapeHtml(termin._anhangName || 'PDF')}` : ''} (ändern)` : 'Bemerkung für den Dolmetscher schreiben (z. B. „CD mitnehmen“) und eine PDF-Datei anhängen'}">${ROW_ICONS.clip}<span>${termin._hinweis || termin._anhang ? `Bemerkung ✓${termin._anhang ? ' + PDF' : ''}` : 'Bemerkung'}</span></button>` : '')
                 + `</div>`
         ];
-        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}${/^Absage/.test(String(termin['Rückmeldung'] || '')) ? ' is-declined' : /^Zusage/.test(String(termin['Rückmeldung'] || '')) ? ' is-accepted' : /^Unter Vorbehalt/.test(String(termin['Rückmeldung'] || '')) ? ' is-reserved' : ''}" data-index="${index}">${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
+        return `<tr class="${getTrackingStatusClass(termin)}${special ? ' has-special' : ''}${termin._nachtrag ? ' is-nachtrag' : ''}${/^Absage/.test(String(termin['Rückmeldung'] || '')) ? ' is-declined' : /^Zusage/.test(String(termin['Rückmeldung'] || '')) ? ' is-accepted' : /^Unter Vorbehalt/.test(String(termin['Rückmeldung'] || '')) ? ' is-reserved' : ''}" data-index="${index}"${status === 'storniert' ? ` data-storno="${stornoKind(termin)}"` : ''}>${cells.map((cell, columnIndex) => `<td data-label="${columnLabels[columnIndex]}"><div class="cell-content">${cell}</div></td>`).join('')}</tr>`;
     }).join('');
 
     updateTrackingOverview(data);
@@ -546,6 +557,7 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
         else if (button.classList.contains('second-add') || button.classList.contains('second-line')) openSecondDialog(index);
         else if (button.classList.contains('special-button')) openSpecialDialog(index);
+        else if (button.classList.contains('storno-note')) openStornoDialog(index, stornoKind(trackingData[index]));
     });
     tableBody.addEventListener('change', event => {
         const target = event.target;
@@ -1657,17 +1669,61 @@ function stampStatusTime(termin, status, time = formatTime(new Date()).slice(0, 
 }
 window.stampTrackingStatusTime = stampStatusTime;
 
-function setTrackingStatus(index, status) {
+function setTrackingStatus(index, status, options = {}) {
     const termin = trackingData[index];
-    if (!termin || termin.Status === status) return;
+    if (!termin) return;
+    // „Storniert …“ aus der Auswahl: erst Art und Notiz abfragen; gespeichert wird mit Status „storniert“ + Storno_Art.
+    if ((status === 'storniert' || status === 'storniert_dolmetscher') && !options.stornoKind) {
+        openStornoDialog(index, status === 'storniert_dolmetscher' ? 'dolmetscher' : 'termin');
+        return;
+    }
+    const kind = options.stornoKind || '';
+    if (termin.Status === status && (!kind || (stornoKind(termin) === kind && String(termin.Storno_Notiz || '') === String(options.stornoNote || '')))) return;
     recordTrackingUndo('Terminstatus geändert');
     termin.Status = status;
+    if (status === 'storniert') { termin.Storno_Art = kind; termin.Storno_Notiz = String(options.stornoNote || '').trim(); }
+    else { termin.Storno_Art = ''; termin.Storno_Notiz = ''; }
     stampStatusTime(termin, status);
     persistTerminRecords(trackingData, 'tracking');
     renderTrackingTable(trackingData);
     const row = document.querySelector(`#tableBody tr[data-index="${index}"]`);
     if (row && !row.hidden) row.querySelector('.quick-status, .status-select')?.focus();
 }
+
+// ---------- Stornieren: Termin komplett (rot) oder Dolmetscher kann nicht (lila) – mit Notiz ----------
+let stornoDialogIndex = null;
+function openStornoDialog(index, kind = 'termin') {
+    const termin = trackingData[index];
+    const dialog = document.getElementById('stornoDialog');
+    if (!termin || !dialog) return;
+    stornoDialogIndex = index;
+    const already = String(termin.Status || '').trim().toLocaleLowerCase('de-DE') === 'storniert';
+    const patientName = [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+    document.getElementById('stornoDialogInfo').textContent = [String(termin.Termin_Uhrzeit || '').slice(0, 5) ? `${String(termin.Termin_Uhrzeit).slice(0, 5)} Uhr` : '', patientName, termin['Arzt Nr::Name'], getAppointmentInterpreterName(termin) ? `Dolmetscher/in: ${getAppointmentInterpreterName(termin)}` : ''].filter(Boolean).join(' · ');
+    const wanted = already ? stornoKind(termin) : kind;
+    dialog.querySelector(`input[name="stornoKind"][value="${wanted}"]`).checked = true;
+    // Vorschlag für die Notiz: die Absage aus dem Portal („Absage – krank“), falls es eine gibt.
+    const response = String(termin['Rückmeldung'] || termin['Letzte_Rückmeldung'] || '');
+    document.getElementById('stornoDialogNote').value = already ? String(termin.Storno_Notiz || '') : (/^Absage/.test(response) ? response.replace(/^Absage\s*(–\s*)?/, '').trim() : '');
+    document.getElementById('stornoDialogReopen').hidden = !already;
+    document.getElementById('stornoDialogSave').textContent = already ? 'Speichern' : 'Stornieren';
+    dialog.showModal();
+    document.getElementById('stornoDialogNote').focus();
+}
+(function bindStornoDialog() {
+    const dialog = document.getElementById('stornoDialog');
+    if (!dialog) return;
+    const closeAndRender = () => { dialog.close(); renderTrackingTable(trackingData); };   // die Auswahl springt sonst auf „Storniert“, obwohl nichts gespeichert wurde
+    document.getElementById('stornoDialogCancel').addEventListener('click', closeAndRender);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); closeAndRender(); });
+    document.getElementById('stornoDialogReopen').addEventListener('click', () => { dialog.close(); setTrackingStatus(stornoDialogIndex, 'offen'); showToast('Stornierung aufgehoben – der Termin ist wieder offen.', 'success'); });
+    document.getElementById('stornoDialogForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const kind = dialog.querySelector('input[name="stornoKind"]:checked')?.value || 'termin';
+        dialog.close();
+        setTrackingStatus(stornoDialogIndex, 'storniert', { stornoKind: kind, stornoNote: document.getElementById('stornoDialogNote').value });
+    });
+})();
 
 // Workbook mit aktualisierten Daten aktualisieren
 function updateWorkbook() {

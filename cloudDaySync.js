@@ -5,6 +5,8 @@
     if (typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
     const client = TerminCloud.client;
     const RESPONSE_TEXT = { offen: 'gesendet', zugesagt: 'Zusage', vorbehalt: 'Unter Vorbehalt', abgesagt: 'Absage' };
+    // Eine Rückmeldung mit Inhalt (Zusage, Absage mit Grund, „fällt aus“ …) bleibt nach dem Zurückziehen als „Letzte Rückmeldung“ stehen; „gesendet“ nicht.
+    const keepable = text => Boolean(text) && String(text).trim() !== RESPONSE_TEXT.offen;
     const known = new Map();      // _id -> Inhalt beim letzten Abgleich
     let deleted = {};             // _id -> Zeitpunkt des Löschens
     let profile = null;
@@ -342,6 +344,8 @@
                 showToast(`Termin · ${assignment.interpreter_name} meldet „${alone ? 'Patient geht alleine' : 'fällt aus'}“ für ${assignment.title}${assignment.storno_note ? ` – „${assignment.storno_note}“` : ''}. Bei dir steht der Termin schon auf „${record.Status}“ – bitte prüfen.`, 'info', { duration: 20000, keep: true });
             } else if (status !== closedStatus) {
                 record.Status = closedStatus;
+                // Vom Portal gemeldet: der Termin fällt aus – Art „Termin komplett“, der Grund als Storno-Notiz (bleibt im Archiv).
+                if (closedStatus === 'storniert') { record.Storno_Art = 'termin'; record.Storno_Notiz = String(assignment.storno_note || '').trim(); }
                 showToast(`${closedLabel} · ${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note && !alone ? ` – „${assignment.storno_note}“` : ''}`, alone ? 'info' : 'error', { duration: 20000, keep: true });
                 if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
                     try { new Notification(closedLabel, { body: `${assignment.interpreter_name}: ${assignment.title}${assignment.storno_note ? ` – ${assignment.storno_note}` : ''}` }); } catch (error) { /* nur als Einblendung */ }
@@ -430,13 +434,13 @@
         for (const record of records()) {
             const assignment = byAppointment.get(record._id);
             if (!assignment || assignment.cancelled) {
-                if (record['Rückmeldung']) { record['Rückmeldung'] = ''; changed = true; }
+                if (record['Rückmeldung']) { if (keepable(record['Rückmeldung'])) record['Letzte_Rückmeldung'] = record['Rückmeldung']; record['Rückmeldung'] = ''; changed = true; }
                 continue;
             }
             // Dolmetscher wurde nach dem Senden geändert: der alte Auftrag gilt nicht mehr.
             if (!sameName(assignment.interpreter_name, record.Übersetzer)) {
                 await client.from('tt_assignments').update({ cancelled: true }).eq('id', assignment.id);
-                if (record['Rückmeldung']) { record['Rückmeldung'] = ''; changed = true; }
+                if (record['Rückmeldung']) { if (keepable(record['Rückmeldung'])) record['Letzte_Rückmeldung'] = record['Rückmeldung']; record['Rückmeldung'] = ''; changed = true; }
                 continue;
             }
             const text = assignment.storno_at
@@ -878,6 +882,9 @@
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
         const before = record['Rückmeldung'];
         record['Rückmeldung'] = '';
+        // Die letzte Rückmeldung („Absage – krank“) bleibt am Termin stehen – auch nach dem Archivieren.
+        const beforeLast = record['Letzte_Rückmeldung'];
+        if (keepable(before)) record['Letzte_Rückmeldung'] = before;
         persistTerminRecords(records(), 'tracking');
         window.refreshTrackingRows?.();
         TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [assignment.interpreter_id], title: 'Auftrag zurückgezogen', body: `${formatFleetDate(assignment.date)} · ${assignment.title} – dieser Auftrag gilt nicht mehr.` });
@@ -885,6 +892,7 @@
             const { error: undoError } = await client.from('tt_assignments').update({ cancelled: false }).eq('id', assignment.id);
             if (undoError) { showToast(TerminCloud.germanError(undoError), 'error'); return; }
             record['Rückmeldung'] = before;
+            if (beforeLast) record['Letzte_Rückmeldung'] = beforeLast; else delete record['Letzte_Rückmeldung'];
             persistTerminRecords(records(), 'tracking');
             window.refreshTrackingRows?.();
             showToast(`Der Auftrag steht wieder im Portal von ${assignment.interpreter_name}.`, 'success');

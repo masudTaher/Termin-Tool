@@ -448,6 +448,54 @@ Deno.serve(async (req) => {
     // Ärzte & Standorte: Fachrichtung und Gebäude eines Arztes im Internet nachschlagen (nur Einsatzleitung/Sekretariat).
     // Gesendet werden nur Name und Adresse des Arztes – nie Patienten oder Termine.
     // Braucht das Geheimnis ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets). Ohne Schlüssel: { configured: false }.
+    if (action === 'driverNote') {
+      // Meldung über den Vorfahrer (Update 42): nicht sauber, Tank leer, Schaden – sofort an den Vorfahrer und an die Einsatzleitung.
+      const { data: note } = await admin.from('tt_driver_notes').select('*').eq('id', String(input.noteId ?? '')).maybeSingle();
+      if (!note || (note.reporter_id !== profile.id && !isStaff)) return json({ error: 'Meldung nicht gefunden.' }, 404);
+      const kindWord: Record<string, string> = { unsauber: 'nicht sauber', tank: 'Tank fast leer', schaden: 'neuer Schaden', hinweis: 'Hinweis' };
+      const what = kindWord[String(note.kind)] ?? 'Hinweis';
+      const photos = Array.isArray(note.photo_paths) ? note.photo_paths.length : 0;
+      const body = `${note.reporter_name || 'Der nächste Fahrer'}: ${what}${note.text ? ` – ${String(note.text).slice(0, 160)}` : ''}${photos ? ` (${photos} Foto${photos === 1 ? '' : 's'})` : ''}`;
+      const driver = note.driver_id ? await sendTo([note.driver_id], {
+        title: `Meldung zu deiner Rückgabe von ${note.plate || 'einem Fahrzeug'}`,
+        body, url: 'portal.html?seite=fahrzeug', tag: `vorfahrer-${note.id}`,
+      }) : { sent: 0, devices: 0 };
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const office = await sendTo((staff ?? []).map((item) => item.id).filter((id) => id !== profile.id), {
+        title: `FAHRZEUG · ${note.plate || 'Fahrzeug'} ${what} – Vorfahrer ${note.driver_name || 'unbekannt'}`,
+        body, url: 'fahrzeugakte.html', tag: `vorfahrer-${note.id}-buero`,
+      });
+      return json({ sent: driver.sent + office.sent, devices: driver.devices + office.devices, driver: driver.sent, office: office.sent });
+    }
+
+    if (action === 'doctorFeedback') {
+      // Ein Arzt meldet der Einsatzleitung etwas (Update 42): Mitteilung an Einsatzleitung und Sekretariat.
+      if (!(profile.role === 'arzt' || isStaff)) return json({ error: 'Nur Ärzte und die Einsatzleitung.' }, 403);
+      const { data: note } = await admin.from('tt_doctor_feedback').select('*').eq('id', String(input.feedbackId ?? '')).maybeSingle();
+      if (!note || (note.doctor_id !== profile.id && !isStaff)) return json({ error: 'Meldung nicht gefunden.' }, 404);
+      const topicWord: Record<string, string> = { bericht: 'zu einem Bericht', termin: 'zu einem Termin', patient: 'zu einem Patienten', sonstiges: '' };
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const result = await sendTo((staff ?? []).map((item) => item.id).filter((id) => id !== profile.id), {
+        title: `ARZT · Meldung von ${note.doctor_name || 'Arzt'}${topicWord[String(note.topic)] ? ` ${topicWord[String(note.topic)]}` : ''}`,
+        body: String(note.text ?? '').slice(0, 200),
+        url: 'index.html#arzt', tag: `arzt-${note.id}`,
+      });
+      return json(result);
+    }
+
+    if (action === 'doctorAnswer') {
+      // Die Einsatzleitung hat dem Arzt geantwortet: Mitteilung an den Arzt (falls er Mitteilungen eingeschaltet hat).
+      if (!isStaff) return json({ error: 'Nur die Einsatzleitung.' }, 403);
+      const { data: note } = await admin.from('tt_doctor_feedback').select('*').eq('id', String(input.feedbackId ?? '')).maybeSingle();
+      if (!note || !note.doctor_id) return json({ sent: 0, devices: 0 });
+      const result = await sendTo([note.doctor_id], {
+        title: 'Antwort der Einsatzleitung auf deine Meldung',
+        body: String(note.answer ?? '').slice(0, 200),
+        url: 'arzt.html', tag: `arzt-${note.id}-antwort`,
+      });
+      return json(result);
+    }
+
     if (action === 'doctorInfo') {
       if (!['admin', 'sekretariat'].includes(profile.role)) return json({ error: 'Nur Einsatzleitung und Sekretariat.' }, 403);
       const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? '';

@@ -43,6 +43,7 @@
   --row-departed: #ffe5a8;
   --row-done: #dff1e3;
   --row-cancelled: #f8dddd;
+  --row-declined: #e9ddf5;
   --row-ink: #152238;
 }
 
@@ -76,6 +77,7 @@
   --row-departed: #5c4712;
   --row-done: #1d4a30;
   --row-cancelled: #5a262b;
+  --row-declined: #46305e;
   --row-ink: #f1f5f9;
 }
 
@@ -2883,3 +2885,98 @@ dialog.office-return .office-return-send input { width: 20px; height: 20px; marg
 .doctor-question-meta.is-ok { color: #18794e; }
 .doctor-question-reply summary { cursor: pointer; color: var(--muted); font-size: .86rem; font-weight: 700; }
 .doctor-question-reply[open] summary { margin-bottom: 8px; }
+
+/* ===== 87. Fahrerakte: Meldungen über den Vorfahrer, Belege auswählen, Meldungen des Arztes (Update 42) ===== */
+.take-note-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 10px 0 12px; }
+.take-note-kind { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-weight: 650; line-height: 1.3; cursor: pointer; }
+.take-note-kind input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; accent-color: #b42318; }
+.take-note-kind:has(input:checked) { border-color: color-mix(in srgb, #b42318 45%, var(--line)); background: color-mix(in srgb, #b42318 8%, var(--surface)); }
+.take-note-kind.damage-previous { margin: 10px 0 4px; align-items: flex-start; font-weight: 600; }
+.take-note-kind.damage-previous input { margin-top: 2px; }
+.driver-notes { border-color: color-mix(in srgb, #b42318 35%, var(--line)); }
+.driver-note { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 14px; border-left: 5px solid #b45309; }
+.driver-note[data-kind="schaden"] { border-left-color: #b42318; }
+.driver-note[data-kind="unsauber"] { border-left-color: #c2410c; }
+.driver-note[data-kind="tank"] { border-left-color: #b45309; }
+.driver-note[data-kind="hinweis"] { border-left-color: #64748b; }
+.driver-note[data-seen="ja"] { border-left-color: #94a3b8; opacity: .85; }
+.driver-note-main { display: grid; gap: 4px; flex: 1 1 260px; min-width: 0; }
+.driver-note-meta, .driver-file-meta { color: var(--muted); font-size: .86rem; }
+.driver-note-text, .driver-file-text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.driver-note-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.driver-note-photos .button-secondary { min-height: 36px; padding: 4px 12px; }
+.driver-note-seen { min-height: 44px; }
+/* Büro: Fahrerakte */
+.driver-file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.driver-file-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--surface); display: grid; gap: 6px; align-content: start; }
+.driver-file-card[data-open="ja"] { border-color: color-mix(in srgb, #b42318 45%, var(--line)); box-shadow: 0 6px 18px rgba(180, 35, 24, .1); }
+.driver-file-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.driver-file-head strong { font-size: 1.05rem; }
+.driver-file-count { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 34px; padding: 0 10px; border-radius: 999px; background: color-mix(in srgb, #b42318 12%, var(--surface)); color: #b42318; font-weight: 800; }
+.driver-file-sum { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: .88rem; }
+.driver-file-sum b { color: var(--ink); }
+.driver-file-card details { margin-top: 4px; }
+.driver-file-card summary { cursor: pointer; font-weight: 700; color: var(--accent, #1d4ed8); }
+.driver-file-entries { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.driver-file-entry { border: 1px solid var(--line); border-left: 5px solid #b45309; border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; }
+.driver-file-entry[data-kind="schaden"] { border-left-color: #b42318; }
+.driver-file-entry[data-kind="unsauber"] { border-left-color: #c2410c; }
+.driver-file-entry[data-kind="hinweis"] { border-left-color: #64748b; }
+.driver-file-entry[data-admonished="ja"] { background: color-mix(in srgb, #18794e 6%, var(--surface)); }
+.driver-file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.driver-file-actions button { min-height: 36px; padding: 4px 12px; font-size: .9rem; }
+.driver-file-note { color: #18794e; font-size: .88rem; font-weight: 600; }
+.driver-file-inbox { color: #b42318; font-weight: 700; }
+/* Belege auswählen, bevor die PDF entsteht */
+dialog.receipt-pick { width: min(640px, calc(100% - 32px)); max-height: 90vh; display: flex; flex-direction: column; }
+dialog.receipt-pick:not([open]) { display: none; }
+dialog.receipt-pick h2 { margin-bottom: 6px; }
+dialog.receipt-pick .receipt-pick-hint { margin: 0 0 10px; color: var(--muted); font-size: .92rem; white-space: normal; }
+.receipt-pick-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.receipt-pick-tools button { min-height: 36px; padding: 4px 12px; font-size: .9rem; }
+.receipt-pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; overflow: auto; flex: 1 1 auto; min-height: 0; }
+.receipt-pick-item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.receipt-pick-item input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; }
+.receipt-pick-item:has(input:not(:checked)) { opacity: .6; text-decoration: line-through; }
+.receipt-pick-item span { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.receipt-pick-item small { color: var(--muted); }
+.receipt-pick-item b { margin-left: auto; white-space: nowrap; }
+.receipt-pick-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.receipt-pick-foot .modal-buttons, .receipt-pick-foot .form-buttons { margin: 0; }
+.receipt-pick-sum { font-weight: 700; }
+/* Startseite: Meldungen des Arztes */
+.start-doctor { border-color: color-mix(in srgb, #1d4ed8 35%, var(--line)); }
+.start-doctor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.start-doctor-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.start-doctor-entry { border: 1px solid var(--line); border-left: 5px solid #1d4ed8; border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; }
+.start-doctor-entry[data-seen="ja"] { border-left-color: #94a3b8; }
+.start-doctor-entry[data-kind="anweisung"] { border-left-color: #b42318; }
+.start-doctor-entry[data-kind="info"] { border-left-color: #64748b; }
+.start-doctor-entry[data-kind="frage"] { border-left-color: #0f766e; }
+.start-doctor-entry strong { font-size: 1rem; }
+.start-doctor-meta { color: var(--muted); font-size: .86rem; }
+.start-doctor-text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.start-doctor-answer { display: grid; gap: 6px; margin-top: 4px; }
+.start-doctor-answer textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; min-height: 60px; }
+.start-doctor-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.start-doctor-actions button { min-height: 36px; padding: 4px 12px; font-size: .9rem; }
+.start-doctor-reply { color: #18794e; font-weight: 600; font-size: .92rem; }
+.start-doctor-sub { margin: 14px 0 0; font-size: 1rem; }
+
+/* ===== 88. Storno-Arten: Termin komplett (rot) oder Dolmetscher kann nicht (lila), Storno-Notiz, zurückgezogene Rückmeldung ===== */
+#dataTable tbody tr.tracking-status-cancelled[data-storno="dolmetscher"] > td { background: var(--row-declined); }
+#dataTable tbody tr.tracking-status-cancelled[data-storno="dolmetscher"] .patient-name { text-decoration: none; }
+body[data-page="tracking"] .storno-note { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 3px 8px; white-space: normal; overflow-wrap: anywhere; border-radius: 8px; background: color-mix(in srgb, #b42318 12%, var(--surface)); color: #8a1c13; font-size: 12px; line-height: 1.3; cursor: pointer; border: 0; text-align: left; font: inherit; font-size: 12px; }
+body[data-page="tracking"] tr[data-storno="dolmetscher"] .storno-note { background: color-mix(in srgb, #6d28d9 14%, var(--surface)); color: #4c1d95; }
+:root[data-theme="dark"] body[data-page="tracking"] .storno-note { color: #fecaca; }
+:root[data-theme="dark"] body[data-page="tracking"] tr[data-storno="dolmetscher"] .storno-note { color: #ddd6fe; }
+body[data-page="tracking"] .storno-note b { font-weight: 700; }
+body[data-page="tracking"] .response-pill[data-response="Zurückgezogen"] { background: color-mix(in srgb, #64748b 14%, var(--surface)); color: #475569; border-color: color-mix(in srgb, #64748b 30%, var(--line)); }
+dialog.storno-dialog .storno-kinds { display: grid; gap: 6px; margin: 4px 0 10px; }
+dialog.storno-dialog .storno-kind { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+dialog.storno-dialog .storno-kind input { margin: 3px 0 0; }
+dialog.storno-dialog .storno-kind span { display: grid; gap: 1px; }
+dialog.storno-dialog .storno-kind small { color: var(--muted); }
+dialog.storno-dialog .storno-kind[data-kind="termin"]:has(input:checked) { border-color: #b42318; background: color-mix(in srgb, #b42318 8%, var(--surface)); }
+dialog.storno-dialog .storno-kind[data-kind="dolmetscher"]:has(input:checked) { border-color: #6d28d9; background: color-mix(in srgb, #6d28d9 10%, var(--surface)); }
+dialog.storno-dialog textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; }

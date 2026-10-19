@@ -193,6 +193,22 @@
 </dialog>
 
 <!-- Sonderkonditionen (selten): Betrag in Euro für diesen Tag, optional mit Grund -->
+<!-- Stornieren: Termin komplett (rot) oder Dolmetscher kann nicht (lila) – mit Notiz, die auch nach dem Zurückziehen bleibt -->
+<dialog id="stornoDialog" class="confirm-dialog special-dialog storno-dialog" aria-labelledby="stornoDialogTitle">
+  <form id="stornoDialogForm" class="fleet-form" novalidate>
+    <h2 id="stornoDialogTitle">Termin stornieren</h2>
+    <p class="field-hint" id="stornoDialogInfo"></p>
+    <div class="storno-kinds" role="radiogroup" aria-label="Art der Stornierung">
+      <label class="storno-kind" data-kind="termin"><input type="radio" name="stornoKind" value="termin" checked><span><b>Termin komplett storniert</b><small>Der Termin findet nicht statt (Praxis, Patient, Absage). Die Zeile bleibt rot.</small></span></label>
+      <label class="storno-kind" data-kind="dolmetscher"><input type="radio" name="stornoKind" value="dolmetscher"><span><b>Storniert – Dolmetscher kann nicht</b><small>Der Termin findet statt, aber die eingetragene Person kann nicht. Die Zeile wird lila.</small></span></label>
+    </div>
+    <label for="stornoDialogNote">Notiz <span class="optional-label">optional</span></label>
+    <textarea id="stornoDialogNote" rows="3" maxlength="400" placeholder="Zum Beispiel: Praxis hat abgesagt – oder: krank gemeldet um 7:30 Uhr"></textarea>
+    <p class="field-hint">Die Notiz bleibt am Termin stehen – auch wenn du den Auftrag vom Dolmetscher zurückziehst und der Tag archiviert wird.</p>
+    <div class="modal-buttons special-buttons"><button type="button" class="button-quiet-danger" id="stornoDialogReopen" hidden>Stornierung aufheben</button><span></span><button type="button" class="button-secondary" id="stornoDialogCancel">Abbrechen</button><button type="submit" class="button-primary" id="stornoDialogSave">Stornieren</button></div>
+  </form>
+</dialog>
+
 <dialog id="specialDialog" class="confirm-dialog special-dialog" aria-labelledby="specialDialogTitle">
   <form id="specialDialogForm" class="fleet-form" novalidate>
     <h2 id="specialDialogTitle">Sonderkonditionen</h2>

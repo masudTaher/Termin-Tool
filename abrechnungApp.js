@@ -421,6 +421,17 @@
         button.disabled = true;
         const label = button.textContent;
         try {
+            // Vorschau: Welche Belege sollen in die PDF? Was im Original abgegeben wurde, nimmt man heraus.
+            const chosen = await DocPdf.pick({
+                title: `Belege von ${name} – was soll in die PDF?`,
+                hint: 'Hake ab, was in die PDF soll. Belege, die im Original vorliegen, nimm heraus – sie bleiben gespeichert und lassen sich trotzdem als „Gedruckt ✓“ abhaken.',
+                rows: list.map(item => ({ id: item.id, label: `${Abrechnung.longDate(item.date)} · ${item.place || '–'} · ${item.kind}`, sub: item.status, note: item.printed_at ? 'schon gedruckt' : (item.photo_path ? '' : 'ohne Foto'), amount: euro(item.amount), checked: !item.printed_at })),
+                confirm: 'PDF erstellen',
+                sumOf: ids => euro(list.filter(item => ids.includes(String(item.id))).reduce((total, item) => total + Number(item.amount), 0))
+            });
+            if (!chosen) return;
+            list = list.filter(item => chosen.includes(String(item.id)));
+            if (!list.length) return;
             const items = [];
             for (const [index, item] of list.entries()) {
                 button.textContent = `Beleg ${index + 1}/${list.length} …`;
