@@ -1716,12 +1716,19 @@ function fmRemarkName(termin) {
     if (byFirst.length === 1) return byFirst[0];
     return termin._fmExport && termin._fmExport.toLocaleLowerCase('de') === key ? termin._fmExport : '';
 }
+// In FileMaker steht nur der Vorname (so war es immer). Gibt es zwei Dolmetscher mit demselben Vornamen, steht der ganze Name.
+function fmLineName(name) {
+    const first = String(name || '').trim().split(' ')[0];
+    const known = typeof knownInterpreterNames === 'function' ? knownInterpreterNames() : [];
+    const sameFirst = known.filter(other => other.split(' ')[0].toLocaleLowerCase('de') === first.toLocaleLowerCase('de') && other.toLocaleLowerCase('de') !== String(name).trim().toLocaleLowerCase('de'));
+    return sameFirst.length ? String(name).trim() : first;
+}
 function fmNewRemark(termin, name) {
     const lines = fmRemarkLines(termin);
     const oldName = fmRemarkName(termin);
     const rest = oldName ? lines.slice(lines.findIndex(Boolean) + 1) : lines;
     while (rest.length && !rest[0]) rest.shift();
-    return [name, ...rest].join('\n').trim();
+    return [fmLineName(name), ...rest].join('\n').trim();
 }
 function fmRows() {
     return trackingData.map((termin, index) => {
