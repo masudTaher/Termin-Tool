@@ -148,7 +148,9 @@
 
     // „Jetzt losfahren“ meldet zugleich an die Pforte (ohne Rückfrage) – wenn nicht schon eine Meldung offen ist.
     async function autoReport() {
-        if (!ready || !allowed() || openRow()) return false;
+        if (!ready || !allowed()) return false;
+        await load();                                   // die Pforte kann die nächste Ausfahrt schon angemeldet haben („Fährt wieder raus“)
+        if (openRow()) return false;
         const car = carNow();
         const stops = stopsNow(null);
         const first = stops[0] || {};

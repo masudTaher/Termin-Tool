@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="robots" content="noindex, nofollow">
+      <meta name="theme-color" content="#eef4fb">
+      <title>Reifenwechsel · Medical Office Bonn</title>
+      <link rel="stylesheet" href="reifen.css">
+   </head>
+   <body>
+      <main class="tyre-page">
+         <header class="tyre-head">
+            <p class="tyre-kicker">MEDICAL OFFICE BONN · FUHRPARK</p>
+            <h1 id="tyreTitle">Reifenwechsel</h1>
+            <p id="tyreSub" class="tyre-sub">Die Liste wird geladen …</p>
+            <p id="tyreNote" class="tyre-note" hidden></p>
+         </header>
+         <section id="tyreProgress" class="tyre-progress" hidden aria-live="polite">
+            <div class="tyre-bar"><i id="tyreBar"></i></div>
+            <p id="tyreProgressText"></p>
+         </section>
+         <p id="tyreStatus" class="tyre-status" role="status" aria-live="polite" hidden></p>
+         <ul id="tyreList" class="tyre-list"></ul>
+         <footer class="tyre-foot">
+            <label class="tyre-who"><span>Dein Name (steht beim Abhaken dabei)</span><input id="tyreWho" type="text" maxlength="80" autocomplete="name" placeholder="z. B. Kevin, ATU Bonn"></label>
+            <button type="button" id="tyreRefresh" class="tyre-button tyre-button-quiet">Aktualisieren</button>
+            <p class="tyre-hint">Diese Seite zeigt nur Kennzeichen und Modell. Die Einsatzleitung sieht denselben Stand. Bei Fragen: Medical Office Bonn, Fahrdienst.</p>
+         </footer>
+      </main>
+
+      <dialog id="tyreDone" class="tyre-dialog">
+         <form id="tyreDoneForm" method="dialog">
+            <p class="tyre-kicker">ERLEDIGT</p>
+            <h2 id="tyreDoneTitle">Fahrzeug</h2>
+            <label for="tyreDoneNote">Bemerkung (freiwillig)</label>
+            <textarea id="tyreDoneNote" rows="3" maxlength="300" placeholder="z. B. Winterreifen montiert, DOT 2124, Profil 7 mm"></textarea>
+            <div class="tyre-dialog-buttons"><button type="button" id="tyreDoneCancel" class="tyre-button tyre-button-quiet">Abbrechen</button><button type="submit" id="tyreDoneOk" class="tyre-button tyre-button-main">Als erledigt markieren</button></div>
+         </form>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="reifenApp.js"></script>
+   </body>
+</html>

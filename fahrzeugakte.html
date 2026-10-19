@@ -54,6 +54,14 @@
                <details class="fuel-log" id="fuelLogBox" hidden><summary>Verlauf: wer hatte wann welche Karte</summary><ul id="fuelLog" class="directory-list"></ul></details>
             </section>
 
+            <!-- Reifenwechsel: Liste für die Werkstatt (ATU) – ein Link ohne Zugangsdaten -->
+            <section class="directory-card tyre-office" aria-labelledby="tyreTitle" id="tyreSection">
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.500"/><path d="M12 3v5.500M12 15.500V21M3 12h5.500M15.500 12H21"/></svg></span><div><h2 id="tyreTitle">Reifenwechsel – Liste für die Werkstatt</h2><p id="tyreSummary">Wird geladen …</p></div><button type="button" id="tyreNewOpen" class="button-primary">Neue Liste erstellen</button></div>
+               <p class="field-hint">Du schickst der Werkstatt (z. B. ATU) einen Link ohne Zugangsdaten. Sie sieht nur Kennzeichen, Modell und Kilometerstand und hakt ab, was fertig ist – du siehst denselben Stand hier. „Liste schließen“ macht den Link ungültig.</p>
+               <div id="tyreCampaigns" class="tyre-campaigns"></div>
+               <details class="fuel-log" id="tyreClosedBox" hidden><summary>Frühere Listen</summary><ul id="tyreClosed" class="directory-list"></ul></details>
+            </section>
+
             <details class="directory-card fold-card" id="retiredSection" hidden>
                <summary><span>Nicht mehr im Fuhrpark</span><b id="retiredCount">0</b></summary>
                <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen. Ihre Fahrten und Schäden bleiben gespeichert.</p>
@@ -206,6 +214,25 @@
 
       <!-- Kilometer einer Fahrt korrigieren -->
       <!-- Rückgabe durch die Einsatzleitung: Fahrzeug nicht zurückgegeben oder vergessen -->
+      <dialog id="tyreNewDialog" class="confirm-dialog tyre-new" aria-labelledby="tyreNewTitle">
+         <form id="tyreNewForm" class="fleet-form" novalidate>
+            <h2 id="tyreNewTitle">Neue Liste für die Werkstatt</h2>
+            <label for="tyreNewName">Bezeichnung</label>
+            <input id="tyreNewName" type="text" maxlength="80" placeholder="z. B. Winterreifen 2026">
+            <label for="tyreNewNote">Hinweis für die Werkstatt (freiwillig)</label>
+            <input id="tyreNewNote" type="text" maxlength="300" placeholder="z. B. Winterreifen aus dem Lager, Termin ab 2. November">
+            <span class="field-label">Fahrzeuge auf der Liste</span>
+            <p class="field-hint">Vorausgewählt sind die diplomatischen Fahrzeuge. Mietwagen kannst du dazunehmen.</p>
+            <ul id="tyreVehicleList" class="tyre-vehicle-list"></ul>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="tyreNewCancel">Abbrechen</button><button type="submit" class="button-primary" id="tyreNewSave">Liste erstellen und Link zeigen</button></div>
+         </form>
+      </dialog>
+      <dialog id="tyreLinkDialog" class="confirm-dialog tyre-link" aria-labelledby="tyreLinkTitle">
+         <h2 id="tyreLinkTitle">Link für die Werkstatt</h2>
+         <p class="field-hint">Diesen Link per WhatsApp oder E-Mail an die Werkstatt schicken. Wer den Link hat, sieht die Liste – darum nur an die Werkstatt geben.</p>
+         <input id="tyreLinkField" type="text" readonly>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="tyreLinkWhatsApp">Per WhatsApp senden</button><button type="button" class="button-primary" id="tyreLinkCopy">Link kopieren</button><button type="button" class="button-quiet" id="tyreLinkClose">Schließen</button></div>
+      </dialog>
       <dialog id="officeReturnDialog" class="confirm-dialog office-return" aria-labelledby="officeReturnTitle">
          <form id="officeReturnForm" class="fleet-form" novalidate>
             <h2 id="officeReturnTitle">Rückgabe eintragen</h2>

@@ -92,66 +92,111 @@
     const confirmedAt = row => ('out_confirmed_at' in row ? row.out_confirmed_at : row.out_at) || null;
     const leftAt = row => confirmedAt(row) || row.out_at;
 
+    // Eine Person, ein Feld – auch wenn sie am Tag mehrmals hinaus- und hereinfährt (Update 38). Jede Fahrt ist eine Zeile in
+    // tt_gate; hier werden die Zeilen einer Person zusammengefasst: Stand (angemeldet / draußen / im Haus / fertig), alle Termine
+    // mit erledigt/offen und die Fahrten mit raus- und zurück-Zeiten.
+    const personKey = row => row.profile_id || row.driver_name || row.id;
+    function mergedStops(list) {
+        const seen = new Map();
+        list.forEach(row => stopsOf(row).forEach(stop => {
+            const key = stop.assignment_id || `${String(stop.time || '').slice(0, 5)}|${stop.doctor || ''}|${stop.city || ''}`;
+            const doneAt = stopDoneAt(row, stop);
+            const known = seen.get(key);
+            seen.set(key, { ...(known || {}), ...stop, doneAt: doneAt || known?.doneAt || null, row });
+        }));
+        return [...seen.values()].sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')));
+    }
+    function groups() {
+        const map = new Map();
+        rows.forEach(row => { const key = personKey(row); if (!map.has(key)) map.set(key, []); map.get(key).push(row); });
+        return [...map.values()].map(list => {
+            list.sort((left, right) => String(left.out_at).localeCompare(String(right.out_at)));
+            const current = list[list.length - 1];
+            const stops = mergedStops(list);
+            const open = stops.filter(stop => !stop.doneAt);
+            const done = stops.filter(stop => Boolean(stop.doneAt));
+            let state;
+            if (!current.in_at) state = confirmedAt(current) ? 'draussen' : 'angemeldet';
+            else if (current.final || !open.length || current.date !== today()) state = 'fertig';
+            else state = 'imhaus';
+            return { key: personKey(current), list, current, stops, open, done, state, trips: list.filter(row => confirmedAt(row) || row.in_at) };
+        });
+    }
+    const tripLine = (row, index, count) => {
+        const label = count > 1 ? `${index + 1}. Fahrt: ` : '';
+        if (!confirmedAt(row) && !row.in_at) return `${label}gemeldet ${clock(row.out_at)} – wartet auf Bestätigung`;
+        return `${label}raus ${clock(leftAt(row))}${row.in_at ? ` → zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})` : ' → noch draußen'}`;
+    };
+
     function render() {
-        // Oben, was die Pforte noch bestätigen muss – darunter, wer draußen ist.
-        const out = rows.filter(row => !row.in_at).sort((left, right) => (confirmedAt(left) ? 1 : 0) - (confirmedAt(right) ? 1 : 0) || String(left.out_at).localeCompare(String(right.out_at)));
-        const waiting = out.filter(row => !confirmedAt(row));
-        const back = rows.filter(row => row.in_at).sort((left, right) => String(right.in_at).localeCompare(String(left.in_at)));
+        const people = groups();
+        const order = { angemeldet: 0, imhaus: 1, draussen: 2 };
+        const main = people.filter(group => group.state !== 'fertig').sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
+        const back = people.filter(group => group.state === 'fertig').sort((left, right) => String(right.current.in_at).localeCompare(String(left.current.in_at)));
+        const waiting = main.filter(group => group.state === 'angemeldet');
+        const outside = main.filter(group => group.state === 'draussen');
+        const inside = main.filter(group => group.state === 'imhaus');
         $('gateCountWait').textContent = String(waiting.length);
         $('gateCountWaitBox').dataset.open = waiting.length ? 'ja' : '';
-        $('gateCountOut').textContent = String(out.length - waiting.length);
-        $('gateCountBack').textContent = String(back.length);
+        $('gateCountOut').textContent = String(outside.length);
+        $('gateCountBack').textContent = String(inside.length + back.length);
         const live = day === today();
-        $('gateOutTitle').textContent = live ? (waiting.length ? 'Angemeldet und draußen' : 'Draußen') : `Noch offen am ${dayLong(day)}`;
-        $('gateOutEmpty').hidden = out.length > 0;
+        $('gateOutTitle').textContent = live ? [waiting.length ? 'Angemeldet' : '', inside.length ? 'im Haus (fährt noch einmal)' : '', 'draußen'].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase()) : `Noch offen am ${dayLong(day)}`;
+        $('gateOutEmpty').hidden = main.length > 0;
         $('gateOutEmpty').textContent = live ? 'Im Moment ist niemand angemeldet und niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.';
+        $('gateBackTitle').textContent = live ? 'Heute fertig' : 'Zurück';
         $('gateBackEmpty').hidden = back.length > 0;
-        $('gateOutList').replaceChildren(...out.map(row => {
+        $('gateOutList').replaceChildren(...main.map(group => {
+            const row = group.current;
             const card = el('li', 'gate-card');
             card.dataset.id = row.id;
-            const isOut = Boolean(confirmedAt(row));
-            card.dataset.state = isOut ? 'draussen' : 'angemeldet';
-            if (isOut && Date.now() - new Date(leftAt(row)) < FRESH) card.dataset.fresh = String(new Date(leftAt(row)).getTime());
-            // Die Hauptrolle hat die Person: Name groß, darunter ihr Fahrzeug – daneben ihre Aufträge der Reihe nach.
+            card.dataset.state = group.state;
+            if (group.state === 'draussen' && Date.now() - new Date(leftAt(row)) < FRESH) card.dataset.fresh = String(new Date(leftAt(row)).getTime());
+            // Die Hauptrolle hat die Person: Name groß, darunter ihr Fahrzeug – daneben ihre Termine der Reihe nach.
             const car = el('div', 'gate-car');
             car.append(el('strong', 'gate-driver', row.driver_name || 'Unbekannt'), el('span', 'gate-plate', row.plate || 'ohne Fahrzeug'), el('span', 'gate-model', row.vehicle || ''));
+            if (group.trips.length > 1) car.append(el('span', 'gate-trip-count', `${group.trips.length}. Fahrt heute`));
             const info = el('div', 'gate-info');
-            const stops = stopsOf(row);
+            const stops = group.stops;
             if (stops.length > 1) info.append(el('span', 'gate-stops-count', `${stops.length} Aufträge`));
             const list = el('ol', 'gate-stops');
-            const done = doneStops(row);
-            const open = openStops(row);
             let nextMarked = false;
             stops.forEach((stop, index) => {
                 const item = el('li', 'gate-stop');
-                const doneAt = stopDoneAt(row, stop);
-                if (doneAt) item.classList.add('is-done');
-                else if (done.length && !nextMarked) { item.classList.add('is-next'); nextMarked = true; }
-                if (stops.length > 1) item.append(el('b', 'gate-stop-no', doneAt ? '✓' : String(index + 1)));
+                if (stop.doneAt) item.classList.add('is-done');
+                else if ((group.done.length || group.state === 'imhaus') && !nextMarked) { item.classList.add('is-next'); nextMarked = true; }
+                if (stops.length > 1) item.append(el('b', 'gate-stop-no', stop.doneAt ? '✓' : String(index + 1)));
                 const text = el('div', 'gate-stop-text');
                 text.append(el('strong', '', [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' · ')));
                 if (stopPatient(stop)) text.append(el('span', '', `Patient/in: ${stopPatient(stop)}`));
-                if (doneAt) text.append(el('span', 'gate-stop-done', `erledigt${typeof doneAt === 'string' && /T/.test(doneAt) ? ` um ${clock(doneAt)} Uhr` : ''}`));
-                else if (done.length) text.append(el('span', 'gate-stop-open', 'noch offen'));
+                if (stop.doneAt) text.append(el('span', 'gate-stop-done', `erledigt${typeof stop.doneAt === 'string' && /T/.test(stop.doneAt) ? ` um ${clock(stop.doneAt)} Uhr` : ''}`));
+                else if (group.done.length) text.append(el('span', 'gate-stop-open', 'noch offen'));
                 item.append(text);
                 list.append(item);
             });
-            // Erster Termin fertig, der nächste erst später: Die Person kommt vermutlich zwischendurch zurück.
-            if (done.length && open.length) info.append(el('span', 'gate-between', `${done.length} von ${stops.length} erledigt – kommt vermutlich zwischendurch zurück und fährt um ${stopTime(open[0]) || 'später'} wieder hinaus`));
-            else if (stops.length && done.length === stops.length) info.append(el('span', 'gate-between is-all', stops.length > 1 ? 'Alle Termine erledigt – auf dem Rückweg' : 'Termin erledigt – auf dem Rückweg'));
             // Ohne Auftrag steht das Ziel, das die Person selbst eingetragen hat, groß da.
             if (!stops.length) { const item = el('li', 'gate-stop'); const text = el('div', 'gate-stop-text'); text.append(el('strong', '', row.note || 'Ziel nicht angegeben')); item.append(text); list.append(item); }
             info.append(list);
-            if (row.note && stops.length) info.append(el('span', 'gate-fact', row.note));
+            if (row.note && stops.length && !/^Weiterfahrt/.test(row.note)) info.append(el('span', 'gate-fact', row.note));
+            // Erster Termin fertig, der nächste erst später: Die Person kommt vermutlich zwischendurch zurück.
+            if (group.state === 'imhaus') info.append(el('span', 'gate-between', `Zwischendurch zurück – ${group.open.length === 1 ? 'noch ein Termin' : `noch ${group.open.length} Termine`}: fährt um ${stopTime(group.open[0]) || 'später'} wieder hinaus`));
+            else if (group.done.length && group.open.length) info.append(el('span', 'gate-between', `${group.done.length} von ${stops.length} erledigt – kommt vermutlich zwischendurch zurück und fährt um ${stopTime(group.open[0]) || 'später'} wieder hinaus`));
+            else if (stops.length && group.done.length === stops.length) info.append(el('span', 'gate-between is-all', stops.length > 1 ? 'Alle Termine erledigt – auf dem Rückweg' : 'Termin erledigt – auf dem Rückweg'));
+            // Alle Fahrten des Tages mit raus- und zurück-Zeiten.
+            if (group.list.length > 1 || group.trips.length) {
+                const trips = el('ul', 'gate-trips');
+                group.list.forEach((trip, index) => { const line = el('li', '', tripLine(trip, index, group.list.length)); if (trip === row) line.classList.add('is-current'); trips.append(line); });
+                info.append(trips);
+            }
             const time = el('div', 'gate-time');
             const since = el('span', 'gate-since', '');
-            since.dataset.since = leftAt(row);
             const otherDay = row.date !== today();
             const dayText = new Date(`${row.date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-            time.append(el('span', 'gate-time-label', isOut ? (otherDay ? `raus am ${dayText}` : 'raus um') : (otherDay ? `gemeldet am ${dayText}` : 'gemeldet um')), el('strong', '', clock(leftAt(row))), since);
+            if (group.state === 'imhaus') { since.dataset.since = row.in_at; time.append(el('span', 'gate-time-label', 'zurück um'), el('strong', '', clock(row.in_at)), since); }
+            else { since.dataset.since = leftAt(row); time.append(el('span', 'gate-time-label', group.state === 'draussen' ? (otherDay ? `raus am ${dayText}` : 'raus um') : (otherDay ? `gemeldet am ${dayText}` : 'gemeldet um')), el('strong', '', clock(leftAt(row))), since); }
             if (otherDay) card.dataset.old = 'ja';
             const side = el('div', 'gate-side');
-            if (isOut) {
+            if (group.state === 'draussen') {
                 const done = el('button', 'gate-button gate-return', 'Ist zurück');
                 done.type = 'button';
                 done.addEventListener('click', () => setBack(row, true, done));
@@ -162,6 +207,19 @@
                     unconfirm.addEventListener('click', () => setOut(row, false, unconfirm));
                     side.append(unconfirm);
                 }
+            } else if (group.state === 'imhaus') {
+                // Zwischendurch zurück: Die Person bleibt stehen – die nächste Ausfahrt wird hier angemeldet (oder der Tag ist doch zu Ende).
+                side.append(el('span', 'gate-inside-label', 'Im Haus'));
+                const again = el('button', 'gate-button gate-again', 'Fährt wieder raus');
+                again.type = 'button';
+                again.addEventListener('click', () => goAgain(row, group.open, again));
+                const finish = el('button', 'gate-button gate-button-quiet gate-finish', 'Heute fertig');
+                finish.type = 'button';
+                finish.addEventListener('click', () => setDone(row, true, finish));
+                const undo = el('button', 'gate-button gate-button-quiet gate-undo', 'Doch nicht zurück');
+                undo.type = 'button';
+                undo.addEventListener('click', () => setBack(row, false, undo));
+                side.append(again, finish, undo);
             } else {
                 // Erst die Pforte macht aus der Meldung eine Ausfahrt.
                 side.append(el('span', 'gate-wait-label', 'Wartet auf dich'));
@@ -182,46 +240,49 @@
             card.append(car, info, time, side);
             return card;
         }));
-        $('gateBackList').replaceChildren(...back.map(row => {
+        $('gateBackList').replaceChildren(...back.map(group => {
+            const row = group.current;
             const item = el('li', 'gate-back-row');
             item.dataset.id = row.id;
             const text = el('div', 'gate-back-text');
-            text.append(el('strong', '', `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'}`), el('span', '', `${destination(row)} · raus ${clock(leftAt(row))} · zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})`));
+            text.append(el('strong', '', `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'}`));
+            if (group.list.length > 1) { text.append(el('span', '', `${group.list.length} Fahrten: ${group.list.map((trip, index) => tripLine(trip, index, 1)).join(' · ')}`)); }
+            else text.append(el('span', '', `${destination(row)} · raus ${clock(leftAt(row))} · zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})`));
+            const side = el('div', 'gate-back-side');
+            if (row.final && group.open.length && row.date === today()) {
+                text.append(el('span', 'gate-back-rest', `Noch offen: ${group.open.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ')}`));
+                const reopen = el('button', 'gate-button gate-button-quiet gate-reopen', 'Fährt doch wieder raus');
+                reopen.type = 'button';
+                reopen.addEventListener('click', () => setDone(row, false, reopen));
+                side.append(reopen);
+            }
             const undo = el('button', 'gate-button gate-button-quiet gate-undo', 'Doch nicht zurück');
             undo.type = 'button';
             undo.addEventListener('click', () => setBack(row, false, undo));
-            const side = el('div', 'gate-back-side');
-            // Zwischendurch zurück, aber noch ein Termin offen: Die nächste Ausfahrt lässt sich hier gleich anmelden (Update 38).
-            const rest = row.date === today() ? openStops(row) : [];
-            const already = rest.length && rows.some(other => other.profile_id === row.profile_id && !other.in_at);
-            if (rest.length && !already) {
-                item.dataset.again = 'ja';
-                text.append(el('span', 'gate-back-rest', `Noch offen: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ')} – fährt wieder hinaus`));
-                const again = el('button', 'gate-button gate-again', 'Fährt wieder raus');
-                again.type = 'button';
-                again.addEventListener('click', () => goAgain(row, rest, again));
-                side.append(again);
-            } else if (rest.length && already) text.append(el('span', 'gate-back-rest', 'Nächste Ausfahrt ist angemeldet'));
             side.append(undo);
             item.append(text, side);
             return item;
         }));
-        // Tagesbericht
-        const all = rows.filter(row => row.date === day).sort((left, right) => String(left.out_at).localeCompare(String(right.out_at)));
+        // Tagesbericht: jede Fahrt eine Zeile, nach Person und Zeit.
+        const all = rows.filter(row => row.date === day).sort((left, right) => String(left.driver_name).localeCompare(String(right.driver_name), 'de') || String(left.out_at).localeCompare(String(right.out_at)));
+        const tripNo = new Map();
         $('gateReportTitle').textContent = `Pforte – Bewegungen am ${dayLong(day)}`;
         $('gateReportSub').textContent = `Medical Office Bonn · gedruckt am ${new Date().toLocaleDateString('de-DE')} um ${clock(new Date())} Uhr${profile?.full_name ? ` von ${profile.full_name}` : ''}`;
         $('gateReportBody').replaceChildren(...all.map((row, index) => {
             const line = el('tr');
             const stops = stopsOf(row);
-            [String(index + 1), row.driver_name, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
+            const key = personKey(row);
+            tripNo.set(key, (tripNo.get(key) || 0) + 1);
+            const count = all.filter(other => personKey(other) === key).length;
+            [String(index + 1), `${row.driver_name}${count > 1 ? ` (${tripNo.get(key)}. Fahrt)` : ''}`, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
                 stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
                 [...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / ')]
                 .forEach(value => line.append(el('td', '', value || '')));
             return line;
         }));
         if (!all.length) { const line = el('tr'); const cell = el('td', '', 'An diesem Tag gab es keine Ausfahrten.'); cell.colSpan = 11; line.append(cell); $('gateReportBody').append(line); }
-        const older = out.filter(row => row.date !== day).length;
-        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Ausfahrt' : 'Ausfahrten'} · ${all.filter(row => row.in_at).length} zurück · ${all.filter(row => !row.in_at && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
+        const older = main.filter(group => group.current.date !== day).length;
+        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Fahrt' : 'Fahrten'} · ${all.filter(row => row.in_at).length} zurück · ${all.filter(row => !row.in_at && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
         tick();
     }
 
@@ -284,6 +345,14 @@
         if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) fährt wieder hinaus?\n\nNächster Termin: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join(', ')}`, 'Ausfahrt eintragen'))) return;
         button.disabled = true;
         const { error } = await client.rpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(stop => ({ ...stop, done: '' })) });
+        button.disabled = false;
+        if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
+        await load();
+    }
+    // „Heute fertig“ (p_done = true): Die Person ist zurück und fährt nicht mehr – auch wenn noch ein Termin offen steht.
+    async function setDone(row, done, button) {
+        button.disabled = true;
+        const { error } = await client.rpc('tt_gate_done', { p_id: row.id, p_done: done });
         button.disabled = false;
         if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
         await load();

@@ -103,6 +103,7 @@
         renderGrid();
         renderRetired();
         loadPhotoUrls();
+        loadTyre();
         if (selectedId && vehicles.some(vehicle => vehicle.id === selectedId)) await renderFile();
         else { selectedId = null; $('vehicleFile').hidden = true; $('fileBackdrop').hidden = true; document.documentElement.classList.remove('has-drawer'); }
         window.refreshCloudInbox?.();
@@ -1411,6 +1412,135 @@
 
     // ---------- Kilometer einer Fahrt korrigieren ----------
     let mileageItem = null;
+    // ---------- Reifenwechsel: Liste für die Werkstatt (Update 39) ----------
+    // Die Einsatzleitung stellt eine Liste zusammen und schickt der Werkstatt einen Link ohne Zugangsdaten (reifen.html?k=…).
+    // Beide sehen denselben Stand; die Werkstatt hakt ab, das Büro kann auch abhaken und die Liste schließen.
+    let tyreCampaigns = [];
+    let tyreItems = [];
+    let tyreReady = false;
+    const tyreLink = campaign => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}reifen.html?k=${encodeURIComponent(campaign.token)}`;
+    const tyreToken = () => { const bytes = new Uint8Array(24); crypto.getRandomValues(bytes); return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    async function loadTyre() {
+        const [campaigns, items] = await Promise.all([
+            client.from('tt_tyre_campaigns').select('*').order('created_at', { ascending: false }).limit(30),
+            client.from('tt_tyre_items').select('*').order('position')
+        ]);
+        tyreReady = !campaigns.error && !items.error;
+        tyreCampaigns = tyreReady ? campaigns.data : [];
+        tyreItems = tyreReady ? items.data : [];
+        renderTyre();
+    }
+    function renderTyre() {
+        const section = $('tyreSection');
+        if (!section) return;
+        const open = tyreCampaigns.filter(item => item.active);
+        const closed = tyreCampaigns.filter(item => !item.active);
+        $('tyreNewOpen').disabled = !tyreReady;
+        $('tyreSummary').textContent = !tyreReady ? 'Noch nicht eingerichtet – dafür fehlt Update 39 in der Datenbank.'
+            : open.length ? open.map(campaign => { const list = tyreItems.filter(item => item.campaign_id === campaign.id); return `${campaign.title}: ${list.filter(item => item.done).length} von ${list.length} erledigt`; }).join(' · ')
+            : 'Keine offene Liste. Mit „Neue Liste erstellen“ bekommst du einen Link für die Werkstatt.';
+        $('tyreCampaigns').replaceChildren(...open.map(campaign => {
+            const list = tyreItems.filter(item => item.campaign_id === campaign.id);
+            const done = list.filter(item => item.done).length;
+            const box = el('div', 'tyre-campaign');
+            box.dataset.id = campaign.id;
+            const head = el('div', 'tyre-campaign-head');
+            const title = el('div');
+            title.append(el('strong', null, campaign.title), el('small', null, [`Liste vom ${formatDate(campaign.created_at)}`, campaign.created_by_name, campaign.note ? `Hinweis: ${campaign.note}` : ''].filter(Boolean).join(' · ')));
+            const progress = el('div', 'tyre-office-progress');
+            const bar = el('div', 'tyre-office-bar'); const fill = el('i'); fill.style.width = `${list.length ? Math.round(done / list.length * 100) : 0}%`; bar.append(fill);
+            progress.append(bar, el('span', null, done === list.length && list.length ? 'Alles erledigt' : `${done} von ${list.length} erledigt`));
+            const actions = el('div', 'tyre-campaign-actions');
+            const link = el('button', 'button-secondary', 'Link zeigen');
+            link.type = 'button';
+            link.addEventListener('click', () => showTyreLink(campaign));
+            const close = el('button', 'button-quiet-danger', 'Liste schließen');
+            close.type = 'button';
+            close.addEventListener('click', async () => {
+                if (!await confirmDialog(`„${campaign.title}“ schließen?\n\nDer Link der Werkstatt geht dann nicht mehr. Die Liste bleibt unter „Frühere Listen“ stehen.`, 'Liste schließen')) return;
+                const { error } = await client.from('tt_tyre_campaigns').update({ active: false, closed_at: new Date().toISOString() }).eq('id', campaign.id);
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                showToast('Liste geschlossen – der Link ist nicht mehr gültig.', 'success');
+                await loadTyre();
+            });
+            actions.append(link, close);
+            head.append(title, progress, actions);
+            const rows = el('ul', 'directory-list tyre-office-list');
+            rows.replaceChildren(...list.map(item => {
+                const row = el('li', 'vehicle-entry tyre-office-item');
+                row.dataset.done = item.done ? 'ja' : '';
+                const meta = el('span');
+                meta.append(el('strong', null, item.plate), el('small', null, [item.vehicle, item.vehicle_type, item.mileage != null ? formatKm(item.mileage) : '', item.done ? `erledigt ${formatDateTime(item.done_at)}${item.done_by ? ` von ${item.done_by}` : ''}` : 'offen', item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
+                const toggle = el('button', item.done ? 'button-quiet' : 'button-secondary fleet-end-button', item.done ? 'Wieder offen' : 'Erledigt');
+                toggle.type = 'button';
+                toggle.addEventListener('click', async () => {
+                    toggle.disabled = true;
+                    const { error } = await client.from('tt_tyre_items').update(item.done ? { done: false, done_at: null, done_by: '', updated_at: new Date().toISOString() } : { done: true, done_at: new Date().toISOString(), done_by: `${profile.full_name || 'Einsatzleitung'} (Büro)`, updated_at: new Date().toISOString() }).eq('id', item.id);
+                    toggle.disabled = false;
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                    await loadTyre();
+                });
+                row.append(pill(item.done ? 'erledigt' : 'offen', item.done ? 'Erledigt' : 'Offen'), meta, toggle);
+                return row;
+            }));
+            box.append(head, rows);
+            return box;
+        }));
+        $('tyreClosedBox').hidden = !closed.length;
+        $('tyreClosed').replaceChildren(...closed.map(campaign => {
+            const list = tyreItems.filter(item => item.campaign_id === campaign.id);
+            const row = el('li', 'directory-entry');
+            row.append(el('span', 'directory-entry-name', `${campaign.title} · ${formatDate(campaign.created_at)} · geschlossen ${campaign.closed_at ? formatDate(campaign.closed_at) : ''} · ${list.filter(item => item.done).length} von ${list.length} erledigt`));
+            return row;
+        }));
+    }
+    function showTyreLink(campaign) {
+        const url = tyreLink(campaign);
+        $('tyreLinkField').value = url;
+        $('tyreLinkWhatsApp').onclick = () => window.open(`https://wa.me/?text=${encodeURIComponent(`Reifenwechsel ${campaign.title} – Medical Office Bonn. Bitte hier abhaken, was fertig ist: ${url}`)}`, '_blank', 'noopener');
+        $('tyreLinkDialog').showModal();
+        $('tyreLinkField').select();
+    }
+    $('tyreLinkCopy').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText($('tyreLinkField').value); showToast('Link kopiert.', 'success'); }
+        catch (error) { $('tyreLinkField').select(); showToast('Bitte den Link markieren und kopieren.', 'info'); }
+    });
+    $('tyreLinkClose').addEventListener('click', () => $('tyreLinkDialog').close());
+    $('tyreNewOpen').addEventListener('click', () => {
+        const now = new Date();
+        $('tyreNewName').value = `Reifenwechsel ${now.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`;
+        $('tyreNewNote').value = '';
+        $('tyreVehicleList').replaceChildren(...vehicles.slice().sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true })).map(vehicle => {
+            const row = el('li');
+            const label = el('label', 'tyre-vehicle-option');
+            const box = el('input');
+            box.type = 'checkbox';
+            box.value = vehicle.id;
+            box.checked = vehicle.type !== 'Mietwagen';
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            row.append(label);
+            return row;
+        }));
+        $('tyreNewDialog').showModal();
+    });
+    $('tyreNewCancel').addEventListener('click', () => $('tyreNewDialog').close());
+    $('tyreNewForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const chosen = [...$('tyreVehicleList').querySelectorAll('input:checked')].map(box => vehicles.find(vehicle => vehicle.id === box.value)).filter(Boolean);
+        if (!chosen.length) { showToast('Bitte mindestens ein Fahrzeug auswählen.', 'info'); return; }
+        const title = $('tyreNewName').value.trim() || 'Reifenwechsel';
+        $('tyreNewSave').disabled = true;
+        const campaign = await client.from('tt_tyre_campaigns').insert({ created_by: profile.id, created_by_name: profile.full_name || 'Einsatzleitung', title, note: $('tyreNewNote').value.trim(), token: tyreToken() }).select().single();
+        if (campaign.error) { $('tyreNewSave').disabled = false; showToast(TerminCloud.germanError(campaign.error), 'error'); return; }
+        const items = await client.from('tt_tyre_items').insert(chosen.map((vehicle, index) => ({ campaign_id: campaign.data.id, vehicle_id: vehicle.id, plate: vehicle.plate, vehicle: [vehicle.brand, vehicle.body].filter(Boolean).join(' '), vehicle_type: vehicle.type || '', mileage: vehicle.mileage ?? null, position: index + 1 })));
+        $('tyreNewSave').disabled = false;
+        if (items.error) { showToast(TerminCloud.germanError(items.error), 'error'); return; }
+        $('tyreNewDialog').close();
+        showToast(`Liste „${title}“ mit ${chosen.length} Fahrzeugen erstellt.`, 'success');
+        await loadTyre();
+        showTyreLink(campaign.data);
+    });
+
     // ---------- Rückgabe durch die Einsatzleitung ----------
     // Wurde ein Fahrzeug nicht zurückgegeben (vergessen, Person nicht erreichbar), beendet das Büro die Fahrt selbst:
     // Kilometer, Tank, Parkort, Zeitpunkt – und ein Hinweis geht an die Person (Nachricht in der App und Mitteilung aufs Handy).
