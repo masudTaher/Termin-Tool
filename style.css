@@ -2980,3 +2980,22 @@ dialog.storno-dialog .storno-kind small { color: var(--muted); }
 dialog.storno-dialog .storno-kind[data-kind="termin"]:has(input:checked) { border-color: #b42318; background: color-mix(in srgb, #b42318 8%, var(--surface)); }
 dialog.storno-dialog .storno-kind[data-kind="dolmetscher"]:has(input:checked) { border-color: #6d28d9; background: color-mix(in srgb, #6d28d9 10%, var(--surface)); }
 dialog.storno-dialog textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; }
+
+/* ===== 89. Namen für FileMaker: Datei mit den Dolmetschern für den Import in die Termin_Datei ===== */
+dialog.fm-export { width: min(760px, calc(100% - 32px)); max-height: 92vh; display: flex; flex-direction: column; }
+dialog.fm-export:not([open]) { display: none; }
+dialog.fm-export h2 { margin-bottom: 6px; }
+dialog.fm-export .field-hint { white-space: normal; margin-bottom: 8px; }
+.fm-export-list { max-height: 44vh; }
+.fm-export-list .receipt-pick-item span { gap: 1px; }
+.fm-export-list .receipt-pick-item small { white-space: pre-line; }
+.fm-export-list .receipt-pick-item[data-state="gleich"] { opacity: .75; }
+.fm-export-list .receipt-pick-item[data-state="gleich"]:has(input:not(:checked)) { text-decoration: none; }
+.fm-export-list .fm-export-state { margin-left: auto; white-space: nowrap; font-size: .8rem; font-weight: 700; color: var(--muted); align-self: flex-start; }
+.fm-export-list .receipt-pick-item[data-state="neu"] .fm-export-state { color: #1d4ed8; }
+.fm-export-list .receipt-pick-item[data-state="geaendert"] .fm-export-state { color: #b45309; }
+.fm-export-help { margin-top: 10px; font-size: .9rem; }
+.fm-export-help summary { cursor: pointer; font-weight: 700; color: var(--accent, #1d4ed8); }
+.fm-export-help ol { margin: 8px 0 4px 18px; padding: 0; display: grid; gap: 4px; }
+.fm-export-help p { margin: 6px 0 0; color: var(--muted); }
+body[data-page="tracking"] .fm-mark { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 7px; background: color-mix(in srgb, #1d4ed8 10%, var(--surface)); color: #1d4ed8; font-size: 11px; font-weight: 700; }

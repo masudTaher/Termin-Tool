@@ -124,7 +124,10 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
         document.getElementById('notification').style.display = 'none';
 
         // Entferne die Header-Zeile für die weitere Verarbeitung
-        alleTermine = normalizeTerminRecords(XLSX.utils.sheet_to_json(firstSheet));
+        const rawRows = XLSX.utils.sheet_to_json(firstSheet);
+        alleTermine = normalizeTerminRecords(rawRows);
+        // Rohwerte aus FileMaker (Uhrzeit, Datum) bleiben erhalten – für den Rückweg „Namen für FileMaker“ müssen sie genau so zurück.
+        alleTermine.forEach((termin, index) => { termin._fmZeit = rawRows[index]?.Termin_Uhrzeit ?? ''; termin._fmDatum = rawRows[index]?.Termin_Datum ?? ''; });
         // Jeder Termin bekommt eine feste interne Kennung, damit das Live-Tracking ihn wiedererkennt.
         const importStamp = Date.now().toString(36);
         alleTermine.forEach((termin, index) => { termin._src = `${importStamp}-${index}`; });

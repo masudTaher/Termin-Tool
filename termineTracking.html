@@ -101,7 +101,7 @@
 			   <button type="button" id="undoChangesButton" class="button-secondary" disabled>Letzte Änderung rückgängig</button>
 			   <button type="button" id="addRowButton" class="button-secondary">+ Neuer Termin</button>
                <button id="saveChanges" class="button-primary">Excel-Datei herunterladen</button>
-			   <details class="action-overflow"><summary>Weitere Aktionen</summary><div class="action-overflow-panel"><button id="savePdfButton" type="button" class="button-secondary">Als PDF speichern</button><button id="archiveDayButton" type="button" class="button-secondary">Tag online archivieren</button></div></details>
+			   <details class="action-overflow"><summary>Weitere Aktionen</summary><div class="action-overflow-panel"><button id="savePdfButton" type="button" class="button-secondary">Als PDF speichern</button><button id="archiveDayButton" type="button" class="button-secondary">Tag online archivieren</button><button id="fmExportButton" type="button" class="button-secondary">Namen für FileMaker</button></div></details>
             </div>
 			
 			
@@ -193,6 +193,25 @@
 </dialog>
 
 <!-- Sonderkonditionen (selten): Betrag in Euro für diesen Tag, optional mit Grund -->
+<!-- Namen für FileMaker: Datei mit den eingetragenen Dolmetschern (erste Zeile der Bemerkung) zum Import in die Termin_Datei -->
+<dialog id="fmExportDialog" class="confirm-dialog special-dialog fm-export" aria-labelledby="fmExportTitle">
+  <h2 id="fmExportTitle">Namen für FileMaker</h2>
+  <p class="field-hint" id="fmExportInfo"></p>
+  <div class="receipt-pick-tools"><button type="button" class="button-quiet" id="fmExportAll">Alle</button><button type="button" class="button-quiet" id="fmExportNone">Keinen</button><button type="button" class="button-quiet" id="fmExportChanged">Nur Änderungen</button></div>
+  <ul id="fmExportList" class="receipt-pick-list fm-export-list"></ul>
+  <details class="fm-export-help"><summary>So importierst du die Datei in FileMaker (einmal einrichten, danach ein Klick)</summary>
+    <ol>
+      <li>In FileMaker die Termine des Tages suchen (Suche → Datum), damit nur dieser Tag als „gefundene Menge“ offen ist.</li>
+      <li><b>Datei → Datensätze importieren → Datei…</b> und die eben erstellte Datei wählen.</li>
+      <li>Oben rechts <b>„Vorhandene Datensätze in gefundener Menge aktualisieren“</b> wählen.</li>
+      <li>Abgleich-Felder (Pfeil mit Gleichheitszeichen <b>=</b>): <b>Patient_Nr</b>, <b>Termin_Datum</b>, <b>Arzt_Nr</b>. Feld <b>Bemerkung</b> → Pfeil <b>→</b> (wird ersetzt). Alle anderen Spalten (Info_…) auf „nicht importieren“.</li>
+      <li>Importieren → FileMaker meldet, wie viele Datensätze aktualisiert wurden. Die Zahl muss zur Anzahl hier passen.</li>
+    </ol>
+    <p>Beim ersten Mal am besten nur einen Termin anhaken und das Ergebnis in FileMaker prüfen. Es wird ausschließlich das Feld „Bemerkung“ geändert – der Name kommt in die erste Zeile, der bisherige Text bleibt darunter.</p>
+  </details>
+  <div class="receipt-pick-foot"><span class="receipt-pick-sum" id="fmExportSum"></span><div class="modal-buttons"><button type="button" class="button-secondary" id="fmExportCancel">Schließen</button><button type="button" class="button-primary" id="fmExportSave">Datei erstellen</button></div></div>
+</dialog>
+
 <!-- Stornieren: Termin komplett (rot) oder Dolmetscher kann nicht (lila) – mit Notiz, die auch nach dem Zurückziehen bleibt -->
 <dialog id="stornoDialog" class="confirm-dialog special-dialog storno-dialog" aria-labelledby="stornoDialogTitle">
   <form id="stornoDialogForm" class="fleet-form" novalidate>

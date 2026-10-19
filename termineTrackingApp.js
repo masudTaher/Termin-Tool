@@ -315,6 +315,7 @@ function renderTrackingTable(data) {
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>`
                     + (cloudReady ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : '')
                 // Zweite Person im Auftrag – oder der Knopf, um eine einzutragen.
+                + (termin._fmExport && termin._fmExport === getAppointmentInterpreterName(termin) ? `<span class="fm-mark" title="Dieser Name steht in der Datei für FileMaker (erstellt ${escapeHtml(termin._fmExportAt || '')})">FileMaker-Datei ✓</span>` : '')
                 + (termin._zweit ? `<button type="button" class="second-line" data-index="${index}" title="Zweite Person im Auftrag – ändern oder entfernen"><span class="second-mark" aria-hidden="true">+</span><b>${escapeHtml(termin._zweit)}</b><span class="second-role">${escapeHtml(termin._zweitAufgabe || 'Transport')}${termin._zweitAuto ? ` · ${escapeHtml(termin._zweitAuto)}` : ''}</span>${termin._zweitAntwort ? `<span class="response-pill" data-response="${escapeHtml(String(termin._zweitAntwort).split(' – ')[0])}">${escapeHtml(termin._zweitAntwort)}</span>` : ''}</button>` : '')
                 + (termin._zweit ? '' : `<button type="button" class="second-add" data-index="${index}" title="Zweite Person für diesen Auftrag: zum Beispiel eine Person fährt und eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen">+ zweite Person</button>`),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${selectedStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
@@ -509,6 +510,7 @@ window.refreshTrackingRows = () => {
     if (!document.activeElement?.matches?.('#tableBody input')) renderTrackingTable(trackingData);
 };
 document.getElementById('archiveDayButton')?.addEventListener('click', () => window.archiveTrackingDay?.());
+document.getElementById('fmExportButton')?.addEventListener('click', () => openFileMakerExport());
 
 // Nach einem Online-Abgleich (z. B. Übernahme im Dolmetscher-Portal) die Fahrzeuglisten auffrischen,
 // ohne ein Feld zu stören, in dem gerade getippt wird.
@@ -1441,6 +1443,9 @@ function updateInterpreterFromInput(input) {
         }
     }
     if (vehicleSelect) vehicleSelect.innerHTML = renderVehicleOptions(termin);
+    // Die Markierung „FileMaker-Datei ✓“ gilt nur für den Namen, der in der Datei stand.
+    const mark = input.closest('td')?.querySelector('.fm-mark');
+    if (mark && termin._fmExport !== value) mark.remove();
 
     persistTerminRecords(trackingData, 'tracking');
     refreshPatientHints();
@@ -1689,6 +1694,134 @@ function setTrackingStatus(index, status, options = {}) {
     const row = document.querySelector(`#tableBody tr[data-index="${index}"]`);
     if (row && !row.hidden) row.querySelector('.quick-status, .status-select')?.focus();
 }
+
+// ---------- Namen für FileMaker ----------
+// Die Dolmetscher stehen in FileMaker in der ersten Zeile der Bemerkung. Diese Datei (Excel) trägt sie dort ein: In FileMaker
+// „Datensätze importieren → vorhandene Datensätze aktualisieren“, Abgleich über Patient_Nr + Termin_Datum + Arzt_Nr, Ziel „Bemerkung“.
+// Es wird nur die Bemerkung geschrieben: Name als erste Zeile, der bisherige Text bleibt darunter.
+function fmRemarkLines(termin) {
+    return String(termin.Bemerkung || '').split(/\r\n|\n|\r/).map(line => line.trim());
+}
+// Erste Zeile der Bemerkung, falls sie ein Dolmetschername ist (so war sie aus FileMaker gekommen).
+function fmRemarkName(termin) {
+    const first = fmRemarkLines(termin).find(Boolean) || '';
+    const candidate = first.replace(/^(?:dolmetscher(?:\/in)?|übersetzer(?:\/in)?)\s*:\s*/iu, '').replace(/[.,;:]+$/, '').trim();
+    if (!candidate || candidate.length > 40 || /\d/.test(candidate) || candidate.split(' ').length > 3) return '';
+    const known = typeof knownInterpreterNames === 'function' ? knownInterpreterNames() : [];
+    const key = candidate.toLocaleLowerCase('de');
+    // Ganzer Name oder eindeutiger Vorname aus der Dolmetscherliste – zurück kommt der ganze Name.
+    const full = known.find(name => name.toLocaleLowerCase('de') === key);
+    if (full) return full;
+    const byFirst = known.filter(name => name.split(' ')[0].toLocaleLowerCase('de') === key);
+    if (byFirst.length === 1) return byFirst[0];
+    return termin._fmExport && termin._fmExport.toLocaleLowerCase('de') === key ? termin._fmExport : '';
+}
+function fmNewRemark(termin, name) {
+    const lines = fmRemarkLines(termin);
+    const oldName = fmRemarkName(termin);
+    const rest = oldName ? lines.slice(lines.findIndex(Boolean) + 1) : lines;
+    while (rest.length && !rest[0]) rest.shift();
+    return [name, ...rest].join('\n').trim();
+}
+function fmRows() {
+    return trackingData.map((termin, index) => {
+        const name = getAppointmentInterpreterName(termin);
+        const oldName = fmRemarkName(termin);
+        const state = !name ? 'leer' : oldName.toLocaleLowerCase('de') === name.toLocaleLowerCase('de') ? 'gleich' : oldName ? 'geaendert' : 'neu';
+        return { index, termin, name, oldName, state, remark: name ? fmNewRemark(termin, name) : '' };
+    }).filter(row => row.name && String(row.termin.Patient_Nr || '').trim());
+}
+function openFileMakerExport() {
+    const dialog = document.getElementById('fmExportDialog');
+    if (!dialog) return;
+    const rows = fmRows();
+    const list = document.getElementById('fmExportList');
+    const patientName = termin => [termin['Patienten Nr::Patienten_Vorname'], termin['Patienten Nr::Patienten_Name']].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+    const STATE = { neu: 'neu', geaendert: 'geändert', gleich: 'steht schon so drin' };
+    list.replaceChildren(...rows.map(row => {
+        const item = document.createElement('li');
+        item.className = 'receipt-pick-item';
+        item.dataset.state = row.state;
+        item.dataset.index = String(row.index);
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = row.state !== 'gleich' && !(row.termin._fmExport === row.name);
+        const text = document.createElement('span');
+        const strong = document.createElement('strong');
+        strong.textContent = `${String(row.termin.Termin_Uhrzeit || '').slice(0, 5)} · ${patientName(row.termin)} · Pat.-Nr. ${row.termin.Patient_Nr} · ${row.termin['Arzt Nr::Name'] || ''}`;
+        const small = document.createElement('small');
+        small.textContent = `Bemerkung wird: ${row.remark.replace(/\n/g, ' ⏎ ')}`;
+        text.append(strong, small);
+        const state = document.createElement('b');
+        state.className = 'fm-export-state';
+        state.textContent = `${row.name} · ${STATE[row.state]}${row.state !== 'gleich' && row.termin._fmExport === row.name ? ' · schon in einer Datei' : ''}`;
+        item.append(box, text, state);
+        box.addEventListener('change', updateFmExport);
+        return item;
+    }));
+    document.getElementById('fmExportInfo').textContent = rows.length
+        ? `${rows.length} ${rows.length === 1 ? 'Termin hat' : 'Termine haben'} einen Dolmetscher. Angehakt ist, was in FileMaker noch nicht so steht. Die Datei ändert in FileMaker nur das Feld „Bemerkung“ (Name als erste Zeile).`
+        : 'Noch kein Termin mit Dolmetscher – trag zuerst die Namen ein.';
+    updateFmExport();
+    dialog.showModal();
+}
+function updateFmExport() {
+    const boxes = [...document.querySelectorAll('#fmExportList input[type=checkbox]')];
+    const chosen = boxes.filter(box => box.checked).length;
+    document.getElementById('fmExportSave').disabled = !chosen;
+    document.getElementById('fmExportSave').textContent = `Datei erstellen (${chosen})`;
+    document.getElementById('fmExportSum').textContent = `${chosen} von ${boxes.length} ${boxes.length === 1 ? 'Termin' : 'Terminen'}`;
+}
+// Excel-Datum aus TT.MM.JJJJ (als echtes Datum – unabhängig von der Spracheinstellung des Servers).
+function fmDateValue(termin) {
+    const match = String(termin.Termin_Datum || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 12, 0, 0) : String(termin.Termin_Datum || '');
+}
+function buildFileMakerExport(rows) {
+    const header = ['Patient_Nr', 'Termin_Datum', 'Arzt_Nr', 'Termin_Uhrzeit', 'Bemerkung', 'Info_Patient', 'Info_Dolmetscher'];
+    const body = rows.map(row => [
+        Number.isFinite(Number(row.termin.Patient_Nr)) ? Number(row.termin.Patient_Nr) : String(row.termin.Patient_Nr || ''),
+        fmDateValue(row.termin),
+        Number.isFinite(Number(row.termin.Arzt_Nr)) && String(row.termin.Arzt_Nr || '').trim() !== '' ? Number(row.termin.Arzt_Nr) : String(row.termin.Arzt_Nr || ''),
+        // Uhrzeit genau so, wie sie aus FileMaker kam (Textfeld mit „7“, „8:20“ …) – sonst die normierte Form.
+        typeof row.termin._fmZeit === 'string' && row.termin._fmZeit.trim() ? row.termin._fmZeit : String(row.termin.Termin_Uhrzeit || ''),
+        row.remark,
+        [row.termin['Patienten Nr::Patienten_Vorname'], row.termin['Patienten Nr::Patienten_Name']].map(value => String(value || '').trim()).filter(Boolean).join(' '),
+        row.name
+    ]);
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...body], { cellDates: true });
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Dolmetscher');
+    return workbook;
+}
+(function bindFileMakerExport() {
+    const dialog = document.getElementById('fmExportDialog');
+    if (!dialog) return;
+    const boxes = () => [...document.querySelectorAll('#fmExportList li')];
+    document.getElementById('fmExportCancel').addEventListener('click', () => dialog.close());
+    document.getElementById('fmExportAll').addEventListener('click', () => { boxes().forEach(item => { item.querySelector('input').checked = true; }); updateFmExport(); });
+    document.getElementById('fmExportNone').addEventListener('click', () => { boxes().forEach(item => { item.querySelector('input').checked = false; }); updateFmExport(); });
+    document.getElementById('fmExportChanged').addEventListener('click', () => { boxes().forEach(item => { item.querySelector('input').checked = item.dataset.state !== 'gleich'; }); updateFmExport(); });
+    document.getElementById('fmExportSave').addEventListener('click', () => {
+        const chosen = new Set(boxes().filter(item => item.querySelector('input').checked).map(item => Number(item.dataset.index)));
+        const rows = fmRows().filter(row => chosen.has(row.index));
+        if (!rows.length) return;
+        const date = String(trackingData[0]?.Termin_Datum || '').replace(/\./g, '-') || 'Tag';
+        const name = `FileMaker_Dolmetscher_${date}.xlsx`;
+        try {
+            XLSX.writeFile(buildFileMakerExport(rows), name);
+        } catch (error) {
+            showToast('Die Datei konnte nicht erstellt werden.', 'error');
+            return;
+        }
+        const stamp = new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        rows.forEach(row => { row.termin._fmExport = row.name; row.termin._fmExportAt = stamp; });
+        persistTerminRecords(trackingData, 'tracking');
+        renderTrackingTable(trackingData);
+        dialog.close();
+        showToast(`${name} erstellt (${rows.length} ${rows.length === 1 ? 'Termin' : 'Termine'}). In FileMaker: Datensätze importieren → vorhandene aktualisieren → Abgleich Patient_Nr, Termin_Datum, Arzt_Nr → Ziel „Bemerkung“.`, 'success', { duration: 15000 });
+    });
+})();
 
 // ---------- Stornieren: Termin komplett (rot) oder Dolmetscher kann nicht (lila) – mit Notiz ----------
 let stornoDialogIndex = null;
