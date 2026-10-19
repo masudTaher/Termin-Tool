@@ -403,6 +403,47 @@
     // Alles, was eine Entscheidung braucht, steht hier mit dem passenden Knopf – Belege prüfen, Einwände beantworten,
     // offene Punkte, Abrechnungen senden, wer noch bestätigen muss. Die Einzelheiten je Person bleiben darunter.
     let todoOpen = {};
+    // Belege drucken (Update 41): Was der Dolmetscher selbst gedruckt und gemeldet hat, gilt als erledigt – sonst druckt das Büro.
+    const printable = item => item.status !== 'abgelehnt';
+    async function setPrinted(ids, done, button) {
+        if (button) button.disabled = true;
+        const { error } = await client.rpc('tt_receipts_printed', { p_ids: ids, p_done: done });
+        if (button) button.disabled = false;
+        if (error) { showToast(/could not find the function/i.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 41 (supabase/update-41.sql).' : TerminCloud.germanError(error), 'error'); return false; }
+        receipts.forEach(item => { if (ids.includes(item.id)) { item.printed_at = done ? (item.printed_at || new Date().toISOString()) : null; item.printed_by = done ? (item.printed_by || profile.full_name || '') : ''; } });
+        showToast(done ? `${ids.length} ${ids.length === 1 ? 'Beleg' : 'Belege'} als gedruckt markiert.` : 'Markierung „gedruckt“ zurückgenommen.', 'success');
+        render();
+        return true;
+    }
+    // Alle Belege einer Person als eine PDF-Datei (Deckblatt + jede Seite) – wie in der Dolmetscher-App.
+    async function printBundle(name, list, button) {
+        if (!window.DocPdf) { showToast('Das PDF kann gerade nicht erstellt werden.', 'error'); return; }
+        button.disabled = true;
+        const label = button.textContent;
+        try {
+            const items = [];
+            for (const [index, item] of list.entries()) {
+                button.textContent = `Beleg ${index + 1}/${list.length} …`;
+                let bytes = null; let contentType = '';
+                if (item.photo_path) {
+                    const url = await TerminCloud.photoUrl(item.photo_path);
+                    const response = url ? await fetch(url).catch(() => null) : null;
+                    if (response?.ok) { bytes = await response.arrayBuffer(); contentType = response.headers.get('content-type') || (/\.pdf$/i.test(item.photo_path) ? 'application/pdf' : 'image/jpeg'); }
+                }
+                items.push({ label: `${Abrechnung.longDate(item.date)} · ${item.place || ''} · ${euro(item.amount)} · ${item.kind}`, bytes: bytes || new ArrayBuffer(0), contentType: bytes ? contentType : 'fehlt' });
+            }
+            const sum = list.reduce((total, item) => total + Number(item.amount), 0);
+            const range = Abrechnung.monthRange(month);
+            const blob = await DocPdf.bundle({ title: `Belege ${range.label} · ${name}`, subtitle: `${list.length} ${list.length === 1 ? 'Beleg' : 'Belege'} · erstellt am ${new Date().toLocaleDateString('de-DE')} von ${profile.full_name || 'Einsatzleitung'}`,
+                rows: list.map(item => [Abrechnung.longDate(item.date), item.place || '–', item.kind, euro(item.amount), item.status]), total: `Summe ${euro(sum)}`, items, author: profile.full_name || '', subject: `Belege ${range.label} ${name}` });
+            const url = URL.createObjectURL(blob);
+            const link = el('a'); link.href = url; link.download = `Belege_${month}_${name.replace(/[^A-Za-z0-9]+/g, '-')}.pdf`; link.rel = 'noopener';
+            document.body.append(link); link.click(); link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+            showToast(`PDF mit ${list.length} ${list.length === 1 ? 'Beleg' : 'Belegen'} von ${name} erstellt – nach dem Drucken „Gedruckt ✓“ tippen.`, 'success');
+        } catch (error) { showToast(error.message || 'Das PDF konnte nicht erstellt werden.', 'error'); }
+        finally { button.disabled = false; button.textContent = label; }
+    }
     function renderTodo() {
         const box = $('payTodoSteps');
         if (!box) return;
@@ -414,9 +455,10 @@
         const noAccount = result.rows.filter(row => !row.profileId);
         const waiting = result.rows.filter(row => row.statement && row.statement.response === 'offen' && !row.changedSince);
         const confirmed = result.rows.filter(row => row.statement?.response === 'bestätigt' && !row.changedSince);
-        const todo = newReceipts.length + objections.length + checks.length + ready.length;
+        const toPrintCount = receipts.filter(item => printable(item) && item.status === 'geprüft' && !item.printed_at).length;
+        const todo = newReceipts.length + toPrintCount + objections.length + checks.length + ready.length;
         $('payTodoSummary').textContent = todo
-            ? `${range.label}: ${[newReceipts.length ? `${newReceipts.length} ${newReceipts.length === 1 ? 'Beleg' : 'Belege'} prüfen` : '', objections.length ? `${objections.length} ${objections.length === 1 ? 'Einwand' : 'Einwände'} beantworten` : '', checks.length ? `${checks.length} offene ${checks.length === 1 ? 'Punkt' : 'Punkte'}` : '', ready.length ? `${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} senden` : ''].filter(Boolean).join(' · ')}${waiting.length ? ` · ${waiting.length} ${waiting.length === 1 ? 'wartet' : 'warten'} auf Bestätigung` : ''}`
+            ? `${range.label}: ${[newReceipts.length ? `${newReceipts.length} ${newReceipts.length === 1 ? 'Beleg' : 'Belege'} prüfen` : '', toPrintCount ? `${toPrintCount} ${toPrintCount === 1 ? 'Beleg' : 'Belege'} drucken` : '', objections.length ? `${objections.length} ${objections.length === 1 ? 'Einwand' : 'Einwände'} beantworten` : '', checks.length ? `${checks.length} offene ${checks.length === 1 ? 'Punkt' : 'Punkte'}` : '', ready.length ? `${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} senden` : ''].filter(Boolean).join(' · ')}${waiting.length ? ` · ${waiting.length} ${waiting.length === 1 ? 'wartet' : 'warten'} auf Bestätigung` : ''}`
             : `${range.label}: Nichts wartet auf dich.${waiting.length ? ` ${waiting.length} ${waiting.length === 1 ? 'Abrechnung wartet' : 'Abrechnungen warten'} noch auf die Bestätigung der Dolmetscher.` : ''}${confirmed.length === result.rows.length && result.rows.length ? ' Alle Abrechnungen sind bestätigt ✓' : ''}`;
         $('payTodo').dataset.state = todo ? 'offen' : 'fertig';
         const step = (key, number, title, count, hint, done) => {
@@ -465,6 +507,22 @@
                 button('Ablehnen', 'button-quiet-danger', async () => { if (await confirmDialog(`Den Beleg von ${item.person_name} (${euro(item.amount)}, ${Abrechnung.longDate(item.date)}) ablehnen? Er zählt dann nicht in der Abrechnung.`, 'Ablehnen')) setStatus('abgelehnt'); })));
         });
         steps.push(s1.item);
+
+        // 1b. Belege drucken: was noch nicht ausgedruckt ist – je Person als eine PDF-Datei, danach „Gedruckt“
+        const toPrint = receipts.filter(item => printable(item) && item.status === 'geprüft' && !item.printed_at);
+        const printedCount = receipts.filter(item => printable(item) && item.printed_at).length;
+        const sP = step('print', '1b', 'Belege ausdrucken', toPrint.length, toPrint.length ? 'Geprüfte Belege, die noch niemand gedruckt hat – je Person als PDF, dann „Gedruckt ✓“' : (printedCount ? `Alle gedruckt (${printedCount})` : 'Nichts zu drucken'));
+        const byPerson = new Map();
+        toPrint.forEach(item => { const key = item.person_name; if (!byPerson.has(key)) byPerson.set(key, []); byPerson.get(key).push(item); });
+        [...byPerson.entries()].sort((left, right) => left[0].localeCompare(right[0], 'de')).forEach(([name, list]) => {
+            const sum = list.reduce((total, item) => total + Number(item.amount), 0);
+            sP.body.append(line(`${name} · ${list.length} ${list.length === 1 ? 'Beleg' : 'Belege'} · ${euro(sum)}`, 'noch zu drucken',
+                button(`PDF (${list.length})`, 'button-secondary', event => printBundle(name, list, event.currentTarget), 'Alle Belege dieser Person als eine PDF-Datei'),
+                button('Gedruckt ✓', 'button-primary', event => setPrinted(list.map(item => item.id), true, event.currentTarget))));
+        });
+        const selfPrinted = receipts.filter(item => printable(item) && item.printed_at && item.printed_by && item.printed_by !== (profile.full_name || ''));
+        if (selfPrinted.length) sP.body.append(line(`${selfPrinted.length} ${selfPrinted.length === 1 ? 'Beleg' : 'Belege'} haben die Dolmetscher selbst gedruckt und gemeldet`, [...new Set(selfPrinted.map(item => item.printed_by))].join(', ')));
+        steps.push(sP.item);
 
         // 2. Einwände beantworten
         const s2 = step('objections', 2, 'Einwände beantworten', objections.length, objections.length ? 'Eine Person hat ihre Abrechnung nicht bestätigt – korrigieren und neu senden, oder ablehnen' : 'Keine Einwände');
@@ -749,7 +807,7 @@
     function renderReceipts() {
         const body = $('receiptBody');
         body.replaceChildren();
-        if (!receipts.length) { const tr = el('tr'); const td = el('td', null, 'Für diesen Monat sind keine Belege eingetragen.'); td.colSpan = 9; tr.append(td); body.append(tr); return; }
+        if (!receipts.length) { const tr = el('tr'); const td = el('td', null, 'Für diesen Monat sind keine Belege eingetragen.'); td.colSpan = 10; tr.append(td); body.append(tr); return; }
         [...receipts].sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date))).forEach(item => {
             const tr = el('tr', item.status === 'abgelehnt' ? 'payroll-rejected' : '');
             const photoCell = el('td');
@@ -789,7 +847,17 @@
                 render();
                 window.refreshCloudInbox?.();
             }));
-            tr.append(el('td', null, item.person_name), el('td', null, Abrechnung.longDate(item.date)), el('td', null, item.place || '–'), el('td', 'payroll-number', euro(item.amount)), el('td', null, [item.kind, item.proof].filter(Boolean).join(' · ')), el('td', null, item.note || '–'), photoCell, statusCell, actionCell);
+            const printCell = el('td', 'payroll-print');
+            if (item.status !== 'abgelehnt') {
+                const state = el('span', 'status-pill', item.printed_at ? 'gedruckt' : 'noch zu drucken');
+                state.dataset.status = item.printed_at ? 'erledigt' : 'offen';
+                if (item.printed_at) state.title = `${item.printed_by || ''} · ${Abrechnung.longDate(item.printed_at.slice(0, 10))}`;
+                const toggle = el('button', 'button-quiet payroll-print-toggle', item.printed_at ? 'Doch nicht' : 'Gedruckt');
+                toggle.type = 'button';
+                toggle.addEventListener('click', () => setPrinted([item.id], !item.printed_at, toggle));
+                printCell.append(state, item.printed_at ? el('small', 'payroll-sub', `${item.printed_by || ''} · ${Abrechnung.longDate(item.printed_at.slice(0, 10))}`) : '', ' ', toggle);
+            } else printCell.textContent = '–';
+            tr.append(el('td', null, item.person_name), el('td', null, Abrechnung.longDate(item.date)), el('td', null, item.place || '–'), el('td', 'payroll-number', euro(item.amount)), el('td', null, [item.kind, item.proof].filter(Boolean).join(' · ')), el('td', null, item.note || '–'), photoCell, statusCell, printCell, actionCell);
             body.append(tr);
         });
     }

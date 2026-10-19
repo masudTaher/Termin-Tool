@@ -2203,7 +2203,7 @@ if (!window.TerminContact) {
             setStatus(TerminCloud.germanError(vehicleResult.error || handoverResult.error), 'error');
             return;
         }
-        vehicles = vehicleResult.data;
+        vehicles = vehicleResult.data.filter(vehicle => vehicle.station !== 'Heidelberg');   // Fahrzeuge der Kollegen in Heidelberg (Update 41) gehören nicht hierher
         openHandovers = handoverResult.data;
         myHandover = openHandovers.find(item => item.driver_id === profile.id) || null;
         const myVehicle = myHandover ? vehicleById(myHandover.vehicle_id) : null;
@@ -2864,6 +2864,7 @@ if (!window.TerminContact) {
                 });
                 side.append(remove);
             }
+            if (item.printed_at) side.prepend(el('span', 'status-pill receipt-printed', 'gedruckt'));
             entry.append(el('span', 'directory-entry-name', `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${item.place} · ${money(item.amount)}`), side);
             list.append(entry);
         });
@@ -2935,6 +2936,22 @@ if (!window.TerminContact) {
             link.remove();
             window.setTimeout(() => URL.revokeObjectURL(url), 60000);
             status.textContent = `Fertig: ${name} (${list.length} ${list.length === 1 ? 'Beleg' : 'Belege'}, ${money(sum)}). Die Datei liegt in deinen Downloads – zum Drucken dort öffnen.`;
+            // Selbst ausgedruckt? Dann der Einsatzleitung melden – sie druckt die Belege dann nicht noch einmal.
+            const unprinted = list.filter(item => !item.printed_at);
+            if (unprinted.length) {
+                const done = el('button', 'button-primary receipt-printed-button', `Ausgedruckt ✓ – der Einsatzleitung melden (${unprinted.length})`);
+                done.type = 'button';
+                done.addEventListener('click', async () => {
+                    done.disabled = true;
+                    const { error } = await client.rpc('tt_receipts_printed', { p_ids: unprinted.map(item => item.id), p_done: true });
+                    done.disabled = false;
+                    if (error) { toast(/could not find the function/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 41). Bitte sag der Einsatzleitung Bescheid.' : TerminCloud.germanError(error), 'error'); return; }
+                    done.remove();
+                    toast('Gemeldet: Die Belege gelten als ausgedruckt – die Einsatzleitung druckt sie nicht noch einmal.', 'success');
+                    await loadReceipts();
+                });
+                status.append(' ', done);
+            }
             toast('PDF mit allen Belegen erstellt.', 'success');
         } catch (error) {
             status.textContent = '';

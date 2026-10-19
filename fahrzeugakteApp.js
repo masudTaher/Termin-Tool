@@ -101,6 +101,7 @@
         renderInbox();
         renderFuel();
         renderGrid();
+        renderStation();
         renderRetired();
         loadPhotoUrls();
         loadTyre();
@@ -705,11 +706,45 @@
     }
 
     // ---------- Fahrzeugübersicht ----------
+    // Standort (Update 41): Heidelberger Fahrzeuge stehen in ihrem eigenen Abschnitt, nicht in der Bonner Übersicht.
+    const stationOf = vehicle => vehicle?.station === 'Heidelberg' ? 'Heidelberg' : 'Bonn';
+    const heidelberg = () => vehicles.filter(vehicle => stationOf(vehicle) === 'Heidelberg');
+    function renderStation() {
+        const section = $('stationSection');
+        if (!section) return;
+        const cars = heidelberg().sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
+        const cards = fuelCards.filter(card => !card.holder_id && card.holder_name === 'Heidelberg');
+        $('stationSummary').textContent = cars.length || cards.length
+            ? `${cars.length} ${cars.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · ${cards.length} ${cards.length === 1 ? 'Tankkarte' : 'Tankkarten'} bei den Kollegen in Heidelberg`
+            : 'Noch nichts eingetragen. Lege die Fahrzeuge der Heidelberger Kollegen an und gib ihre Tankkarten unter „Tankkarten“ an „Heidelberg“ aus.';
+        $('stationVehicles').replaceChildren(...(cars.length ? cars.map(vehicle => {
+            const row = el('li', 'vehicle-entry file-entry station-vehicle');
+            const meta = el('span');
+            meta.append(el('strong', null, vehicle.plate), el('small', null, [[vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · '), vehicle.driver_note ? `Fahrer: ${vehicle.driver_note}` : 'fester Fahrer nicht eingetragen', vehicle.mileage != null ? formatKm(vehicle.mileage) : '', vehicle.parking || '', vehicle.label || ''].filter(Boolean).join(' · ')));
+            const actions = el('span', 'vehicle-entry-actions');
+            const edit = el('button', 'button-quiet', 'Bearbeiten');
+            edit.type = 'button';
+            edit.addEventListener('click', () => openVehicleDialog(vehicle));
+            const open = el('button', 'button-secondary fleet-end-button', 'Akte');
+            open.type = 'button';
+            open.addEventListener('click', () => selectVehicle(vehicle.id));
+            actions.append(edit, open);
+            row.append(pill(vehicle.service_status ? 'in Arbeit' : 'bekannt', vehicle.service_status ? 'Werkstatt' : 'Heidelberg'), meta, actions);
+            return row;
+        }) : [el('li', 'directory-empty', 'Noch kein Fahrzeug für Heidelberg angelegt.')]));
+        $('stationCards').replaceChildren(...(cards.length ? cards.map(card => {
+            const row = el('li', 'vehicle-entry file-entry');
+            const meta = el('span');
+            meta.append(el('strong', null, `Tankkarte ${card.number}`), el('small', null, [`in Heidelberg seit ${formatDateTime(card.assigned_at)}`, card.note || ''].filter(Boolean).join(' · ')));
+            row.append(pill('in Arbeit', 'Heidelberg'), meta);
+            return row;
+        }) : [el('li', 'directory-empty', 'Keine Tankkarte in Heidelberg. Unter „Tankkarten“ bei „Ausgeben an …“ „Heidelberg (Kollegen)“ wählen.')]));
+    }
     function renderGrid() {
         const grid = $('vehicleGrid');
         grid.replaceChildren();
         grid.dataset.view = fleetView;
-        const all = vehicles.map(vehicle => ({ vehicle, facts: vehicleFacts(vehicle) }));
+        const all = vehicles.filter(vehicle => stationOf(vehicle) === 'Bonn').map(vehicle => ({ vehicle, facts: vehicleFacts(vehicle) }));
         const count = name => all.filter(({ vehicle, facts }) => FLEET_FILTERS[name](vehicle, facts)).length;
         $('fleetCountAll').textContent = String(all.length);
         $('fleetCountOut').textContent = String(count('ausgegeben'));
@@ -1080,6 +1115,10 @@
         $('vehicleFormBrand').hidden = $('vehicleFormModel').value !== '';
         $('vehicleFormBody').value = ['Limousine', 'Kombi', 'Bus'].includes(vehicle?.body) ? vehicle.body : 'Limousine';
         $('vehicleFormType').value = vehicle?.type === 'Mietwagen' ? 'Mietwagen' : 'Diplomatisch';
+        $('vehicleFormStation').value = stationOf(vehicle || { station: openVehicleDialog.preset || 'Bonn' });
+        $('vehicleFormDriver').value = vehicle?.driver_note || '';
+        openVehicleDialog.preset = '';
+        syncStationFields();
         $('vehicleFormLabel').value = vehicle?.label || '';
         $('vehicleFormMileage').value = '';
         // Kilometer eines vorhandenen Fahrzeugs ändert man in der Akte („Kilometerstand korrigieren“).
@@ -1094,7 +1133,14 @@
         if ($('vehicleFormModel').value === 'Mercedes V-Klasse') $('vehicleFormBody').value = 'Bus';
         if (other) $('vehicleFormBrand').focus();
     });
+    function syncStationFields() {
+        const hd = $('vehicleFormStation').value === 'Heidelberg';
+        $('vehicleFormDriver').hidden = !hd;
+        $('vehicleFormDriverLabel').hidden = !hd;
+    }
+    $('vehicleFormStation').addEventListener('change', syncStationFields);
     $('vehicleAddOpen').addEventListener('click', () => openVehicleDialog(null));
+    $('stationAddOpen')?.addEventListener('click', () => { openVehicleDialog.preset = 'Heidelberg'; openVehicleDialog(null); });
     $('vehicleEditOpen').addEventListener('click', () => openVehicleDialog(vehicles.find(vehicle => vehicle.id === selectedId) || null));
     $('vehicleFormCancel').addEventListener('click', () => $('vehicleDialog').close());
     $('vehicleForm').addEventListener('submit', async event => {
@@ -1108,14 +1154,21 @@
         if (mileageText && !(Number(mileageText) >= 0)) { showToast('Der Kilometerstand muss eine Zahl sein.', 'error', { target: '#vehicleFormMileage' }); return; }
         const twin = allVehicles.find(item => item.plate_key === key && item.id !== editVehicleId);
         if (twin && (twin.active || editVehicleId)) { showToast(`Das Kennzeichen ${twin.plate} gibt es schon${twin.active ? ' im Fuhrpark' : ' (unter „Nicht mehr im Fuhrpark“)'}.`, 'error', { target: '#vehicleFormPlate' }); return; }
-        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim() };
+        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim(), station: $('vehicleFormStation').value, driver_note: $('vehicleFormStation').value === 'Heidelberg' ? $('vehicleFormDriver').value.trim() : '' };
         const state = mileageText ? { mileage: Number(mileageText), state_updated_at: new Date().toISOString(), state_updated_by: profile.full_name || '' } : {};
         const submit = $('vehicleFormSubmit');
         submit.disabled = true;
         // Ein früher aus dem Fuhrpark genommenes Kennzeichen wird wieder aufgenommen statt doppelt angelegt.
-        const result = editVehicleId ? await client.from('tt_vehicles').update(row).eq('id', editVehicleId).select()
-            : twin ? await client.from('tt_vehicles').update({ ...row, ...state, active: true }).eq('id', twin.id).select()
-                : await client.from('tt_vehicles').insert({ ...row, ...state }).select();
+        const save = fields => editVehicleId ? client.from('tt_vehicles').update(fields).eq('id', editVehicleId).select()
+            : twin ? client.from('tt_vehicles').update({ ...fields, ...state, active: true }).eq('id', twin.id).select()
+                : client.from('tt_vehicles').insert({ ...fields, ...state }).select();
+        let result = await save(row);
+        // Ohne Update 41 kennt die Datenbank Standort und Fahrer noch nicht.
+        if (result.error && /station|driver_note/i.test(result.error.message || '')) {
+            if (row.station === 'Heidelberg') { submit.disabled = false; showToast('Für den Standort Heidelberg fehlt noch das Datenbank-Update 41.', 'error'); return; }
+            const { station, driver_note, ...plain } = row;
+            result = await save(plain);
+        }
         submit.disabled = false;
         if (result.error || !result.data?.length) {
             showToast(result.error ? (/duplicate|unique/i.test(result.error.message || '') ? 'Dieses Kennzeichen gibt es schon.' : TerminCloud.germanError(result.error)) : 'Das Fahrzeug konnte nicht gespeichert werden.', 'error', { target: '#vehicleFormPlate' });
@@ -1263,7 +1316,8 @@
             list.replaceChildren();
             return;
         }
-        const out = fuelCards.filter(card => card.holder_id);
+        const given = card => Boolean(card.holder_id || card.holder_name);
+        const out = fuelCards.filter(given);
         $('fuelSummary').textContent = !fuelCards.length
             ? (admin ? 'Noch keine Tankkarte angelegt. Lege unten die erste Karte an.' : 'Noch keine Tankkarte angelegt.')
             : `${fuelCards.length} ${fuelCards.length === 1 ? 'Karte' : 'Karten'} · ${out.length ? `${out.length} ausgegeben` : 'alle im Büro'}${admin ? '' : ' · Ausgeben und Zurücknehmen macht nur der Admin.'}`;
@@ -1272,10 +1326,10 @@
             const row = el('li', 'vehicle-entry file-entry fuel-entry');
             const meta = el('span');
             meta.append(el('strong', null, `Tankkarte ${card.number}`),
-                el('small', null, card.holder_id ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
+                el('small', null, given(card) ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'}${!card.holder_id && card.holder_name === 'Heidelberg' ? ' (Kollegen)' : ''} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
             if (card.note) meta.append(el('small', null, card.note));
             const actions = el('span', 'vehicle-entry-actions');
-            if (admin && card.holder_id) {
+            if (admin && given(card)) {
                 const back = el('button', 'button-primary account-approve', 'Zurückgenommen');
                 back.type = 'button';
                 back.addEventListener('click', () => setFuelCard(card, null, back));
@@ -1283,12 +1337,12 @@
             } else if (admin) {
                 const select = el('select');
                 select.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
-                select.append(...[{ id: '', full_name: 'Ausgeben an …' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
+                select.append(...[{ id: '', full_name: 'Ausgeben an …' }, { id: '__heidelberg', full_name: 'Heidelberg (Kollegen)' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
                 const give = el('button', 'button-secondary fleet-end-button', 'Ausgeben');
                 give.type = 'button';
                 give.addEventListener('click', () => {
                     if (!select.value) { showToast('Bitte wähle zuerst, wer die Karte bekommt.', 'error', { target: select }); return; }
-                    setFuelCard(card, select.value, give);
+                    if (select.value === '__heidelberg') setFuelCard(card, null, give, 'Heidelberg'); else setFuelCard(card, select.value, give);
                 });
                 const remove = el('button', 'button-quiet-danger', 'Entfernen');
                 remove.type = 'button';
@@ -1301,7 +1355,7 @@
                 });
                 actions.append(select, give, remove);
             }
-            row.append(pill(card.holder_id ? 'in Arbeit' : 'erledigt', card.holder_id ? 'ausgegeben' : 'im Büro'), meta, actions);
+            row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id ? 'ausgegeben' : 'Heidelberg') : 'im Büro'), meta, actions);
             return row;
         }));
         $('fuelLog').replaceChildren(...fuelLog.map(item => {
@@ -1311,12 +1365,17 @@
         }));
     }
 
-    async function setFuelCard(card, profileId, button) {
+    async function setFuelCard(card, profileId, button, place = '') {
         button.disabled = true;
-        const { error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId });
+        let { error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId, p_place: place });
+        // Ohne Update 41 gibt es die Funktion nur mit zwei Parametern.
+        if (error && /could not find the function|p_place/i.test(error.message || '')) {
+            if (place) { button.disabled = false; showToast('Für „Heidelberg“ als Inhaber fehlt noch das Datenbank-Update 41.', 'error'); return; }
+            ({ error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId }));
+        }
         button.disabled = false;
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast(profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
+        showToast(place ? `Tankkarte ${card.number} ist jetzt bei den Kollegen in ${place}` : profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
         await refresh();
     }
 
@@ -1516,8 +1575,8 @@
             const box = el('input');
             box.type = 'checkbox';
             box.value = vehicle.id;
-            box.checked = vehicle.type !== 'Mietwagen';
-            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            box.checked = vehicle.type !== 'Mietwagen' && stationOf(vehicle) === 'Bonn';
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
             row.append(label);
             return row;
         }));

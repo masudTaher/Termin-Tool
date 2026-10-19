@@ -54,6 +54,16 @@
                <details class="fuel-log" id="fuelLogBox" hidden><summary>Verlauf: wer hatte wann welche Karte</summary><ul id="fuelLog" class="directory-list"></ul></details>
             </section>
 
+            <!-- Heidelberg: Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
+            <section class="directory-card station-card" aria-labelledby="stationTitle" id="stationSection">
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 id="stationTitle">Heidelberg</h2><p id="stationSummary">Wird geladen …</p></div><button type="button" id="stationAddOpen" class="button-secondary">+ Fahrzeug in Heidelberg</button></div>
+               <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Heidelberg – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Heidelberg“ aus.</p>
+               <h3 class="file-heading">Fahrzeuge</h3>
+               <ul id="stationVehicles" class="directory-list"></ul>
+               <h3 class="file-heading">Tankkarten</h3>
+               <ul id="stationCards" class="directory-list"></ul>
+            </section>
+
             <!-- Reifenwechsel: Liste für die Werkstatt (ATU) – ein Link ohne Zugangsdaten -->
             <section class="directory-card tyre-office" aria-labelledby="tyreTitle" id="tyreSection">
                <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.500"/><path d="M12 3v5.500M12 15.500V21M3 12h5.500M15.500 12H21"/></svg></span><div><h2 id="tyreTitle">Reifenwechsel – Liste für die Werkstatt</h2><p id="tyreSummary">Wird geladen …</p></div><button type="button" id="tyreNewOpen" class="button-primary">Neue Liste erstellen</button></div>
@@ -184,6 +194,10 @@
             <select id="vehicleFormBody"><option value="Limousine">Limousine</option><option value="Kombi">Kombi</option><option value="Bus">Bus / Van</option></select>
             <label for="vehicleFormType">Art</label>
             <select id="vehicleFormType"><option value="Diplomatisch">Diplomatisch</option><option value="Mietwagen">Mietwagen</option></select>
+            <label for="vehicleFormStation">Standort</label>
+            <select id="vehicleFormStation"><option value="Bonn">Bonn</option><option value="Heidelberg">Heidelberg (Kollegen)</option></select>
+            <label for="vehicleFormDriver" id="vehicleFormDriverLabel" hidden>Fester Fahrer in Heidelberg <span class="optional-label">optional</span></label>
+            <input id="vehicleFormDriver" type="text" maxlength="80" autocomplete="off" placeholder="Name des Kollegen" hidden>
             <label for="vehicleFormLabel">Hinweis <span class="optional-label">optional</span></label>
             <input id="vehicleFormLabel" type="text" maxlength="60" autocomplete="off" placeholder="Zum Beispiel: schwarz, 7 Sitze">
             <label for="vehicleFormMileage" id="vehicleFormMileageLabel">Kilometerstand <span class="optional-label">optional</span></label>

@@ -85,7 +85,7 @@
                      <div class="fleet-field fleet-field-wide"><label for="receiptNote">Bemerkung <span class="optional-label">optional</span></label><input id="receiptNote" type="text" maxlength="200"></div>
                      <div class="fleet-form-actions fleet-field-wide"><button type="submit" class="button-primary" id="receiptSubmit">Beleg speichern</button><button type="button" class="button-secondary" id="receiptEditCancel" hidden>Abbrechen</button></div>
                   </form>
-                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Ort</th><th>Betrag</th><th>Art · Nachweis</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Aktion</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
+                  <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Name</th><th>Datum</th><th>Ort</th><th>Betrag</th><th>Art · Nachweis</th><th>Bemerkung</th><th>Foto</th><th>Status</th><th>Druck</th><th>Aktion</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
                </div>
 
                <!-- Archiv: alles, was im Portal freigegeben wurde – je Dolmetscher unter seinem Namen (alle Monate) -->
@@ -120,6 +120,7 @@
       <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
       <script src="cloudSettingsSync.js"></script>
+      <script src="docPdf.js"></script>
       <script src="abrechnungLogic.js"></script>
       <script src="abrechnungApp.js"></script>
    </body>
