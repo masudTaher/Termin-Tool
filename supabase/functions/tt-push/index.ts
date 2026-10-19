@@ -240,9 +240,9 @@ Deno.serve(async (req) => {
       // Wohin führt ein Tipp auf die Mitteilung? Nur diese Seiten des Portals sind erlaubt.
       const pages: Record<string, string> = {
         nachrichten: 'portal.html?seite=nachrichten', auftraege: 'portal.html?seite=auftraege', rueckfragen: 'portal.html?seite=rueckfragen',
-        start: 'portal.html', arbeitstage: 'portal.html?seite=arbeitstage', zeiten: 'portal.html?seite=zeiten',
+        start: 'portal.html', arbeitstage: 'portal.html?seite=arbeitstage', zeiten: 'portal.html?seite=zeiten', abrechnung: 'portal.html?seite=abrechnung',
       };
-      const tags: Record<string, string> = { rueckfragen: 'rueckfrage', start: 'anfrage', arbeitstage: 'wochenplan', zeiten: 'abwesenheit' };
+      const tags: Record<string, string> = { rueckfragen: 'rueckfrage', start: 'anfrage', arbeitstage: 'wochenplan', zeiten: 'abwesenheit', abrechnung: 'abrechnung' };
       const page = String(input.page ?? 'nachrichten');
       const result = await sendTo((people ?? []).map((item) => item.id), {
         title: String(input.title ?? 'Nachricht von der Einsatzleitung').slice(0, 80),

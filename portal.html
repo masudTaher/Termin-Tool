@@ -697,6 +697,17 @@
                <p class="wizard-hint" id="receiptsSummary">Beleg fotografieren – Betrag und Datum werden automatisch gelesen.</p>
                <button type="button" class="button-primary big-button" data-go="receipts">Beleg einreichen</button>
                <ul id="receiptList" class="directory-list portal-list"></ul>
+               <!-- Alle Belege eines Monats in einer PDF-Datei – zum Herunterladen und Ausdrucken -->
+               <div class="receipt-bundle" id="receiptBundleBox">
+                  <span class="field-label">Belege gesammelt als PDF</span>
+                  <p class="field-hint">Deckblatt mit allen Belegen des Monats und dahinter jeder Beleg als eigene Seite – zum Ausdrucken oder Weiterschicken.</p>
+                  <div class="receipt-bundle-row">
+                     <select id="receiptBundleMonth" aria-label="Monat"></select>
+                     <select id="receiptBundleKind" aria-label="Art der Belege"><option value="Parken">Parkbelege</option><option value="Tanken">Tankbelege</option><option value="">Park- und Tankbelege</option></select>
+                     <button type="button" id="receiptBundle" class="button-secondary">Als PDF herunterladen</button>
+                  </div>
+                  <p id="receiptBundleStatus" class="field-hint" role="status" aria-live="polite"></p>
+               </div>
             </section>
 
             <section class="directory-card" data-panel="statement" aria-labelledby="statementVehiclesTitle" hidden>

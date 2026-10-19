@@ -538,5 +538,74 @@ window.DocPdf = (function () {
         return `${base}.${safe(ext).replace(/-/g, '').toLowerCase() || 'pdf'}`;
     }
 
-    return { ready, build, report, fileName, canShow };
+    // ---------- Sammelmappe: Deckblatt + alle Belege eines Monats in EINEM PDF ----------
+    // items: [{ label, lines: [..], bytes (ArrayBuffer), contentType }] – jeder Beleg als PDF (alle Seiten) oder Foto (eine Seite).
+    // Oben auf jeder Belegseite steht, wozu sie gehört. Was sich nicht öffnen lässt, bekommt eine Hinweisseite statt zu fehlen.
+    async function bundle(options) {
+        const { title, subtitle, rows, total, items, ...details } = options || {};
+        await ready();
+        const P = window.PDFLib;
+        const pdf = await P.PDFDocument.create();
+        const regular = pdf.embedStandardFont(P.StandardFonts.Helvetica);
+        const bold = pdf.embedStandardFont(P.StandardFonts.HelveticaBold);
+        describe(pdf, { ...details, title });
+        const show = value => clean(value).text.replace(/\s+/g, ' ').trim();
+        const width = A4[0] - 2 * MARGIN;
+        // Deckblatt: Überschrift, Untertitel, Tabelle (Datum · Ort · Art · Betrag · Stand), Summe.
+        let page = pdf.addPage(A4);
+        let y = A4[1] - MARGIN;
+        put(page, regular, show(APP), MARGIN, A4[1] - 38, 8, GREY);
+        rule(page, A4[1] - 46);
+        put(page, bold, show(title), MARGIN, y - 18, 18, INK); y -= 30;
+        if (subtitle) { put(page, regular, show(subtitle), MARGIN, y - 10, 10.5, GREY); y -= 22; }
+        const columns = [0, 70, 300, 370, 450];      // x-Versatz der Spalten
+        const headers = ['Datum', 'Ort', 'Art', 'Betrag', 'Stand'];
+        const line = (cells, font, size, color) => {
+            if (y - 16 < MARGIN) { page = pdf.addPage(A4); y = A4[1] - MARGIN; }
+            cells.forEach((cell, index) => { const text = wrapShort(show(cell), font, size, (columns[index + 1] ?? width) - columns[index] - 8, 1)[0] || ''; put(page, font, text, MARGIN + columns[index], y - 11, size, color); });
+            y -= 16;
+        };
+        y -= 6;
+        line(headers, bold, 9.5, GREY);
+        rule(page, y + 2);
+        (rows || []).forEach(row => line(row, regular, 10, INK));
+        rule(page, y + 2);
+        if (total) line(['', '', '', total, ''], bold, 10.5, INK);
+        y -= 10;
+        put(page, regular, show(`${(items || []).length} ${(items || []).length === 1 ? 'Beleg' : 'Belege'} auf den folgenden Seiten. Jede Seite trägt oben Datum, Ort und Betrag.`), MARGIN, y - 10, 9.5, GREY);
+        // Die Belege: PDF-Seiten werden übernommen, Fotos eingebettet – jeweils mit Kopfzeile.
+        const header = (target, text) => { put(target, bold, wrapShort(show(text), bold, 9, width, 1)[0] || '', MARGIN, A4[1] - 38, 9, INK); rule(target, A4[1] - 46); };
+        for (const item of items || []) {
+            const label = item.label || '';
+            try {
+                if (/pdf/i.test(item.contentType || '') || new Uint8Array(item.bytes.slice(0, 4)).join(',') === '37,80,68,70') {
+                    const source = await P.PDFDocument.load(item.bytes, { ignoreEncryption: true });
+                    const count = source.getPageCount();
+                    const embedded = await pdf.embedPdf(source, source.getPageIndices());
+                    embedded.forEach((sheet, index) => {
+                        // Die Belegseite wird auf A4 gelegt: Kopfzeile oben, der Inhalt darunter eingepasst.
+                        const target = pdf.addPage(A4);
+                        header(target, `${label}${count > 1 ? ` · Seite ${index + 1}/${count}` : ''}`);
+                        const box = { x: MARGIN, y: MARGIN, w: width, h: A4[1] - 60 - MARGIN - 20 };
+                        const scale = Math.min(box.w / sheet.width, box.h / sheet.height, 1.5);
+                        target.drawPage(sheet, { x: box.x + (box.w - sheet.width * scale) / 2, y: box.y + (box.h - sheet.height * scale) / 2, xScale: scale, yScale: scale });
+                    });
+                } else {
+                    const image = /png/i.test(item.contentType || '') ? await pdf.embedPng(item.bytes) : await pdf.embedJpg(item.bytes);
+                    const target = pdf.addPage(A4);
+                    header(target, label);
+                    const box = { x: MARGIN, y: MARGIN, w: width, h: A4[1] - 60 - MARGIN - 20 };
+                    const scale = Math.min(box.w / image.width, box.h / image.height);
+                    target.drawImage(image, { x: box.x + (box.w - image.width * scale) / 2, y: box.y + (box.h - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
+                }
+            } catch (error) {
+                const target = pdf.addPage(A4);
+                header(target, label);
+                put(target, regular, show('Dieser Beleg ließ sich nicht in die Mappe übernehmen. Er bleibt in der App gespeichert und kann dort einzeln geöffnet werden.'), MARGIN, A4[1] - 90, 10.5, INK);
+            }
+        }
+        return save(pdf);
+    }
+
+    return { ready, build, report, bundle, fileName, canShow };
 })();

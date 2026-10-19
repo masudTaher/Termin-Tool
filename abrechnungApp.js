@@ -126,6 +126,7 @@
         $('payrollPlaces').replaceChildren(...[...new Set(receipts.map(item => item.place).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de')).map(place => { const option = el('option'); option.value = place; return option; }));
         document.querySelectorAll('[data-payroll-tab]').forEach(button => button.classList.toggle('is-active', button.dataset.payrollTab === tab));
         document.querySelectorAll('[data-payroll-panel]').forEach(panel => { panel.hidden = panel.dataset.payrollPanel !== tab; });
+        renderTodo();
         renderList();
         renderSpecial();
         renderReceipts();
@@ -396,6 +397,119 @@
         actionCell.querySelector('.payroll-actions-main').append(more);
         detail.append(glance, actionCell, grid);
         return detail;
+    }
+
+    // ---------- Das ist jetzt zu tun: Schritt für Schritt ----------
+    // Alles, was eine Entscheidung braucht, steht hier mit dem passenden Knopf – Belege prüfen, Einwände beantworten,
+    // offene Punkte, Abrechnungen senden, wer noch bestätigen muss. Die Einzelheiten je Person bleiben darunter.
+    let todoOpen = {};
+    function renderTodo() {
+        const box = $('payTodoSteps');
+        if (!box) return;
+        const range = Abrechnung.monthRange(month);
+        const newReceipts = [...receipts].filter(item => item.status === 'eingereicht').sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)));
+        const objections = result.rows.filter(row => row.statement?.response === 'einwand');
+        const checks = result.checks.filter(text => !/^Einwand von/.test(text) && !/Beleg.*nicht geprüft/.test(text));   // Belege haben ihren eigenen Schritt
+        const ready = result.rows.filter(row => row.profileId && row.salary != null && !(row.statement && !row.changedSince && row.statement.response !== 'einwand'));
+        const noAccount = result.rows.filter(row => !row.profileId);
+        const waiting = result.rows.filter(row => row.statement && row.statement.response === 'offen' && !row.changedSince);
+        const confirmed = result.rows.filter(row => row.statement?.response === 'bestätigt' && !row.changedSince);
+        const todo = newReceipts.length + objections.length + checks.length + ready.length;
+        $('payTodoSummary').textContent = todo
+            ? `${range.label}: ${[newReceipts.length ? `${newReceipts.length} ${newReceipts.length === 1 ? 'Beleg' : 'Belege'} prüfen` : '', objections.length ? `${objections.length} ${objections.length === 1 ? 'Einwand' : 'Einwände'} beantworten` : '', checks.length ? `${checks.length} offene ${checks.length === 1 ? 'Punkt' : 'Punkte'}` : '', ready.length ? `${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} senden` : ''].filter(Boolean).join(' · ')}${waiting.length ? ` · ${waiting.length} ${waiting.length === 1 ? 'wartet' : 'warten'} auf Bestätigung` : ''}`
+            : `${range.label}: Nichts wartet auf dich.${waiting.length ? ` ${waiting.length} ${waiting.length === 1 ? 'Abrechnung wartet' : 'Abrechnungen warten'} noch auf die Bestätigung der Dolmetscher.` : ''}${confirmed.length === result.rows.length && result.rows.length ? ' Alle Abrechnungen sind bestätigt ✓' : ''}`;
+        $('payTodo').dataset.state = todo ? 'offen' : 'fertig';
+        const step = (key, number, title, count, hint, done) => {
+            const item = el('li', 'pay-step');
+            item.dataset.step = key;
+            item.dataset.done = count ? '' : 'ja';
+            const open = key in todoOpen ? todoOpen[key] : Boolean(count) && !done;
+            item.dataset.open = open ? 'ja' : '';
+            const head = el('button', 'pay-step-head');
+            head.type = 'button';
+            head.setAttribute('aria-expanded', String(open));
+            head.append(el('span', 'pay-step-no', count ? String(number) : '✓'), el('span', 'pay-step-title', title), el('b', 'pay-step-count', String(count)), el('span', 'pay-step-hint', hint));
+            head.addEventListener('click', () => { todoOpen[key] = !open; renderTodo(); });
+            const body = el('div', 'pay-step-body');
+            body.hidden = !open;
+            item.append(head, body);
+            return { item, body };
+        };
+        const line = (main, sub, ...buttons) => {
+            const row = el('div', 'pay-step-row');
+            const text = el('div', 'pay-step-text');
+            text.append(el('strong', null, main));
+            if (sub) text.append(el('small', null, sub));
+            const actions = el('div', 'pay-step-actions');
+            buttons.filter(Boolean).forEach(button => actions.append(button));
+            row.append(text, actions);
+            return row;
+        };
+        const button = (text, className, onClick, title = '') => { const node = el('button', className, text); node.type = 'button'; if (title) node.title = title; node.addEventListener('click', onClick); return node; };
+        const steps = [];
+
+        // 1. Belege prüfen
+        const s1 = step('receipts', 1, 'Belege prüfen', newReceipts.length, newReceipts.length ? 'Neu eingereichte Belege – ansehen, dann „Geprüft“ oder „Ablehnen“' : 'Alle Belege sind geprüft');
+        newReceipts.forEach(item => {
+            const setStatus = async status => {
+                const { error } = await client.from('tt_receipts').update({ status }).eq('id', item.id);
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                item.status = status;
+                showToast(status === 'geprüft' ? `Beleg von ${item.person_name} geprüft.` : `Beleg von ${item.person_name} abgelehnt.`, 'success');
+                render();
+                window.refreshCloudInbox?.();
+            };
+            s1.body.append(line(`${item.person_name} · ${euro(item.amount)}`, `${Abrechnung.longDate(item.date)} · ${item.place || item.kind}${item.note ? ` · „${item.note}“` : ''}`,
+                item.photo_path ? button(/\.pdf$/i.test(item.photo_path) ? 'PDF ansehen' : 'Foto ansehen', 'button-secondary', () => showPhoto(item.photo_path)) : null,
+                button('Geprüft ✓', 'button-primary', () => setStatus('geprüft')),
+                button('Ablehnen', 'button-quiet-danger', async () => { if (await confirmDialog(`Den Beleg von ${item.person_name} (${euro(item.amount)}, ${Abrechnung.longDate(item.date)}) ablehnen? Er zählt dann nicht in der Abrechnung.`, 'Ablehnen')) setStatus('abgelehnt'); })));
+        });
+        steps.push(s1.item);
+
+        // 2. Einwände beantworten
+        const s2 = step('objections', 2, 'Einwände beantworten', objections.length, objections.length ? 'Eine Person hat ihre Abrechnung nicht bestätigt – korrigieren und neu senden, oder ablehnen' : 'Keine Einwände');
+        objections.forEach(row => {
+            s2.body.append(line(row.name, `Einwand: „${row.statement.response_note || '–'}“ · aktuell ${euro(row.total)}`,
+                button('Zur Person (korrigieren)', 'button-secondary', () => { openPerson = Abrechnung.key(row.name); tab = 'list'; render(); document.querySelector(`.pay-person[data-person="${CSS.escape(Abrechnung.key(row.name))}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }),
+                button('Korrigiert – neu senden', 'button-primary', async () => { if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} neu gesendet.`, 'success'); await refresh(); window.refreshCloudInbox?.(); } }, 'Die aktuellen Zahlen gehen noch einmal zum Bestätigen an die Person'),
+                button('Ablehnen mit Antwort', 'button-quiet-danger', async () => { const reply = await askReply(row); if (reply === null) return; if (await releaseStatement(row, reply)) { showToast(`Antwort an ${row.name} gesendet.`, 'success'); await refresh(); window.refreshCloudInbox?.(); } })));
+        });
+        steps.push(s2.item);
+
+        // 3. Offene Punkte
+        const s3 = step('checks', 3, 'Offene Punkte klären', checks.length, checks.length ? 'Fehlende Arbeitstage, Sondertage zum Prüfen, Belege ohne Person' : 'Alles geklärt');
+        checks.forEach(text => s3.body.append(line(text, '')));
+        steps.push(s3.item);
+
+        // 4. Abrechnungen senden
+        const s4 = step('release', 4, 'Abrechnungen zum Bestätigen senden', ready.length, ready.length ? 'Noch nicht gesendet oder seit dem Senden geändert' : (noAccount.length ? `Alles gesendet · ${noAccount.length} ohne Portal-Konto` : 'Alles gesendet'));
+        if (ready.length > 1) s4.body.append(line(`Alle ${ready.length} auf einmal`, 'Schon bestätigte, unveränderte Abrechnungen bleiben, wie sie sind.', button(`Alle ${ready.length} senden`, 'button-primary', () => $('releaseAll').click())));
+        ready.forEach(row => {
+            s4.body.append(line(`${row.name} · ${row.total == null ? '–' : euro(row.total)}`, [row.workdays != null ? `${row.workdays} Arbeitstage` : '', row.receiptCount ? `${row.receiptCount} Belege` : '', row.changedSince ? 'geändert seit dem Senden' : (row.statement ? 'Korrektur angefragt' : 'noch nicht gesendet')].filter(Boolean).join(' · '),
+                button('Ansehen', 'button-secondary', () => { openPerson = Abrechnung.key(row.name); tab = 'list'; render(); document.querySelector(`.pay-person[data-person="${CSS.escape(Abrechnung.key(row.name))}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }),
+                button(`An ${row.name.split(' ')[0]} senden`, 'button-primary', async () => { if (!monthOver() && !await confirmDialog(earlyText(), 'Trotzdem senden')) return; if (await releaseStatement(row)) { showToast(`Abrechnung für ${row.name} zum Bestätigen gesendet.`, 'success'); await refresh(); } })));
+        });
+        noAccount.forEach(row => s4.body.append(line(`${row.name} · ${row.total == null ? '–' : euro(row.total)}`, 'kein Portal-Konto – geht nicht in die App, steht aber in der Endliste')));
+        steps.push(s4.item);
+
+        // 5. Warten auf Bestätigung
+        const s5 = step('waiting', 5, 'Warten auf Bestätigung der Dolmetscher', waiting.length, waiting.length ? 'Gesendet – die Person hat noch nicht bestätigt. „Erinnern“ schickt eine Mitteilung aufs Handy.' : 'Niemand muss mehr bestätigen', true);
+        waiting.forEach(row => {
+            s5.body.append(line(`${row.name} · ${euro(row.total)}`, `gesendet am ${row.statement.released_at ? new Date(row.statement.released_at).toLocaleDateString('de-DE') : '–'}`,
+                button('Erinnern', 'button-secondary', async (event) => {
+                    event.currentTarget.disabled = true;
+                    const sent = await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [row.profileId], title: 'Bitte Abrechnung bestätigen', body: `Deine Abrechnung ${range.label} wartet in der App auf deine Bestätigung.`, page: 'abrechnung' });
+                    showToast(sent.ok ? (sent.data?.sent ? `Erinnerung an ${row.name} gesendet.` : `${row.name} hat Mitteilungen nicht eingeschaltet – bitte anrufen oder schreiben.`) : `Erinnerung nicht gesendet: ${sent.reason}`, sent.ok && sent.data?.sent ? 'success' : 'info');
+                })));
+        });
+        steps.push(s5.item);
+
+        // 6. Bestätigt
+        const s6 = step('confirmed', 6, 'Bestätigt', confirmed.length, confirmed.length ? confirmed.map(row => row.name).join(', ') : 'Noch nichts bestätigt', true);
+        confirmed.forEach(row => s6.body.append(line(`${row.name} · ${euro(row.total)}`, `bestätigt am ${row.statement.responded_at ? new Date(row.statement.responded_at).toLocaleDateString('de-DE') : '–'}`)));
+        steps.push(s6.item);
+
+        box.replaceChildren(...steps);
     }
 
     function renderList() {

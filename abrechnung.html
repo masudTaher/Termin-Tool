@@ -10,7 +10,7 @@
    <body data-page="abrechnung">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div><p class="page-kicker">ONLINE · BUCHHALTUNG</p><h1>Monatsabrechnung</h1><p>Arbeitstage, Sondertage und Belege der temporären Dolmetscher – mit Endliste für die Buchhaltung.</p></div>
+            <div><p class="page-kicker">ONLINE · BUCHHALTUNG</p><h1>Monatsabrechnung</h1><p>Oben steht, was zu tun ist – Belege prüfen, Einwände beantworten, Abrechnungen senden. Darunter alle Einzelheiten je Person.</p></div>
             <div class="fleet-heading-actions">
                <label class="button-secondary import-name-button" for="payrollImportFile">Excel importieren</label>
                <input id="payrollImportFile" class="visually-hidden" type="file" accept=".xlsx,.xls">
@@ -27,6 +27,14 @@
                <div class="fleet-field"><label for="payrollRate">Tagessatz (€)</label><input id="payrollRate" type="number" min="0" step="1"></div>
                <div class="fleet-field"><label for="payrollCheckDate">Prüfdatum</label><input id="payrollCheckDate" type="date"></div>
                <p id="payrollCheck" class="payroll-check" role="status"></p>
+            </section>
+
+            <!-- Was ist jetzt zu tun? Schritt für Schritt – mit den Knöpfen direkt dabei. -->
+            <section class="directory-card pay-todo" id="payTodo" aria-labelledby="payTodoTitle">
+               <div class="pay-todo-head">
+                  <div><p class="page-kicker">SCHRITT FÜR SCHRITT</p><h2 id="payTodoTitle">Das ist jetzt zu tun</h2><p id="payTodoSummary" class="pay-todo-summary">Wird geladen …</p></div>
+               </div>
+               <ol id="payTodoSteps" class="pay-steps"></ol>
             </section>
 
             <div class="fleet-summary payroll-summary">

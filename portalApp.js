@@ -241,6 +241,7 @@ if (!window.TerminContact) {
         if (wanted === 'nachrichten') { history.replaceState(null, '', location.pathname); goTo('messages'); }
         else if (wanted === 'auftraege') { history.replaceState(null, '', location.pathname); goTo('jobs'); }
         else if (wanted === 'rueckfragen') { history.replaceState(null, '', location.pathname); goTo('requests'); }
+        else if (wanted === 'abrechnung') { history.replaceState(null, '', location.pathname); goTo('statement'); }
         else if (wanted === 'arbeitstage') { history.replaceState(null, '', location.pathname); goTo(isFest() ? 'overtime' : 'workdays'); }
         else if (wanted === 'zeiten') {
             // Antwort der Einsatzleitung auf einen Urlaubsantrag: direkt zu „Meine Anträge und Meldungen“
@@ -2864,6 +2865,81 @@ if (!window.TerminContact) {
             list.append(entry);
         });
     }
+
+    // ---------- Alle Belege eines Monats als eine PDF-Datei ----------
+    // Deckblatt (Datum, Ort, Art, Betrag, Stand, Summe) und dahinter jeder Beleg als Seite – zum Drucken oder Weiterschicken.
+    function fillBundleMonths() {
+        const select = $('receiptBundleMonth');
+        if (!select || select.options.length) return;
+        const now = new Date();
+        for (let back = 0; back < 6; back++) {
+            const date = new Date(now.getFullYear(), now.getMonth() - back, 1);
+            const option = el('option', '', date.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }));
+            option.value = isoDate(date).slice(0, 7);
+            select.append(option);
+        }
+    }
+    async function bundleReceipts(button) {
+        const month = $('receiptBundleMonth').value;
+        const kind = $('receiptBundleKind').value;
+        const status = $('receiptBundleStatus');
+        const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+        const kindName = kind === 'Parken' ? 'Parkbelege' : kind === 'Tanken' ? 'Tankbelege' : 'Park- und Tankbelege';
+        button.disabled = true;
+        status.textContent = 'Belege werden gesammelt …';
+        try {
+            const from = `${month}-01`;
+            const end = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0);
+            let query = client.from('tt_receipts').select('*').eq('profile_id', profile.id).gte('date', from).lte('date', isoDate(end)).order('date');
+            if (kind) query = query.eq('kind', kind);
+            const { data, error } = await query;
+            if (error) throw error;
+            const list = (data || []).filter(item => item.status !== 'abgelehnt');
+            if (!list.length) { status.textContent = `Für ${monthName} gibt es keine ${kindName}.`; return; }
+            const items = [];
+            for (const [index, item] of list.entries()) {
+                status.textContent = `Beleg ${index + 1} von ${list.length} wird geladen …`;
+                const label = `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${item.place || ''} · ${money(item.amount)} · ${item.kind}${item.status === 'geprüft' ? ' · geprüft' : ''}`;
+                let bytes = null;
+                let contentType = '';
+                if (item.photo_path) {
+                    const url = await TerminCloud.photoUrl(item.photo_path);
+                    if (url) {
+                        const response = await fetch(url).catch(() => null);
+                        if (response?.ok) { bytes = await response.arrayBuffer(); contentType = response.headers.get('content-type') || (/\.pdf$/i.test(item.photo_path) ? 'application/pdf' : 'image/jpeg'); }
+                    }
+                }
+                items.push(bytes ? { label, bytes, contentType } : { label, bytes: new ArrayBuffer(0), contentType: 'fehlt' });
+            }
+            status.textContent = 'PDF wird erstellt …';
+            const sum = list.reduce((total, item) => total + Number(item.amount), 0);
+            const stateText = { eingereicht: 'eingereicht', 'geprüft': 'geprüft', abgelehnt: 'abgelehnt' };
+            const blob = await DocPdf.bundle({
+                title: `${kindName} ${monthName}`,
+                subtitle: `${profile.full_name || ''} · ${list.length} ${list.length === 1 ? 'Beleg' : 'Belege'} · erstellt am ${new Date().toLocaleDateString('de-DE')}`,
+                rows: list.map(item => [new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }), item.place || '–', item.kind, money(item.amount), stateText[item.status] || item.status]),
+                total: `Summe ${money(sum)}`,
+                items, author: profile.full_name || '', subject: `${kindName} ${monthName}`, keywords: ['Belege', kindName, month]
+            });
+            const name = `${kindName.replace(/[^A-Za-z]+/g, '-').replace(/-+/g, '-')}_${month}_${(profile.full_name || 'Dolmetscher').replace(/[^A-Za-z0-9]+/g, '-')}.pdf`;
+            const url = URL.createObjectURL(blob);
+            const link = el('a');
+            link.href = url;
+            link.download = name;
+            link.rel = 'noopener';
+            document.body.append(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+            status.textContent = `Fertig: ${name} (${list.length} ${list.length === 1 ? 'Beleg' : 'Belege'}, ${money(sum)}). Die Datei liegt in deinen Downloads – zum Drucken dort öffnen.`;
+            toast('PDF mit allen Belegen erstellt.', 'success');
+        } catch (error) {
+            status.textContent = '';
+            toast(error.message || TerminCloud.germanError(error), 'error');
+        } finally { button.disabled = false; }
+    }
+    $('receiptBundle')?.addEventListener('click', () => bundleReceipts($('receiptBundle')));
+    fillBundleMonths();
 
     // Sobald ein Foto gewählt ist, liest das Handy Betrag, Datum und Ort selbst aus.
     let scanToken = 0;

@@ -2837,3 +2837,36 @@ dialog.office-return { width: min(600px, calc(100% - 32px)); }
 dialog.office-return textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid var(--line, #d7dee8); border-radius: 10px; resize: vertical; }
 dialog.office-return .office-return-send { display: flex; align-items: flex-start; gap: 10px; margin: 8px 0 4px; font-weight: 600; line-height: 1.35; }
 dialog.office-return .office-return-send input { width: 20px; height: 20px; margin: 2px 0 0; flex: 0 0 auto; }
+
+/* ===== 84. Belege gesammelt als PDF (Dolmetscher-App) ===== */
+.receipt-bundle { margin-top: 14px; padding: 14px; border: 1px dashed var(--line, #d7dee8); border-radius: 14px; background: #f8fafc; }
+.receipt-bundle .field-label { display: block; margin-bottom: 2px; font-weight: 750; }
+.receipt-bundle-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.receipt-bundle-row select { flex: 1 1 140px; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line, #d7dee8); border-radius: 10px; font: inherit; background: #fff; }
+.receipt-bundle-row button { flex: 1 1 100%; min-height: 48px; }
+
+/* ===== 85. Abrechnung: „Das ist jetzt zu tun“ – Schritt für Schritt ===== */
+.pay-todo { border-left: 6px solid var(--accent, #2563eb); }
+.pay-todo[data-state="fertig"] { border-left-color: #15803d; }
+.pay-todo-head h2 { margin: 2px 0 4px; font-size: 1.35rem; }
+.pay-todo-summary { margin: 0; color: #475569; font-weight: 600; }
+.pay-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.pay-step { border: 1px solid var(--line, #d7dee8); border-radius: 14px; background: #fff; overflow: hidden; }
+.pay-step[data-done="ja"] { background: #f8fafc; }
+.pay-step[data-open="ja"] { border-color: #93c5fd; box-shadow: 0 6px 18px rgba(37, 99, 235, .08); }
+.pay-step-head { display: grid; grid-template-columns: 36px minmax(0, auto) auto minmax(0, 1fr); align-items: center; gap: 10px 12px; width: 100%; padding: 12px 14px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pay-step-head:hover, .pay-step-head:focus-visible { background: #eef4fb; color: inherit; box-shadow: none; transform: none; }
+.pay-step-no { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent, #2563eb); color: #fff; font-weight: 850; }
+.pay-step[data-done="ja"] .pay-step-no { background: #15803d; }
+.pay-step-title { font-weight: 800; font-size: 1.02rem; }
+.pay-step-count { min-width: 26px; padding: 2px 9px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: .85rem; text-align: center; }
+.pay-step[data-done="ja"] .pay-step-count { background: #dcfce7; color: #166534; }
+.pay-step-hint { color: #64748b; font-size: .9rem; overflow-wrap: anywhere; }
+.pay-step-body { display: grid; gap: 6px; padding: 0 14px 14px 62px; }
+.pay-step-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--line, #d7dee8); border-radius: 10px; background: #fff; }
+.pay-step[data-done="ja"] .pay-step-row { background: #f8fafc; }
+.pay-step-text { display: grid; gap: 2px; min-width: 0; }
+.pay-step-text small { color: #64748b; }
+.pay-step-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.pay-step-actions button { min-height: 38px; padding: 6px 12px; }
+@media (max-width: 720px) { .pay-step-head { grid-template-columns: 32px minmax(0, 1fr) auto; } .pay-step-hint { grid-column: 2 / -1; } .pay-step-body { padding-left: 14px; } }
