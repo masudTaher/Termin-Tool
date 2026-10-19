@@ -1132,6 +1132,67 @@ if (!window.TerminContact) {
         && !jobStarted(item) && !jobFinished(item) && item.response !== 'abgesagt';
     const lateJobs = () => jobsData.filter(item => jobLate(item)).sort(jobOrder);
 
+    // Nach der Rückgabe des Fahrzeugs (fest angestellt): Überstunden gleich eintragen – Beginn vor 9 Uhr, Ende nach 16 Uhr,
+    // am Wochenende die ganze Zeit. Vorgeschlagen werden die Übernahmezeit und „jetzt“. Nur gefragt, wenn es Überstunden geben kann
+    // und für heute noch keine gemeldet sind. „Keine Überstunden“ schließt ohne Eintrag; nachträglich geht es weiter unter „Arbeitszeit“.
+    async function askOvertimeAfterReturn(taken) {
+        const today = TerminCloud.todayIso();
+        const now = new Date();
+        const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const weekend = [0, 6].includes(now.getDay());
+        const startGuess = taken && taken.date === today ? String(taken.start_time || '').slice(0, 5) : '';
+        const possible = weekend || (startGuess && toMinutes(startGuess) < toMinutes(WORK_START)) || toMinutes(nowTime) > toMinutes(WORK_END);
+        if (!possible) return;
+        if (overtimeData.some(item => item.date === today && item.status !== 'abgelehnt')) return;
+        const jobs = jobsData.filter(item => item.date === today && !item.cancelled && !jobClosed(item)).sort(jobOrder);
+        const dialog = el('dialog', 'confirm-dialog yesno-dialog overtime-ask');
+        const heading = el('h2', '', 'Überstunden heute?');
+        heading.id = 'overtimeAskTitle';
+        dialog.setAttribute('aria-labelledby', 'overtimeAskTitle');
+        const text = el('p', '', weekend ? 'Samstag und Sonntag zählt jede Stunde. Trag ein, von wann bis wann du gearbeitet hast.' : `Vor ${WORK_START.replace(/^0/, '')} Uhr angefangen oder nach ${WORK_END} Uhr fertig? Dann trag die Zeiten ein – die Überstunden rechnet die App aus.`);
+        const row = el('div', 'overtime-ask-row');
+        const field = (id, label, value) => { const wrap = el('label', 'overtime-ask-field'); wrap.htmlFor = id; const input = el('input'); input.type = 'time'; input.id = id; input.value = value; wrap.append(el('span', '', label), input); return [wrap, input]; };
+        const [startWrap, startInput] = field('overtimeAskStart', weekend ? 'Beginn' : `Beginn (vor ${WORK_START.replace(/^0/, '')} Uhr)`, startGuess);
+        const [endWrap, endInput] = field('overtimeAskEnd', weekend ? 'Ende' : `Ende (nach ${WORK_END} Uhr)`, nowTime);
+        row.append(startWrap, endWrap);
+        const result = el('p', 'overtime-ask-result');
+        result.setAttribute('role', 'status');
+        const show = () => { const sum = computeOvertime(weekend, startInput.value, endInput.value); result.dataset.kind = sum.total ? 'ok' : 'warn'; result.textContent = sum.total ? `Überstunden: ${duration(sum.total)}` : sum.hasInput ? (weekend ? 'Bitte Beginn und Ende eintragen.' : `Das liegt in der normalen Arbeitszeit (${WORK_START} bis ${WORK_END} Uhr) – keine Überstunden.`) : 'Trag eine Uhrzeit ein.'; return sum; };
+        startInput.addEventListener('input', show); endInput.addEventListener('input', show);
+        show();
+        const buttons = el('div', 'modal-buttons');
+        const none = el('button', 'button-secondary', 'Keine Überstunden');
+        none.type = 'button';
+        const ok = el('button', 'button-primary', 'Eintragen');
+        ok.type = 'button';
+        buttons.append(none, ok);
+        dialog.append(heading, text, row, result, el('p', 'field-hint', 'Du kannst Überstunden auch später unter „Arbeitszeit“ melden oder dort ändern.'), buttons);
+        document.body.append(dialog);
+        await new Promise(resolve => {
+            none.addEventListener('click', () => dialog.close());
+            ok.addEventListener('click', async () => {
+                const sum = show();
+                if (!sum.total) { toast(weekend ? 'Bitte Beginn und Ende eintragen.' : 'Diese Zeiten sind keine Überstunden.', 'error'); return; }
+                ok.disabled = true;
+                const main = jobs[jobs.length - 1] || null;
+                const { error } = await client.from('tt_overtime').insert({
+                    profile_id: profile.id, person_name: profile.full_name || profile.email, date: today,
+                    start_time: toMinutes(startInput.value) != null && (sum.before || weekend) ? startInput.value : null,
+                    end_time: toMinutes(endInput.value) != null && (sum.after || weekend) ? endInput.value : null,
+                    minutes_before: sum.before, minutes_after: sum.after,
+                    assignment_id: main ? main.id : null, appointment: main ? main.title : 'Arbeitstag', note: 'Nach der Fahrzeugrückgabe eingetragen', status: 'eingereicht'
+                });
+                ok.disabled = false;
+                if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
+                toast(`${duration(sum.total)} Überstunden gemeldet.`, 'success');
+                dialog.close();
+                loadOvertime();
+            });
+            dialog.addEventListener('close', () => { dialog.remove(); resolve(); });
+            dialog.showModal();
+        });
+    }
+
     // Kurze Rückfrage (Ja / Abbrechen) als eigenes Fenster – kein Dialog des Browsers.
     function askYesNo({ title, text, okLabel = 'Ja', cancelLabel = 'Abbrechen' }) {
         const dialog = el('dialog', 'confirm-dialog yesno-dialog');
@@ -1275,12 +1336,15 @@ if (!window.TerminContact) {
         const finished = jobFinished(item);
         const started = jobStarted(item);
         box.dataset.state = finished ? 'beendet' : started ? 'unterwegs' : 'offen';
+        // Versehen lassen sich zurücknehmen (Update 37) – klein und ruhig, die Einsatzleitung bekommt einen Vermerk.
+        const undoButton = (label, action) => { const undo = el('button', 'link-button job-undo', label); undo.type = 'button'; undo.dataset.undo = action; undo.addEventListener('click', () => undoProgress(item, action, undo)); return undo; };
         if (finished) {
             box.append(svgSpan('job-progress-icon', '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.800 2.800L16.500 9.500"/></svg>'),
                 el('span', 'job-progress-text', item.finished_at ? `Beendet um ${clock(item.finished_at)} Uhr` : 'Beendet'));
+            if (item.finished_at && !jobStorno(item)) box.append(undoButton('Aus Versehen? „Fertig“ zurücknehmen', 'undo_finish'));
             return box;
         }
-        if (started) box.append(el('span', 'job-progress-text', item.started_at ? `Unterwegs seit ${clock(item.started_at)} Uhr` : 'Unterwegs'));
+        if (started) box.append(el('span', 'job-progress-text', item.started_at ? `Unterwegs seit ${clock(item.started_at)} Uhr` : 'Unterwegs'), item.started_at ? undoButton('Doch nicht losgefahren? Zurücknehmen', 'undo_start') : '');
         const running = started ? null : runningJobBeside(item);
         const button = el('button', `job-progress-button ${started ? 'is-finish' : 'is-start'}`, started ? 'Fertig – Auftrag beenden' : 'Jetzt losfahren');
         button.type = 'button';
@@ -1296,6 +1360,26 @@ if (!window.TerminContact) {
         button.addEventListener('click', () => setJobProgress(item, started ? 'finish' : 'start', button));
         box.append(button);
         return box;
+    }
+
+    // „Losfahren“ oder „Fertig“ zurücknehmen – mit kurzer Rückfrage; die Einsatzleitung sieht den Vermerk.
+    async function undoProgress(item, action, button) {
+        const yes = await askYesNo({
+            title: action === 'undo_start' ? '„Jetzt losfahren“ zurücknehmen?' : '„Fertig“ zurücknehmen?',
+            text: action === 'undo_start' ? 'Der Auftrag gilt dann wieder als noch nicht begonnen. Die Einsatzleitung bekommt einen Vermerk, dass du das zurückgenommen hast.'
+                : 'Der Auftrag läuft dann wieder (unterwegs). Die Einsatzleitung bekommt einen Vermerk, dass du das zurückgenommen hast.',
+            okLabel: 'Ja, zurücknehmen', cancelLabel: 'Abbrechen'
+        });
+        if (!yes) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_assignment_progress', { p_id: item.id, p_action: action });
+        button.disabled = false;
+        if (error) { toast(/Unbekannte Aktion/i.test(error.message || '') ? 'Zurücknehmen ist in der Datenbank noch nicht eingerichtet (Update 37). Bitte sag der Einsatzleitung Bescheid.' : TerminCloud.germanError(error), 'error'); return; }
+        toast(action === 'undo_start' ? '„Jetzt losfahren“ zurückgenommen – die Einsatzleitung weiß Bescheid.' : '„Fertig“ zurückgenommen – der Auftrag läuft wieder.', 'success');
+        TerminCloud.callFunction({ action: 'progress', assignmentId: item.id }).catch(() => null);
+        jobsRendered = '';
+        await loadJobs();
+        renderHome();
     }
 
     // ---------- Grund abfragen (Absage, „Termin fällt aus“) ----------
@@ -2567,10 +2651,13 @@ if (!window.TerminContact) {
                 return;
             }
             const plate = myHandover ? vehicleById(myHandover.vehicle_id)?.plate : '';
+            const taken = myHandover;
             TerminCloud.callFunction?.({ action: 'vehicle', kind: 'return' })?.catch?.(() => null);
             await loadFleet();
             await showSuccess(`${plate || 'Fahrzeug'} zurückgegeben`, 'Danke!');
             goTo('vehicle');
+            // Festangestellte: Nach der Rückgabe gleich die Überstunden eintragen (vor 9 Uhr angefangen / nach 16 Uhr fertig / Wochenende).
+            if (isFest()) await askOvertimeAfterReturn(taken);
         } finally {
             button.disabled = false;
         }
@@ -3081,11 +3168,12 @@ if (!window.TerminContact) {
         $('overtimeStartHint').textContent = weekend ? 'Beginn – jede Uhrzeit' : `nur wenn vor ${WORK_START.replace(/^0/, '')} Uhr`;
         $('overtimeEndHint').textContent = weekend ? 'Ende – jede Uhrzeit' : `nur wenn nach ${WORK_END} Uhr`;
     }
-    function overtimeMinutes() {
-        const start = toMinutes($('overtimeStart').value);
-        const end = toMinutes($('overtimeEnd').value);
+    function overtimeMinutes() { return computeOvertime(overtimeWeekend(), $('overtimeStart').value, $('overtimeEnd').value); }
+    function computeOvertime(weekend, startValue, endValue) {
+        const start = toMinutes(startValue);
+        const end = toMinutes(endValue);
         // Samstag und Sonntag ist keine normale Arbeitszeit: Dort zählt jede Stunde von Beginn bis Ende.
-        if (overtimeWeekend()) {
+        if (weekend) {
             const whole = start != null && end != null && end > start ? roundUp(end - start) : 0;
             return { before: whole, after: 0, total: whole, hasInput: start != null || end != null, weekend: true, incomplete: start == null || end == null, wrongOrder: start != null && end != null && end <= start };
         }
@@ -3291,14 +3379,19 @@ if (!window.TerminContact) {
     let chatData = [];           // eigenes Gespräch, älteste zuerst
     let chatReady = true;        // false: die Tabelle fehlt noch (Update 21)
     let messagesShown = '';      // Stand der Anzeige – nur bei Änderungen wird neu gezeichnet
-    const unreadMessages = () => messageData.filter(item => !readIds.has(item.id)).length + chatData.filter(item => item.from_staff && !item.read_at).length;
+    let questionData = [];          // Fragen der Ärzte zu meinen Berichten (Update 36)
+    const unreadQuestions = () => questionData.filter(item => !item.seen_at && !item.answered_at).length;
+    const unreadMessages = () => messageData.filter(item => !readIds.has(item.id)).length + chatData.filter(item => item.from_staff && !item.read_at).length + unreadQuestions();
     async function loadMessages() {
-        const [messages, reads, chat] = await Promise.all([
+        const [messages, reads, chat, questions] = await Promise.all([
             client.from('tt_messages').select('*').order('created_at', { ascending: false }).limit(50),
             client.from('tt_message_reads').select('message_id').eq('profile_id', profile.id),
-            client.from('tt_chat').select('*').eq('thread_id', profile.id).order('created_at', { ascending: false }).limit(200)
+            client.from('tt_chat').select('*').eq('thread_id', profile.id).order('created_at', { ascending: false }).limit(200),
+            client.from('tt_doctor_questions').select('*').eq('interpreter_id', profile.id).order('created_at', { ascending: false }).limit(100)
         ]);
         const before = loadMessages.loaded ? unreadMessages() : 0;
+        const questionsBefore = loadMessages.loaded ? unreadQuestions() : 0;
+        questionData = questions.error ? [] : (questions.data || []);
         if (messages.error) messageData = [];
         else {
             // Nachrichten aus der Zeit vor dem eigenen Konto sind nicht mehr wichtig.
@@ -3308,7 +3401,7 @@ if (!window.TerminContact) {
         chatReady = !chat.error;
         chatData = chat.error ? [] : [...chat.data].reverse();
         const unread = unreadMessages();
-        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast('Neue Nachricht von der Einsatzleitung.', 'success', null, { label: 'Lesen', run: () => goTo('messages') });
+        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? 'Ein Arzt hat eine Frage zu deinem Bericht.' : 'Neue Nachricht von der Einsatzleitung.', 'success', null, { label: 'Lesen', run: () => goTo('messages') });
         loadMessages.loaded = true;
         if (currentView === 'messages') { renderMessages(); markMessagesRead(); }
     }
@@ -3320,7 +3413,60 @@ if (!window.TerminContact) {
         const days = Math.round((start(new Date()) - start(date)) / 86400000);
         return days === 0 ? 'Heute' : days === 1 ? 'Gestern' : date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
     }
+    // Fragen der Ärzte: Patient, Bericht und Datum stehen dabei – die Antwort geht direkt zurück auf die Anzeige des Arztes.
+    function renderDoctorQuestions() {
+        const box = $('doctorQuestions');
+        if (!box) return;
+        box.hidden = !questionData.length;
+        const list = $('doctorQuestionList');
+        const signature = JSON.stringify(questionData.map(item => [item.id, item.answer, item.seen_at, item.answered_at]));
+        if (list.dataset.signature === signature) return;
+        list.dataset.signature = signature;
+        list.replaceChildren(...questionData.map(item => {
+            const card = el('li', 'doctor-question');
+            card.dataset.id = item.id;
+            card.dataset.state = item.answered_at ? 'beantwortet' : 'offen';
+            const head = el('div', 'doctor-question-head');
+            head.append(el('strong', '', `${item.doctor_name || 'Arzt'} fragt`), el('span', '', `${chatDay(item.created_at)} · ${clock(item.created_at)} Uhr`));
+            const about = el('p', 'doctor-question-about', [item.patient_name ? `Patient/in: ${item.patient_name}` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_title || item.document_kind, item.document_date ? `vom ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''].filter(Boolean).join(' · '));
+            const question = el('p', 'doctor-question-text', item.question);
+            card.append(head, about, question);
+            if (item.answered_at && !card.dataset.editing) {
+                const answer = el('p', 'doctor-question-answer', item.answer);
+                const meta = el('span', 'doctor-question-meta', `Deine Antwort · ${chatDay(item.answered_at)} ${clock(item.answered_at)} Uhr`);
+                const change = el('button', 'link-button', 'Antwort ändern');
+                change.type = 'button';
+                change.addEventListener('click', () => { card.dataset.editing = 'ja'; card.replaceChildren(head, about, question, answerForm(item, card)); });
+                card.append(meta, answer, change);
+            } else card.append(answerForm(item, card));
+            return card;
+        }));
+    }
+    function answerForm(item, card) {
+        const form = el('form', 'doctor-question-form');
+        form.noValidate = true;
+        const text = el('textarea');
+        text.rows = 3; text.maxLength = 4000; text.placeholder = 'Deine Antwort an den Arzt'; text.value = item.answer || '';
+        text.setAttribute('aria-label', `Antwort an ${item.doctor_name || 'den Arzt'}`);
+        const send = el('button', 'button-primary', item.answered_at ? 'Antwort speichern' : 'Antworten');
+        send.type = 'submit';
+        form.append(text, send);
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const answer = text.value.trim();
+            if (!answer) { toast('Bitte schreib eine Antwort.', 'error'); text.focus(); return; }
+            send.disabled = true;
+            const { error } = await client.from('tt_doctor_questions').update({ answer, seen_at: item.seen_at || new Date().toISOString() }).eq('id', item.id);
+            send.disabled = false;
+            if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
+            delete card.dataset.editing;
+            toast('Antwort gesendet – der Arzt sieht sie bei seinem Bericht.', 'success');
+            await loadMessages();
+        });
+        return form;
+    }
     function renderMessages(force = false) {
+        renderDoctorQuestions();
         const list = $('messageList');
         const items = [
             ...messageData.map(item => ({ id: `r-${item.id}`, at: item.created_at, mine: false, name: item.sender_name || 'Einsatzleitung', body: item.body, note: AUDIENCE_NOTE[item.audience] || '', fresh: !readIds.has(item.id) })),
@@ -3384,7 +3530,14 @@ if (!window.TerminContact) {
         if (document.hidden || currentView !== 'messages') return;
         const unread = messageData.filter(item => !readIds.has(item.id));
         const unreadChat = chatData.some(item => item.from_staff && !item.read_at);
-        if (!unread.length && !unreadChat) return;
+        // Fragen der Ärzte gelten als gesehen, sobald die Nachrichten offen sind (die Antwort kommt extra).
+        const unseen = questionData.filter(item => !item.seen_at);
+        if (unseen.length) {
+            const now = new Date().toISOString();
+            const seen = await client.from('tt_doctor_questions').update({ seen_at: now }).in('id', unseen.map(item => item.id));
+            if (!seen.error) unseen.forEach(item => { item.seen_at = now; });
+        }
+        if (!unread.length && !unreadChat) { if (unseen.length) { const left = unreadMessages(); $('messagesBadge').hidden = !left; $('messagesBadge').textContent = left ? String(left) : ''; updateAppBadge(); } return; }
         const [reads, chat] = await Promise.all([
             // Nur einfügen, nie ändern: Auf tt_message_reads gibt es kein Änderungsrecht – ein „upsert“ mit Ändern schlug still fehl,
             // und die Nachrichten blieben für immer „neu“ (Zahl am App-Symbol zählte alle Nachrichten von Anfang an).

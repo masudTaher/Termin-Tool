@@ -362,6 +362,29 @@
             if (record.Portal_Ende !== assignment.finished_at) { record.Portal_Ende = assignment.finished_at; changed = true; }
             return changed;
         }
+        // Zurückgenommen im Portal (Update 37): „Fertig“ oder „Jetzt losfahren“ gilt nicht mehr – der Termin geht einen Schritt zurück.
+        // Nur wenn der Stand hier aus dem Portal kam; ein von Hand gesetzter Stand bleibt. Die Einsatzleitung sieht den Vermerk auf der Startseite.
+        if (!assignment.storno_at) {
+            if (!assignment.finished_at && record.Portal_Ende) {
+                delete record.Portal_Ende;
+                delete record.Nachtrag_Abschluss;
+                if (status === 'beendet') {
+                    record.Status = assignment.started_at ? 'losgefahren' : 'offen';
+                    window.stampTrackingStatusTime?.(record, record.Status);
+                    showToast(`${assignment.interpreter_name} hat „Fertig“ zurückgenommen – der Auftrag läuft wieder: ${assignment.title}`, 'info', { duration: 15000, keep: true });
+                }
+                changed = true;
+            }
+            if (!assignment.started_at && record.Portal_Start) {
+                delete record.Portal_Start;
+                if (status === 'losgefahren' || status === 'beendet') {
+                    record.Status = 'offen';
+                    window.stampTrackingStatusTime?.(record, 'offen');
+                    showToast(`${assignment.interpreter_name} hat „Jetzt losfahren“ zurückgenommen: ${assignment.title}`, 'info', { duration: 15000, keep: true });
+                }
+                changed = true;
+            }
+        }
         if (assignment.started_at && record.Portal_Start !== assignment.started_at) {
             record.Portal_Start = assignment.started_at;
             if (status === 'offen') {

@@ -2795,3 +2795,39 @@ body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
 .history-record-who { min-width: 0; color: var(--muted); font-size: .88rem; font-weight: 600; overflow-wrap: anywhere; }
 .history-record-open { flex: none; min-height: 40px; padding: 6px 14px; }
 .history-proof { flex: 1 0 100%; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--muted); font-size: .86rem; line-height: 1.4; }
+
+/* ===== 80. Portal: Überstunden nach der Fahrzeugrückgabe ===== */
+.overtime-ask-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 8px; }
+.overtime-ask-field { display: grid; gap: 4px; font-size: .86rem; font-weight: 700; color: var(--muted); }
+.overtime-ask-field input { width: 100%; min-height: 46px; font-size: 1.15rem; }
+.overtime-ask-result { margin: 4px 0 6px; font-weight: 800; }
+.overtime-ask-result[data-kind="ok"] { color: #18794e; }
+.overtime-ask-result[data-kind="warn"] { color: #b45309; }
+
+/* ===== 81. Portal: Fragen der Ärzte zu Berichten ===== */
+.doctor-questions { margin: 0 0 16px; }
+.doctor-questions-title { margin: 0 0 8px; font-size: .9rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.doctor-question-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.doctor-question { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid color-mix(in srgb, #1769aa 35%, var(--line)); border-left: 6px solid #1769aa; border-radius: 14px; background: color-mix(in srgb, #1769aa 6%, var(--surface)); }
+.doctor-question[data-state="beantwortet"] { border-color: color-mix(in srgb, #18794e 35%, var(--line)); border-left-color: #18794e; background: color-mix(in srgb, #18794e 6%, var(--surface)); }
+.doctor-question-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
+.doctor-question-head span { color: var(--muted); font-size: .84rem; }
+.doctor-question-about { margin: 0; color: var(--muted); font-size: .86rem; font-weight: 600; }
+.doctor-question-text { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface); font-size: 1rem; line-height: 1.45; white-space: pre-line; }
+.doctor-question-answer { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #18794e 10%, var(--surface)); white-space: pre-line; }
+.doctor-question-meta { color: var(--muted); font-size: .82rem; font-weight: 700; }
+.doctor-question-form { display: grid; gap: 8px; }
+.doctor-question-form textarea { width: 100%; }
+.job-undo { align-self: flex-start; margin-top: 2px; color: var(--muted); font-size: .82rem; }
+
+/* ===== 82. Startseite: Korrekturen der Dolmetscher ===== */
+.start-corrections-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.start-corrections-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.start-correction { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 5px solid #c98a1b; border-radius: 12px; background: color-mix(in srgb, #c98a1b 7%, var(--surface)); }
+.start-correction[data-seen="ja"] { border-left-color: var(--line); background: var(--surface); opacity: .8; }
+.start-correction > div { display: grid; gap: 2px; min-width: 0; }
+.start-correction strong { font-size: .98rem; }
+.start-correction small { color: var(--muted); font-size: .86rem; overflow-wrap: anywhere; }
+.start-correction-when { font-size: .8rem; }
+.start-correction-seen { flex: none; min-height: 38px; padding: 6px 12px; }
+.visually-hidden-anchor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

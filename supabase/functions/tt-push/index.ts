@@ -252,6 +252,19 @@ Deno.serve(async (req) => {
       return json({ ...result, people: (people ?? []).length });
     }
 
+    if (action === 'question') {
+      // Ein Arzt hat zu einem Bericht eine Frage gestellt (tt_doctor_questions, Update 36): Mitteilung an den Dolmetscher.
+      if (!(profile.role === 'arzt' || isStaff)) return json({ error: 'Nur Ärzte und die Einsatzleitung.' }, 403);
+      const { data: question } = await admin.from('tt_doctor_questions').select('*').eq('id', String(input.questionId ?? '')).maybeSingle();
+      if (!question || (question.doctor_id !== profile.id && !isStaff)) return json({ error: 'Frage nicht gefunden.' }, 404);
+      const result = await sendTo([question.interpreter_id], {
+        title: 'Frage eines Arztes zu deinem Bericht',
+        body: `${question.doctor_name || 'Arzt'}: ${String(question.question).slice(0, 200)}`,
+        url: 'portal.html?seite=nachrichten', tag: `frage-${question.id}`,
+      });
+      return json(result);
+    }
+
     if (action === 'progress') {
       // Ein Dolmetscher hat „Losfahren“ oder „Fertig“ gemeldet: Mitteilung an Einsatzleitung und Sekretariat.
       const { data: job } = await admin.from('tt_assignments')

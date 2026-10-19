@@ -131,6 +131,8 @@ const TerminCloud = (() => {
         const newAppointments = await client.from('tt_new_appointments').select('id').eq('status', 'neu');
         // Ungelesene Chat-Nachrichten der Dolmetscher (Seite „Nachrichten“). Fehlt die Tabelle noch, zählt es als 0.
         const unreadChat = await client.from('tt_chat').select('id').eq('from_staff', false).is('read_at', null);
+        // Korrekturen der Dolmetscher (zurückgenommen, geändert, gelöscht), die noch niemand gesehen hat (Update 37). Fehlt die Tabelle: 0.
+        const corrections = await client.from('tt_corrections').select('id').is('seen_at', null);
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
         const waitingAccounts = accounts.data.filter(item => !item.approved_at).length;
         return { damages: damages.data.length, alerts: alerts.data.length + openNotes, documents: newDocuments.error ? 0 : newDocuments.data.length, reports: newReports, prescriptions: newDocuments.error ? 0 : newDocuments.data.length - newReports,
@@ -139,7 +141,8 @@ const TerminCloud = (() => {
             payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
             fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences,
             appointments: newAppointments.error ? 0 : newAppointments.data.length,
-            chat: unreadChat.error ? 0 : unreadChat.data.length };
+            chat: unreadChat.error ? 0 : unreadChat.data.length,
+            corrections: corrections.error ? 0 : corrections.data.length };
     }
 
     // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------

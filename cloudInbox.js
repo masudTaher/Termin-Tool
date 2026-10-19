@@ -130,6 +130,7 @@
             if ((counts.appointments || 0) > (seen.appointments || 0)) messages.push(['Ein Dolmetscher hat einen neuen Termin gemeldet', 'neueTermine.html']);
             // Auf der Seite „Nachrichten“ meldet der Chat neue Nachrichten selbst (mit Namen).
             if ((counts.chat || 0) > (seen.chat || 0) && document.body.dataset.page !== 'nachrichten') messages.push(['Neue Nachricht eines Dolmetschers', 'nachrichten.html']);
+            if ((counts.corrections || 0) > (seen.corrections || 0)) messages.push(['Ein Dolmetscher hat etwas zurückgenommen oder korrigiert', 'index.html#korrekturen']);
         }
         try { localStorage.setItem(SEEN_KEY, JSON.stringify(counts)); } catch (error) { /* ohne Speicher gibt es nur die Schilder */ }
         // Zahl am Symbol der App (wie bei WhatsApp): alles, was gerade auf die Einsatzleitung wartet.

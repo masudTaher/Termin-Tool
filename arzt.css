@@ -1,5 +1,5 @@
 /* Berichte des Tages (Ärzte): baut auf pforte.css auf – hell, große Schrift, klare Knöpfe. */
-.doc-app { grid-template-rows: auto auto auto minmax(0, 1fr); }
+.doc-app { grid-template-rows: auto auto minmax(0, 1fr); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .gate-count:not(.is-out):not(.is-back):not(.is-wait) b { color: var(--soft); }
 
@@ -11,15 +11,60 @@
 .doc-app .gate-clock strong { font-size: clamp(1.8rem, 2.8vw, 3.2rem); }
 
 /* Filter */
-.doc-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 28px 0; }
+.doc-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 0 12px; }
 .doc-chip { min-height: 42px; padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: .98rem; font-weight: 750; cursor: pointer; }
 .doc-chip.is-active { border-color: var(--glow); background: var(--glow); color: #fff; }
 .doc-chip:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
 .doc-search { margin-left: auto; }
 .doc-search input { min-width: 260px; min-height: 42px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 1rem; }
 
+/* Zwei Spalten: links die Übersicht nach Tagen, rechts die Unterlagen */
+.doc-body { display: grid; min-height: 0; grid-template-columns: clamp(250px, 19vw, 330px) minmax(0, 1fr); gap: 20px; padding: 14px 28px 22px; }
+.doc-side { display: flex; min-height: 0; flex-direction: column; gap: 10px; }
+.doc-open-all { display: grid; gap: 2px; padding: 16px 18px; border: 2px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 8px 26px rgba(12, 27, 46, .07); }
+.doc-open-all b { font-size: clamp(2rem, 2.8vw, 3rem); line-height: 1; color: var(--go); }
+.doc-open-all[data-open="ja"] b { color: var(--warn); }
+.doc-open-all[data-open="ja"] { border-color: #f0a020; background: #fffaf0; }
+.doc-open-all span { font-size: 1rem; font-weight: 800; }
+.doc-open-all small { color: var(--soft); font-weight: 650; }
+.doc-open-all.is-active { border-color: var(--glow); box-shadow: 0 0 0 3px rgba(10, 132, 214, .25); }
+.doc-side-title { margin: 6px 0 0; color: var(--soft); font-size: .8rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.doc-days { display: grid; grid-auto-rows: max-content; align-content: start; gap: 6px; margin: 0; padding: 0 4px 4px 0; overflow-y: auto; list-style: none; min-height: 0; }
+.doc-day { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; }
+.doc-day:hover { border-color: var(--glow); }
+.doc-day.is-active { border-color: var(--glow); background: rgba(10, 132, 214, .09); }
+.doc-day-label { display: grid; gap: 1px; min-width: 0; }
+.doc-day-label strong { font-size: 1rem; }
+.doc-day-label small { color: var(--soft); font-weight: 650; }
+.doc-day-count { display: grid; min-width: 36px; height: 36px; padding: 0 10px; place-items: center; border-radius: 999px; background: #e6f5ec; color: var(--go); font-size: 1rem; font-weight: 850; }
+.doc-day[data-unread="ja"] .doc-day-count { background: #ffd766; color: #3b2a00; }
+.doc-side-day { margin-top: auto; }
+.doc-side-day input { width: 100%; }
+.doc-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0 0 10px; }
+.doc-headline h2 { font-size: clamp(1.3rem, 1.8vw, 1.9rem); }
+.doc-headline-sub { color: var(--soft); font-weight: 650; }
+.gate-count.is-ask b { color: var(--soft); }
+.gate-count.is-ask[data-open="ja"] { border-color: var(--glow); background: #e8f3fc; }
+.gate-count.is-ask[data-open="ja"] b { color: var(--glow); }
+.doc-count-button { cursor: pointer; font: inherit; color: inherit; }
+.doc-count-button.is-active { box-shadow: 0 0 0 3px rgba(10, 132, 214, .3); }
+
+/* Fragen an den Dolmetscher */
+.doc-questions { display: grid; gap: 8px; margin-top: 4px; }
+.doc-question { display: grid; gap: 4px; padding: 10px 14px; border-left: 4px solid var(--glow); border-radius: 10px; background: #f1f7fd; }
+.doc-question[data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-question-head { color: var(--soft); font-size: .84rem; font-weight: 750; }
+.doc-question-text, .doc-question-answer { margin: 0; font-size: 1rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+.doc-question-answer { font-weight: 650; }
+.doc-question-wait { color: var(--warn); font-size: .86rem; font-weight: 700; }
+.doc-question-undo { justify-self: start; min-height: 34px; font-size: .82rem; }
+.doc-ask-open { min-height: 44px; font-size: .95rem; }
+.doc-ask { width: min(640px, calc(100% - 32px)); }
+.doc-ask h2 { margin: 4px 0 2px; font-size: 1.3rem; }
+.doc-ask textarea { width: 100%; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; font: inherit; font-size: 1.05rem; resize: vertical; }
+
 /* Liste nach Patient */
-.doc-main { display: flex; min-height: 0; flex-direction: column; padding: 16px 28px 24px; }
+.doc-main { display: flex; min-height: 0; flex-direction: column; }
 .doc-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 18px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
 .doc-patient { border: 1px solid var(--line); border-left: 6px solid #c9d8e8; border-radius: 20px; background: var(--panel); box-shadow: 0 10px 30px rgba(12, 27, 46, .07); overflow: hidden; }
 .doc-patient[data-unread="ja"] { border-left-color: #f0a020; }
@@ -68,6 +113,8 @@
 .doc-record .doc-entry { grid-template-columns: 170px minmax(0, 1fr) auto; }
 
 @media (max-width: 1100px) {
+  .doc-body { grid-template-columns: 1fr; }
+  .doc-days { max-height: 260px; }
   .doc-entry { grid-template-columns: 1fr; grid-template-areas: "head" "title" "body" "actions"; }
   .doc-entry-actions { grid-auto-flow: column; justify-content: start; }
   .doc-search { margin-left: 0; width: 100%; }

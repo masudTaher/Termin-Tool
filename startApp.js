@@ -215,6 +215,7 @@
         const total = countsOnline.alerts + countsOnline.damages + countsOnline.payroll + countsOnline.accounts + (countsOnline.fest || 0) + (countsOnline.documents || 0) + (countsOnline.requests || 0) + (countsOnline.appointments || 0) + (countsOnline.chat || 0);
         info.textContent = total ? `${plural(total, 'Punkt wartet', 'Punkte warten')} auf dich.` : 'Alles erledigt. Im Moment wartet nichts auf dich.';
         list.append(
+            ...(countsOnline.corrections ? [todoItem('Korrekturen der Dolmetscher ansehen', countsOnline.corrections, '#korrekturen')] : []),
             ...(countsOnline.chat ? [todoItem('Neue Nachrichten der Dolmetscher', countsOnline.chat, 'nachrichten.html')] : []),
             ...(countsOnline.appointments ? [todoItem('Neue Termine der Dolmetscher eintragen', countsOnline.appointments, 'neueTermine.html')] : []),
             todoItem('Neue Berichte (Dolmetscher, Krankenhaus)', countsOnline.reports ?? countsOnline.documents ?? 0, 'neueBerichte.html'),
@@ -232,4 +233,64 @@
         list.append(write);
     }
     loadTodo();
+
+    // ---------- Korrekturen der Dolmetscher (Update 37) ----------
+    // Zurückgenommenes Losfahren/Fertig, geänderte Antworten, zurückgenommene Stornierungen, geänderte oder gelöschte Berichte:
+    // Die Dolmetscher dürfen das ohne Rückfrage – hier steht, wer was wann korrigiert hat. „Gesehen“ räumt den Eintrag ab.
+    const CORRECTION_LABEL = { losfahren_zurueck: 'Losfahren zurückgenommen', fertig_zurueck: 'Fertig zurückgenommen', antwort: 'Antwort geändert', storno_zurueck: 'Stornierung zurückgenommen', unterlage: 'Bericht/Unterlage geändert', unterlage_geloescht: 'Unterlage gelöscht' };
+    async function loadCorrections() {
+        const card = $('startCorrections');
+        if (!card || typeof TerminCloud === 'undefined' || !TerminCloud.available) return;
+        let profile = null;
+        try { profile = await TerminCloud.getProfile(); } catch (error) { return; }
+        if (!TerminCloud.isStaff(profile)) return;
+        const { data, error } = await TerminCloud.client.from('tt_corrections').select('*').order('at', { ascending: false }).limit(60);
+        if (error) return;                                        // Update 37 fehlt noch: Karte bleibt aus
+        const rows = data || [];
+        const unseen = rows.filter(item => !item.seen_at);
+        card.hidden = !rows.length;
+        $('startCorrectionsSeen').hidden = !unseen.length;
+        $('startCorrectionsInfo').textContent = unseen.length ? `${plural(unseen.length, 'neue Korrektur', 'neue Korrekturen')} – die Dolmetscher dürfen das ohne Rückfrage, du siehst es hier.` : 'Alles gesehen. Die letzten Korrekturen bleiben zur Nachschau stehen.';
+        const list = $('startCorrectionsList');
+        list.replaceChildren(...rows.slice(0, unseen.length ? 60 : 15).map(item => {
+            const row = document.createElement('li');
+            row.className = 'start-correction';
+            row.dataset.seen = item.seen_at ? 'ja' : '';
+            row.dataset.kind = item.kind;
+            const at = new Date(item.at);
+            const text = document.createElement('div');
+            const head = document.createElement('strong');
+            head.textContent = `${item.person_name || 'Dolmetscher'} · ${CORRECTION_LABEL[item.kind] || item.kind}`;
+            const sub = document.createElement('small');
+            sub.textContent = [item.title && !String(item.detail || '').startsWith(item.title) ? item.title : '', item.date ? new Date(`${item.date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', item.detail].filter(Boolean).join(' · ');
+            const when = document.createElement('small');
+            when.className = 'start-correction-when';
+            when.textContent = `${at.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr${item.seen_at ? ` · gesehen${item.seen_by ? ` von ${item.seen_by}` : ''}` : ''}`;
+            text.append(head, sub, when);
+            row.append(text);
+            if (!item.seen_at) {
+                const seen = document.createElement('button');
+                seen.type = 'button';
+                seen.className = 'button-secondary start-correction-seen';
+                seen.textContent = 'Gesehen';
+                seen.addEventListener('click', () => markCorrectionsSeen([item.id], profile));
+                row.append(seen);
+            }
+            return row;
+        }));
+    }
+    async function markCorrectionsSeen(ids, profile) {
+        const { error } = await TerminCloud.client.from('tt_corrections').update({ seen_at: new Date().toISOString(), seen_by: profile.full_name || '' }).in('id', ids);
+        if (error) { window.showToast?.(TerminCloud.germanError(error), 'error'); return; }
+        await loadCorrections();
+        loadTodo();
+        window.refreshCloudInbox?.();
+    }
+    $('startCorrectionsSeen')?.addEventListener('click', async () => {
+        const profile = await TerminCloud.getProfile().catch(() => null);
+        const { data } = await TerminCloud.client.from('tt_corrections').select('id').is('seen_at', null);
+        if (profile && data?.length) await markCorrectionsSeen(data.map(item => item.id), profile);
+    });
+    loadCorrections();
+    window.setInterval(() => { if (!document.hidden) loadCorrections(); }, 60000);
 })();

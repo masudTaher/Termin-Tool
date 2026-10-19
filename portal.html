@@ -753,6 +753,11 @@
                <button type="button" class="back-button" id="messagesBack">← Zurück</button>
                <h2 id="messagesTitle" class="wizard-title">Nachrichten</h2>
                <p class="wizard-hint" id="messagesSummary">Von der Einsatzleitung.</p>
+               <!-- Fragen der Ärzte zu deinen Berichten (portalApp.js, Update 36) -->
+               <section id="doctorQuestions" class="doctor-questions" aria-labelledby="doctorQuestionsTitle" hidden>
+                  <h3 id="doctorQuestionsTitle" class="doctor-questions-title">Fragen der Ärzte zu deinen Berichten</h3>
+                  <ul id="doctorQuestionList" class="doctor-question-list"></ul>
+               </section>
                <ul id="messageList" class="chat-list" aria-live="polite"></ul>
                <p id="chatMissing" class="field-hint" hidden>Antworten ist in der Datenbank noch nicht eingerichtet (Update 21). Bitte sag der Einsatzleitung Bescheid.</p>
                <form id="chatForm" class="chat-compose" novalidate>
