@@ -107,6 +107,7 @@
                         <span class="field-label">Fahrzeug verwalten</span>
                         <p id="fileService" class="file-service" hidden></p>
                         <div class="file-manage-buttons">
+                           <button type="button" id="fileReturnOpen" class="button-primary" hidden>Rückgabe eintragen</button>
                            <button type="button" id="vehicleEditOpen" class="button-secondary">Daten bearbeiten</button>
                            <button type="button" id="serviceOpen" class="button-secondary">Werkstatt / sperren</button>
                            <button type="button" id="vehicleRetire" class="button-quiet-danger">Aus dem Fuhrpark nehmen</button>
@@ -204,6 +205,27 @@
       </dialog>
 
       <!-- Kilometer einer Fahrt korrigieren -->
+      <!-- Rückgabe durch die Einsatzleitung: Fahrzeug nicht zurückgegeben oder vergessen -->
+      <dialog id="officeReturnDialog" class="confirm-dialog office-return" aria-labelledby="officeReturnTitle">
+         <form id="officeReturnForm" class="fleet-form" novalidate>
+            <h2 id="officeReturnTitle">Rückgabe eintragen</h2>
+            <p class="field-hint" id="officeReturnInfo"></p>
+            <label for="officeReturnMileage">Kilometerstand jetzt</label>
+            <input id="officeReturnMileage" type="number" min="0" step="1" inputmode="numeric" placeholder="km">
+            <label for="officeReturnFuel">Tank</label>
+            <select id="officeReturnFuel"><option value="">unverändert</option><option value="0">Leer</option><option value="1">1/4</option><option value="2">1/2</option><option value="3">3/4</option><option value="4">Voll</option></select>
+            <label for="officeReturnParking">Parkort</label>
+            <input id="officeReturnParking" type="text" maxlength="80" list="officeReturnParkingList" autocomplete="off" placeholder="Parkort">
+            <datalist id="officeReturnParkingList"></datalist>
+            <label for="officeReturnWhen">Zurück seit</label>
+            <input id="officeReturnWhen" type="datetime-local">
+            <label class="office-return-send"><input type="checkbox" id="officeReturnSend" checked><span>Hinweis an die Fahrerin / den Fahrer senden (Nachricht in der App und Mitteilung aufs Handy)</span></label>
+            <label for="officeReturnNote">Hinweis</label>
+            <textarea id="officeReturnNote" rows="3" maxlength="400"></textarea>
+            <p class="field-hint">Die Rückgabe steht danach in der Fahrzeugakte mit dem Vermerk, dass die Einsatzleitung sie eingetragen hat.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="officeReturnCancel">Abbrechen</button><button type="submit" class="button-primary" id="officeReturnSave">Rückgabe eintragen</button></div>
+         </form>
+      </dialog>
       <dialog id="mileageDialog" class="confirm-dialog" aria-labelledby="mileageDialogTitle">
          <form id="mileageForm" class="fleet-form" novalidate>
             <h2 id="mileageDialogTitle">Kilometer korrigieren</h2>

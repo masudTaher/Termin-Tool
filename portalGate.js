@@ -25,7 +25,8 @@
         return core.gateJobs(since).map(item => {
             const info = core.homeJobText(item);
             const parsed = core.parseJobMessage(item.message);
-            return { time: info.time || '', doctor: info.place || '', city: info.city || '', patient_name: info.patient || '', patient_nr: parsed?.facts['Aktennummer'] || '' };
+            // assignment_id und done: So erkennt die Pforte, welcher Termin schon erledigt ist (Update 38) – wer zwischendurch zurückkommt, wird richtig eingetragen.
+            return { time: info.time || '', doctor: info.place || '', city: info.city || '', patient_name: info.patient || '', patient_nr: parsed?.facts['Aktennummer'] || '', assignment_id: item.id, done: item.finished_at || '' };
         });
     }
     function carNow() {

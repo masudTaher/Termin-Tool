@@ -363,7 +363,11 @@
                 if (!result.ok) showToast(`Erinnerung nicht gesendet: ${result.reason}`, 'error');
                 else showToast(result.data.sent ? `Erinnerung an ${item.driver_name} gesendet.` : `${item.driver_name} hat Mitteilungen noch nicht eingeschaltet – bitte anrufen.`, result.data.sent ? 'success' : 'info');
             });
-            actions.append(remind, open);
+            // Nicht zurückgegeben oder vergessen: Die Einsatzleitung trägt die Rückgabe selbst ein (Kilometer, Tank, Parkort) – mit Hinweis an die Person.
+            const takeBack = el('button', 'button-primary fleet-office-return', 'Rückgabe eintragen');
+            takeBack.type = 'button';
+            takeBack.addEventListener('click', () => openOfficeReturn(item));
+            actions.append(takeBack, remind, open);
             row.append(pill('offen', 'Nicht zurückgegeben'), meta, actions);
             list.append(row);
         });
@@ -908,6 +912,8 @@
             ? [`${vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'In der Werkstatt'}${vehicle.service_note ? ` – ${vehicle.service_note}` : ''}`, vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · ')
             : '';
         $('serviceOpen').textContent = vehicle.service_status ? 'Werkstatt / Sperre ändern' : 'Werkstatt / sperren';
+        $('fileReturnOpen').hidden = !holder || !TerminCloud.isStaff(profile);
+        $('fileReturnOpen').onclick = holder ? () => openOfficeReturn(holder) : null;
         $('vehicleDelete').hidden = !isAdmin();
         updateDrawerNav();
 
@@ -990,7 +996,7 @@
                     item.end_parking || '–',
                     cleanText(item.end_clean_inside),
                     cleanText(item.end_clean_outside),
-                    [item.emergency ? 'Notdienst' : '', item.keep_reason === 'frueh' && item.keep_until ? `Über Nacht behalten (früher Termin am ${formatDate(item.keep_until)})` : '', item.start_note ? `Übernahme: „${item.start_note}“` : ''].filter(Boolean).join(' · ') || '–'
+                    [item.emergency ? 'Notdienst' : '', item.keep_reason === 'frueh' && item.keep_until ? `Über Nacht behalten (früher Termin am ${formatDate(item.keep_until)})` : '', item.start_note ? `Übernahme: „${item.start_note}“` : '', item.note || ''].filter(Boolean).join(' · ') || '–'
                 ].forEach(text => row.append(el('td', null, text)));
                 const edit = el('button', 'button-quiet', 'Kilometer ändern');
                 edit.type = 'button';
@@ -1405,6 +1411,76 @@
 
     // ---------- Kilometer einer Fahrt korrigieren ----------
     let mileageItem = null;
+    // ---------- Rückgabe durch die Einsatzleitung ----------
+    // Wurde ein Fahrzeug nicht zurückgegeben (vergessen, Person nicht erreichbar), beendet das Büro die Fahrt selbst:
+    // Kilometer, Tank, Parkort, Zeitpunkt – und ein Hinweis geht an die Person (Nachricht in der App und Mitteilung aufs Handy).
+    let officeReturnItem = null;
+    const localStamp = date => { const pad = value => String(value).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`; };
+    function openOfficeReturn(item) {
+        const vehicle = vehicles.find(entry => entry.id === item.vehicle_id);
+        officeReturnItem = item;
+        $('officeReturnInfo').textContent = `${vehicle ? vehicleLabel(vehicle) : 'Fahrzeug'} · bei ${item.driver_name} seit ${formatDate(item.date)} ${String(item.start_time).slice(0, 5)} Uhr${item.start_mileage != null ? ` · Kilometer bei Übernahme: ${formatKm(item.start_mileage)}` : ''}`;
+        $('officeReturnMileage').value = '';
+        $('officeReturnMileage').placeholder = vehicle?.mileage == null ? 'km' : String(vehicle.mileage);
+        $('officeReturnFuel').value = '';
+        $('officeReturnParking').value = '';
+        $('officeReturnParking').placeholder = vehicle?.parking || 'Parkort';
+        $('officeReturnParkingList').replaceChildren(...[...new Set(vehicles.map(entry => String(entry.parking || '').trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'de')).map(place => { const option = el('option'); option.value = place; return option; }));
+        $('officeReturnWhen').value = localStamp(new Date());
+        $('officeReturnWhen').min = `${item.date}T${String(item.start_time).slice(0, 5)}`;
+        $('officeReturnSend').checked = Boolean(item.driver_id);
+        $('officeReturnSend').disabled = !item.driver_id;
+        $('officeReturnNote').value = `${vehicle?.plate || 'Dein Fahrzeug'} wurde von der Einsatzleitung als zurückgegeben eingetragen, weil die Rückgabe in der App fehlte. Bitte gib das Fahrzeug künftig selbst in der App zurück (Kilometer, Tank, Parkort).`;
+        $('officeReturnDialog').showModal();
+        $('officeReturnMileage').focus();
+    }
+    $('officeReturnCancel').addEventListener('click', () => $('officeReturnDialog').close());
+    $('officeReturnForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const item = officeReturnItem;
+        if (!item) return;
+        const vehicle = vehicles.find(entry => entry.id === item.vehicle_id);
+        const kmText = $('officeReturnMileage').value.trim();
+        if (kmText && !(Number.isInteger(Number(kmText)) && Number(kmText) >= 0)) { showToast('Bitte nur ganze Kilometer eintragen.', 'error', { target: '#officeReturnMileage' }); return; }
+        const mileage = kmText ? Number(kmText) : null;
+        if (mileage != null && item.start_mileage != null && mileage < item.start_mileage) { showToast(`Der Stand (${formatKm(mileage)}) ist kleiner als bei der Übernahme (${formatKm(item.start_mileage)}).`, 'error', { target: '#officeReturnMileage' }); return; }
+        if (mileage != null && vehicle?.mileage != null && mileage < vehicle.mileage && !await confirmDialog(`Der Kilometerstand (${formatKm(mileage)}) ist kleiner als der bisherige (${formatKm(vehicle.mileage)}). Stimmt das?`, 'Ja, eintragen')) return;
+        const when = $('officeReturnWhen').value ? new Date($('officeReturnWhen').value) : new Date();
+        if (Number.isNaN(when.getTime())) { showToast('Bitte Datum und Uhrzeit der Rückgabe prüfen.', 'error', { target: '#officeReturnWhen' }); return; }
+        if (when < new Date(`${item.date}T${String(item.start_time).slice(0, 8)}`)) { showToast('Die Rückgabe liegt vor der Übernahme – bitte Zeit prüfen.', 'error', { target: '#officeReturnWhen' }); return; }
+        if (when > new Date(Date.now() + 5 * 60000)) { showToast('Die Rückgabe liegt in der Zukunft – bitte Zeit prüfen.', 'error', { target: '#officeReturnWhen' }); return; }
+        const fuelText = $('officeReturnFuel').value;
+        const fuel = fuelText === '' ? null : Number(fuelText);
+        const parking = $('officeReturnParking').value.trim().replace(/\s+/g, ' ');
+        const byName = profile.full_name || 'Einsatzleitung';
+        const stamp = localStamp(when);
+        $('officeReturnSave').disabled = true;
+        const handover = await client.from('tt_handovers').update({
+            end_date: stamp.slice(0, 10), end_time: `${stamp.slice(11, 16)}:00`,
+            end_mileage: mileage, end_fuel: fuel, end_parking: parking,
+            note: [item.note || '', `Rückgabe von der Einsatzleitung eingetragen (${byName}, ${formatDate(new Date())})`].filter(Boolean).join(' · ')
+        }).eq('id', item.id).is('end_time', null).select();
+        if (handover.error || !handover.data?.length) { $('officeReturnSave').disabled = false; showToast(handover.error ? TerminCloud.germanError(handover.error) : 'Diese Fahrt ist inzwischen schon beendet – bitte aktualisieren.', 'error'); return; }
+        const changes = { state_updated_at: new Date().toISOString(), state_updated_by: `${byName} (Rückgabe fürs Büro)` };
+        if (mileage != null) changes.mileage = mileage;
+        if (fuel != null) changes.fuel = fuel;
+        if (parking) changes.parking = parking;
+        const state = await client.from('tt_vehicles').update(changes).eq('id', item.vehicle_id);
+        if (state.error) showToast(`Fahrt beendet, aber der Stand des Fahrzeugs ließ sich nicht speichern: ${TerminCloud.germanError(state.error)}`, 'error');
+        // Hinweis an die Person: als Nachricht (bleibt in der App stehen) und als Mitteilung aufs Handy.
+        let sentText = '';
+        if ($('officeReturnSend').checked && item.driver_id) {
+            const body = $('officeReturnNote').value.trim() || `${vehicle?.plate || 'Dein Fahrzeug'} wurde von der Einsatzleitung als zurückgegeben eingetragen.`;
+            const message = await client.from('tt_messages').insert({ sender_id: profile.id, sender_name: byName, audience: 'einzeln', recipient_ids: [item.driver_id], body });
+            const push = message.error ? { ok: false } : await TerminCloud.callFunction({ action: 'notify', audience: 'einzeln', recipientIds: [item.driver_id], title: 'Fahrzeug zurückgenommen', body: body.slice(0, 300), page: 'nachrichten' });
+            sentText = message.error ? ` Der Hinweis ließ sich nicht senden: ${TerminCloud.germanError(message.error)}` : push.ok && push.data?.sent ? ` Hinweis an ${item.driver_name} gesendet.` : ` Hinweis steht in der App von ${item.driver_name}${push.ok ? ' (Mitteilungen aufs Handy nicht eingeschaltet)' : ''}.`;
+        }
+        $('officeReturnSave').disabled = false;
+        $('officeReturnDialog').close();
+        showToast(`${vehicle?.plate || 'Fahrzeug'} ist zurück – Fahrt von ${item.driver_name} beendet (${stamp.slice(11, 16)} Uhr${mileage != null ? `, ${formatKm(mileage)}` : ''}).${sentText}`, 'success');
+        await refresh();
+    });
+
     function openMileage(item, isLatest) {
         mileageItem = item;
         $('mileageDialogInfo').textContent = `${formatDate(item.date)} · ${item.driver_name} · ${String(item.start_time).slice(0, 5)} – ${item.end_time ? String(item.end_time).slice(0, 5) : 'offen'}`;

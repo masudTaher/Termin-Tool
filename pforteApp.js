@@ -11,6 +11,7 @@
     const FRESH = 90000;          // so lange leuchtet eine neue Meldung
     let profile = null;
     let rows = [];
+    let jobs = [];                // Stand der Aufträge der gemeldeten Personen (Update 38): losgefahren / fertig / ausgefallen
     let day = '';
     let known = null;             // schon gesehene Meldungen (für das Aufleuchten und den Ton)
     let busy = false;
@@ -78,6 +79,12 @@
     const stopPlace = stop => [stop.doctor, stop.city].filter(Boolean).join(' · ') || 'Ziel nicht angegeben';
     const stopPatient = stop => [stop.patient_name, stop.patient_nr ? `Nr. ${stop.patient_nr}` : ''].filter(Boolean).join(' · ');
     const stopTime = stop => stop.time ? `${String(stop.time).slice(0, 5)} Uhr` : '';
+    // Erledigt ist ein Termin, wenn die App ihn als fertig mitschickt (done) oder die Datenbank es weiß (tt_gate_jobs, Update 38).
+    // So erkennt die Pforte, dass jemand mit zwei Terminen nur zwischendurch zurückkommt.
+    const jobOf = (row, stop) => stop.assignment_id ? jobs.find(job => job.assignment_id === stop.assignment_id) : jobs.find(job => job.profile_id === row.profile_id && job.appointment_time && String(job.appointment_time).slice(0, 5) === String(stop.time || '').slice(0, 5));
+    const stopDoneAt = (row, stop) => { if (stop.done) return stop.done; const job = jobOf(row, stop); return job ? (job.finished_at || job.storno_at || (['beendet', 'alleine', 'storniert'].includes(job.work_status) ? row.out_at : null)) : null; };
+    const openStops = row => stopsOf(row).filter(stop => !stopDoneAt(row, stop));
+    const doneStops = row => stopsOf(row).filter(stop => Boolean(stopDoneAt(row, stop)));
     const destination = row => stopsOf(row).map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ') || row.note || 'Ziel nicht angegeben';
 
     // Bestätigt die Pforte die Ausfahrt, gilt die Person als draußen. Vorher ist sie nur „angemeldet“.
@@ -112,15 +119,26 @@
             const stops = stopsOf(row);
             if (stops.length > 1) info.append(el('span', 'gate-stops-count', `${stops.length} Aufträge`));
             const list = el('ol', 'gate-stops');
+            const done = doneStops(row);
+            const open = openStops(row);
+            let nextMarked = false;
             stops.forEach((stop, index) => {
                 const item = el('li', 'gate-stop');
-                if (stops.length > 1) item.append(el('b', 'gate-stop-no', String(index + 1)));
+                const doneAt = stopDoneAt(row, stop);
+                if (doneAt) item.classList.add('is-done');
+                else if (done.length && !nextMarked) { item.classList.add('is-next'); nextMarked = true; }
+                if (stops.length > 1) item.append(el('b', 'gate-stop-no', doneAt ? '✓' : String(index + 1)));
                 const text = el('div', 'gate-stop-text');
                 text.append(el('strong', '', [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' · ')));
                 if (stopPatient(stop)) text.append(el('span', '', `Patient/in: ${stopPatient(stop)}`));
+                if (doneAt) text.append(el('span', 'gate-stop-done', `erledigt${typeof doneAt === 'string' && /T/.test(doneAt) ? ` um ${clock(doneAt)} Uhr` : ''}`));
+                else if (done.length) text.append(el('span', 'gate-stop-open', 'noch offen'));
                 item.append(text);
                 list.append(item);
             });
+            // Erster Termin fertig, der nächste erst später: Die Person kommt vermutlich zwischendurch zurück.
+            if (done.length && open.length) info.append(el('span', 'gate-between', `${done.length} von ${stops.length} erledigt – kommt vermutlich zwischendurch zurück und fährt um ${stopTime(open[0]) || 'später'} wieder hinaus`));
+            else if (stops.length && done.length === stops.length) info.append(el('span', 'gate-between is-all', stops.length > 1 ? 'Alle Termine erledigt – auf dem Rückweg' : 'Termin erledigt – auf dem Rückweg'));
             // Ohne Auftrag steht das Ziel, das die Person selbst eingetragen hat, groß da.
             if (!stops.length) { const item = el('li', 'gate-stop'); const text = el('div', 'gate-stop-text'); text.append(el('strong', '', row.note || 'Ziel nicht angegeben')); item.append(text); list.append(item); }
             info.append(list);
@@ -172,7 +190,20 @@
             const undo = el('button', 'gate-button gate-button-quiet gate-undo', 'Doch nicht zurück');
             undo.type = 'button';
             undo.addEventListener('click', () => setBack(row, false, undo));
-            item.append(text, undo);
+            const side = el('div', 'gate-back-side');
+            // Zwischendurch zurück, aber noch ein Termin offen: Die nächste Ausfahrt lässt sich hier gleich anmelden (Update 38).
+            const rest = row.date === today() ? openStops(row) : [];
+            const already = rest.length && rows.some(other => other.profile_id === row.profile_id && !other.in_at);
+            if (rest.length && !already) {
+                item.dataset.again = 'ja';
+                text.append(el('span', 'gate-back-rest', `Noch offen: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ')} – fährt wieder hinaus`));
+                const again = el('button', 'gate-button gate-again', 'Fährt wieder raus');
+                again.type = 'button';
+                again.addEventListener('click', () => goAgain(row, rest, again));
+                side.append(again);
+            } else if (rest.length && already) text.append(el('span', 'gate-back-rest', 'Nächste Ausfahrt ist angemeldet'));
+            side.append(undo);
+            item.append(text, side);
             return item;
         }));
         // Tagesbericht
@@ -182,7 +213,7 @@
         $('gateReportBody').replaceChildren(...all.map((row, index) => {
             const line = el('tr');
             const stops = stopsOf(row);
-            [String(index + 1), row.driver_name, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stopPlace), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
+            [String(index + 1), row.driver_name, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
                 stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
                 [...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / ')]
                 .forEach(value => line.append(el('td', '', value || '')));
@@ -208,6 +239,9 @@
                 banner(/does not exist|schema cache|relation/i.test(error.message || '') ? 'Die Anzeige ist in der Datenbank noch nicht eingerichtet (Update 30 fehlt). Bitte der Einsatzleitung Bescheid sagen.' : `Keine Verbindung: ${TerminCloud.germanError(error)}`, 'error');
                 return;
             }
+            // Stand der Aufträge (Update 38) – fehlt die Funktion noch, zählt nur, was die App mitschickt.
+            const progress = await client.rpc('tt_gate_jobs', { p_date: day });
+            jobs = progress.error ? [] : (progress.data || []);
             banner('');
             // Neue Meldung seit dem letzten Blick? Dann kurz aufleuchten lassen und einen Ton geben.
             const ids = new Set(data.map(row => row.id));
@@ -243,6 +277,15 @@
         const { error } = await client.rpc('tt_gate_return', { p_id: row.id, p_back: back });
         button.disabled = false;
         if (error) { banner(TerminCloud.germanError(error), 'error'); return; }
+        await load();
+    }
+    // „Fährt wieder raus“: neue Ausfahrt mit den noch offenen Terminen – sofort bestätigt, die Person sieht sie in ihrer App.
+    async function goAgain(row, rest, button) {
+        if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) fährt wieder hinaus?\n\nNächster Termin: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join(', ')}`, 'Ausfahrt eintragen'))) return;
+        button.disabled = true;
+        const { error } = await client.rpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(stop => ({ ...stop, done: '' })) });
+        button.disabled = false;
+        if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
         await load();
     }
     async function removeRow(row, button) {

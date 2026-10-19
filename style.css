@@ -2831,3 +2831,9 @@ body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
 .start-correction-when { font-size: .8rem; }
 .start-correction-seen { flex: none; min-height: 38px; padding: 6px 12px; }
 .visually-hidden-anchor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ===== 83. Rückgabe durch die Einsatzleitung (Fahrzeugakte) ===== */
+dialog.office-return { width: min(600px, calc(100% - 32px)); }
+dialog.office-return textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid var(--line, #d7dee8); border-radius: 10px; resize: vertical; }
+dialog.office-return .office-return-send { display: flex; align-items: flex-start; gap: 10px; margin: 8px 0 4px; font-weight: 600; line-height: 1.35; }
+dialog.office-return .office-return-send input { width: 20px; height: 20px; margin: 2px 0 0; flex: 0 0 auto; }
