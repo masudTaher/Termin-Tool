@@ -625,7 +625,8 @@ if (!window.TerminContact) {
             const jobs = days.get(date) || [];
             const count = document.createElement('span');
             count.className = 'my-day-count';
-            count.textContent = jobs.length ? `${jobs.length} ${jobs.length === 1 ? 'Auftrag' : 'Aufträge'}` : 'Sondertag';
+            const isExtra = jobs.length === 1 && /^Zusätzlicher Tag/.test(jobs[0]);
+            count.textContent = isExtra ? 'Zusatztag · bestätigt' : jobs.length ? `${jobs.length} ${jobs.length === 1 ? 'Auftrag' : 'Aufträge'}` : 'Sondertag';
             summary.append(when, count);
             if (special.has(date)) { const chip = document.createElement('span'); chip.className = 'my-day-chip'; chip.textContent = `Sondertag ${money(special.get(date))}`; summary.append(chip); }
             const detail = document.createElement('ul');
@@ -635,6 +636,58 @@ if (!window.TerminContact) {
             list.append(item);
         });
         if (!dates.length) { const empty = document.createElement('p'); empty.className = 'directory-empty'; empty.textContent = 'In diesem Monat ist noch kein Auftrag beendet.'; list.append(empty); }
+
+        // Fehlender Tag (Update 43): gemeldete und abgelehnte Tage stehen hier; ein Knopf meldet einen weiteren.
+        const extra = Array.isArray(info.extra) ? info.extra : [];
+        extra.forEach(item => {
+            const row = document.createElement('div');
+            row.className = `my-day my-extra-day is-${item.status}`;
+            const when = document.createElement('span'); when.className = 'my-day-date'; when.textContent = dateShort(item.date);
+            const state = document.createElement('span'); state.className = 'my-day-count';
+            state.textContent = item.status === 'gemeldet' ? 'gemeldet – das Büro prüft' : `abgelehnt${item.office_note ? ` – „${item.office_note}“` : ''}`;
+            row.append(when, state);
+            if (item.note) { const note = document.createElement('span'); note.className = 'my-extra-note'; note.textContent = `Deine Begründung: „${item.note}“`; row.append(note); }
+            if (item.status === 'gemeldet') {
+                const undo = document.createElement('button'); undo.type = 'button'; undo.className = 'button-quiet my-extra-undo'; undo.textContent = 'Zurückziehen';
+                undo.addEventListener('click', async () => {
+                    const { error } = await client.from('tt_extra_days').delete().eq('id', item.id);
+                    if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
+                    toast('Meldung zurückgezogen.', 'success');
+                    await renderStatement();
+                });
+                row.append(undo);
+            }
+            list.append(row);
+        });
+        const report = document.createElement('details');
+        report.className = 'my-extra-report';
+        const reportHead = document.createElement('summary');
+        reportHead.textContent = 'Ein Tag fehlt? Hier melden';
+        const reportForm = document.createElement('form');
+        reportForm.className = 'my-extra-form';
+        reportForm.noValidate = true;
+        const dateInput = document.createElement('input'); dateInput.type = 'date'; dateInput.setAttribute('aria-label', 'Datum des fehlenden Tages');
+        const monthEnd = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0);
+        dateInput.min = `${month}-01`; dateInput.max = isoDate(monthEnd);
+        const noteInput = document.createElement('input'); noteInput.type = 'text'; noteInput.maxLength = 300; noteInput.placeholder = 'Was hast du an dem Tag gemacht? (z. B. Begleitung im Krankenhaus, Termin stand nicht im Plan)'; noteInput.setAttribute('aria-label', 'Begründung');
+        const send = document.createElement('button'); send.type = 'submit'; send.className = 'button-primary'; send.textContent = 'Tag melden';
+        const hint = document.createElement('p'); hint.className = 'my-extra-hint'; hint.textContent = 'Das Büro prüft die Meldung. Bestätigt es den Tag, zählt er wie ein normaler Arbeitstag.';
+        reportForm.append(dateInput, noteInput, send, hint);
+        reportForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!dateInput.value) { toast('Bitte wähle das Datum.', 'error'); dateInput.focus(); return; }
+            if (days.has(dateInput.value)) { toast('Dieser Tag zählt schon.', 'info'); return; }
+            if (!noteInput.value.trim()) { toast('Bitte schreib kurz, was du an dem Tag gemacht hast.', 'error'); noteInput.focus(); return; }
+            send.disabled = true;
+            const { error } = await client.from('tt_extra_days').insert({ date: dateInput.value, note: noteInput.value.trim() });
+            send.disabled = false;
+            if (error) { toast(/schon einen Eintrag/.test(error.message || '') ? 'Diesen Tag hast du schon gemeldet.' : /does not exist|schema cache|relation|PGRST205/i.test(`${error.code || ''} ${error.message || ''}`) ? 'Dafür fehlt noch ein Datenbank-Update (Update 43). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
+            toast('Tag gemeldet – das Büro prüft ihn.', 'success');
+            TerminCloud.callFunction?.({ action: 'extraDay', date: dateInput.value })?.catch?.(() => null);
+            await renderStatement();
+        });
+        report.append(reportHead, reportForm);
+        list.append(report);
 
         const receipts = document.createElement('details');
         receipts.className = 'my-day my-receipts';

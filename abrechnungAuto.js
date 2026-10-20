@@ -19,17 +19,19 @@ const AbrechnungAuto = (() => {
 
     async function syncMonth(client, month) {
         const range = Abrechnung.monthRange(month);
-        const [receiptResult, specialResult, payrollResult, monthResult, dayResult, profileResult, statementResult] = await Promise.all([
+        const [receiptResult, specialResult, payrollResult, monthResult, dayResult, profileResult, statementResult, extraResult] = await Promise.all([
             client.from('tt_receipts').select('*').gte('date', range.start).lte('date', range.end),
             client.from('tt_special_days').select('*').gte('date', range.start).lte('date', range.end),
             client.from('tt_payroll').select('*').eq('month', month),
             client.from('tt_payroll_months').select('*').eq('month', month).maybeSingle(),
             client.from('tt_days').select('*').gte('date', range.start).lte('date', range.end),
             client.from('tt_profiles').select('*'),
-            client.from('tt_statements').select('*').eq('month', month)
+            client.from('tt_statements').select('*').eq('month', month),
+            client.from('tt_extra_days').select('*').eq('month', month)     // Update 43 – fehlt die Tabelle noch, zählen nur die Termine
         ]);
         // Fehlt irgendeine Angabe, wird nichts geschrieben – lieber ein alter Stand als ein falscher.
         if ([receiptResult, specialResult, payrollResult, monthResult, dayResult, profileResult, statementResult].some(item => item.error)) return -1;
+        const extraDays = extraResult.error ? [] : (extraResult.data || []);
         const profiles = profileResult.data || [];
         const festIds = new Set(profiles.filter(item => item.employment === 'fest').map(item => item.id));
         const rate = Number(monthResult.data?.daily_rate ?? 80);
@@ -38,9 +40,9 @@ const AbrechnungAuto = (() => {
         const { result } = Abrechnung.buildRows({
             month, rate, receipts: (receiptResult.data || []).filter(item => !festIds.has(item.profile_id)), specialDays,
             trackingSpecial: Abrechnung.specialFromDays(days, specialDays), payroll: payrollResult.data || [], profiles,
-            autoWorkdays: Abrechnung.countWorkdays(days), statements: statementResult.data || []
+            autoWorkdays: Abrechnung.countWorkdays(days, extraDays), statements: statementResult.data || []
         });
-        return write(client, month, Abrechnung.planSync(result.rows, { month, rate, dayDates: Abrechnung.workdayDates(days) }));
+        return write(client, month, Abrechnung.planSync(result.rows, { month, rate, dayDates: Abrechnung.workdayDates(days, extraDays) }));
     }
 
     // Im Hintergrund auf den Büro-Seiten: höchstens alle 15 Minuten, laufender Monat und der Monat davor.

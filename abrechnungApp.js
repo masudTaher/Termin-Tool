@@ -18,6 +18,8 @@
     let result = null;
     const HIDDEN = Abrechnung.HIDDEN;
     let dayJobs = new Map();
+    let extraDays = [];            // zusätzliche Arbeitstage (Update 43): vom Büro eingetragen oder von Dolmetschern gemeldet
+    let extraDaysReady = true;
     let openPerson = '';
     let personQuery = '';
     let moreDetails = false;          // „Mehr Details“ in der aufgeklappten Person
@@ -68,6 +70,9 @@
         ]);
         if (window.PhotoRequest) await PhotoRequest.load().catch(() => []);
         const statementResult = await client.from('tt_statements').select('*').eq('month', month);
+        const extraResult = await client.from('tt_extra_days').select('*').eq('month', month).order('date');
+        extraDaysReady = !extraResult.error;
+        extraDays = extraDaysReady ? (extraResult.data || []) : [];
         // Im Portal steht eine Abrechnung erst, wenn sie nach der Prüfung gesendet wurde. Reste des früheren „laufenden Stands“
         // (von selbst geschrieben oder ausgeblendet) zählen nicht und werden entfernt.
         const allStatements = statementResult.error ? [] : statementResult.data;
@@ -85,8 +90,8 @@
         rate = Number(monthResult.data?.daily_rate ?? 80);
         checkDate = monthResult.data?.check_date || '';
         profiles = profileResult.data || [];
-        autoWorkdays = Abrechnung.countWorkdays(dayResult.error ? [] : dayResult.data);
-        dayDates = Abrechnung.workdayDates(dayResult.error ? [] : dayResult.data);
+        autoWorkdays = Abrechnung.countWorkdays(dayResult.error ? [] : dayResult.data, extraDays);
+        dayDates = Abrechnung.workdayDates(dayResult.error ? [] : dayResult.data, extraDays);
         trackingSpecial = Abrechnung.specialFromDays(dayResult.error ? [] : dayResult.data, specialDays);
         dayJobs = Abrechnung.dayJobs(dayResult.error ? [] : dayResult.data);
         $('payrollRate').value = rate;
@@ -179,6 +184,50 @@
         return line;
     }
 
+    // ---------- Zusätzliche Arbeitstage (Update 43) ----------
+    function actionButton(text, className, onClick) { const node = el('button', className, text); node.type = 'button'; node.addEventListener('click', onClick); return node; }
+    let extraDayRow = null;
+    function openExtraDay(row) {
+        if (!extraDaysReady) { showToast('Dafür fehlt noch ein Datenbank-Update (Update 43). Bitte supabase/update-43.sql im SQL Editor ausführen.', 'error'); return; }
+        extraDayRow = row;
+        const range = Abrechnung.monthRange(month);
+        $('extraDayInfo').textContent = `${row.name} · ${range.label}`;
+        $('extraDayDate').min = range.start; $('extraDayDate').max = range.end; $('extraDayDate').value = '';
+        $('extraDayNote').value = '';
+        $('extraDayDialog').showModal();
+        $('extraDayDate').focus();
+    }
+    $('extraDayCancel')?.addEventListener('click', () => $('extraDayDialog').close());
+    $('extraDayForm')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const date = $('extraDayDate').value;
+        if (!date) { showToast('Bitte das Datum wählen.', 'error'); $('extraDayDate').focus(); return; }
+        if (!extraDayRow) return;
+        $('extraDaySave').disabled = true;
+        const { error } = await client.from('tt_extra_days').insert({ date, person_name: extraDayRow.name, profile_id: extraDayRow.profileId || null, note: $('extraDayNote').value.trim(), source: 'büro', status: 'bestätigt' });
+        $('extraDaySave').disabled = false;
+        if (error) { showToast(/schon einen Eintrag/.test(error.message || '') ? 'Für diesen Tag gibt es schon einen Eintrag bei dieser Person.' : TerminCloud.germanError(error), 'error'); return; }
+        $('extraDayDialog').close();
+        showToast(`${Abrechnung.longDate(date)} als Arbeitstag für ${extraDayRow.name} eingetragen.`, 'success');
+        await refresh();
+    });
+    async function decideExtraDay(item, status) {
+        let officeNote = '';
+        if (status === 'abgelehnt') { officeNote = await askReply({ name: item.person_name, statement: { response_note: item.note } }, 'Warum zählt der Tag nicht? (die Person sieht das)'); if (officeNote === null) return; }
+        const { error } = await client.from('tt_extra_days').update({ status, office_note: officeNote || '' }).eq('id', item.id);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        showToast(status === 'bestätigt' ? `${Abrechnung.longDate(item.date)} zählt jetzt als Arbeitstag für ${item.person_name}.` : `${Abrechnung.longDate(item.date)} für ${item.person_name} abgelehnt.`, 'success');
+        await refresh();
+        window.refreshCloudInbox?.();
+    }
+    async function removeExtraDay(item) {
+        if (!await confirmDialog(`Den ${item.status === 'gemeldet' ? 'gemeldeten' : 'zusätzlichen'} Tag ${Abrechnung.longDate(item.date)} bei ${item.person_name} entfernen?${item.status === 'bestätigt' ? '\n\nEr zählt danach nicht mehr.' : ''}`, 'Entfernen')) return;
+        const { error } = await client.from('tt_extra_days').delete().eq('id', item.id);
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        await refresh();
+        window.refreshCloudInbox?.();
+    }
+
     function payBox(title, ...nodes) {
         const box = el('section', 'pay-box');
         box.append(el('h3', null, title), ...nodes);
@@ -210,27 +259,53 @@
         // 2 · Arbeitstage mit den Terminen des Tages
         const days = dayJobs.get(id) || [];
         const specialByDate = new Map(row.special.filter(item => item.counts !== 'Nein').map(item => [item.date, item]));
-        const dates = [...new Set([...days.map(day => day.date), ...specialByDate.keys()])].sort();
+        // Zusätzliche Arbeitstage dieser Person (Update 43): bestätigt zählt, gemeldet wartet, abgelehnt zählt nicht.
+        const ownExtra = extraDays.filter(item => Abrechnung.key(item.person_name) === id || (row.profileId && item.profile_id === row.profileId));
+        const extraByDate = new Map(ownExtra.map(item => [item.date, item]));
+        const dates = [...new Set([...days.map(day => day.date), ...specialByDate.keys(), ...extraByDate.keys()])].sort();
         const dayList = el('ul', 'pay-days');
         const today = todayIso();
         dates.forEach(date => {
             const day = days.find(item => item.date === date) || { done: [], open: [] };
             const special = specialByDate.get(date);
-            const counts = day.done.length > 0;
+            const extra = extraByDate.get(date);
+            const counts = day.done.length > 0 || extra?.status === 'bestätigt';
             const item = el('li', counts ? 'pay-day' : special ? 'pay-day is-special-only' : 'pay-day is-open');
+            if (extra) item.dataset.extra = extra.status;
             item.append(el('span', 'pay-day-date', weekday(date)));
-            const what = el('span', 'pay-day-jobs', (counts ? day.done : day.open.length ? day.open : [special?.job || 'Sondertag']).join('  ·  '));
+            const extraText = extra ? `${extra.source === 'dolmetscher' ? `Fehlender Tag, gemeldet von ${extra.person_name}` : `Zusätzlicher Tag, eingetragen von ${extra.created_by || 'Büro'}`}${extra.note ? ` – „${extra.note}“` : ''}` : '';
+            const what = el('span', 'pay-day-jobs', (day.done.length ? day.done : day.open.length ? day.open : extra ? [extraText] : [special?.job || 'Sondertag']).join('  ·  '));
             item.append(what);
             if (special) item.append(el('span', 'pay-chip is-special', `Sondertag ${euro(special.amount)}`));
             if (!counts && day.open.length) item.append(el('span', 'pay-chip', date > today ? 'geplant' : 'nicht beendet – zählt noch nicht'));
+            if (extra) {
+                const chip = el('span', `pay-chip is-extra is-${extra.status === 'bestätigt' ? 'ok' : extra.status === 'gemeldet' ? 'wait' : 'no'}`, extra.status === 'bestätigt' ? `zählt · bestätigt von ${extra.decided_by || 'Büro'}` : extra.status === 'gemeldet' ? 'gemeldet – bitte prüfen' : `abgelehnt${extra.office_note ? ` – „${extra.office_note}“` : ''}`);
+                item.append(chip);
+                const actions = el('span', 'pay-day-actions');
+                if (extra.status === 'gemeldet') {
+                    actions.append(actionButton('Bestätigen', 'button-primary', () => decideExtraDay(extra, 'bestätigt')), actionButton('Ablehnen', 'button-quiet-danger', () => decideExtraDay(extra, 'abgelehnt')));
+                } else if (extra.status === 'bestätigt' && extra.source === 'dolmetscher') {
+                    actions.append(actionButton('Doch ablehnen', 'button-quiet', () => decideExtraDay(extra, 'abgelehnt')));
+                } else if (extra.status === 'abgelehnt') {
+                    actions.append(actionButton('Doch bestätigen', 'button-quiet', () => decideExtraDay(extra, 'bestätigt')));
+                }
+                actions.append(actionButton('Entfernen', 'button-quiet-danger', () => removeExtraDay(extra)));
+                item.append(actions);
+            }
             dayList.append(item);
         });
         if (!dates.length) dayList.append(el('li', 'directory-empty', 'In diesem Monat gibt es noch keinen Termin für diese Person.'));
         const counted = row.workdaysAuto ?? 0;
+        const extraCount = ownExtra.filter(item => item.status === 'bestätigt').length;
         const dayNote = el('p', 'pay-hint', row.workdaysManual != null
-            ? `Von Hand eingetragen: ${row.workdaysManual} ${row.workdaysManual === 1 ? 'Tag' : 'Tage'} – das gilt. Aus den beendeten Terminen wären es ${counted}.`
-            : `Jeder Tag mit einem beendeten Termin zählt von selbst: ${counted} ${counted === 1 ? 'Tag' : 'Tage'}.`);
-        const dayBox = payBox(`Arbeitstage (${row.workdays ?? '–'})`, dayNote, dayList, tabLink('Sondertag eintragen oder ändern', 'special'));
+            ? `Von Hand eingetragen: ${row.workdaysManual} ${row.workdaysManual === 1 ? 'Tag' : 'Tage'} – das gilt. Aus den beendeten Terminen${extraCount ? ' und Zusatztagen' : ''} wären es ${counted}.`
+            : `Jeder Tag mit einem beendeten Termin zählt von selbst${extraCount ? ` – dazu ${extraCount} ${extraCount === 1 ? 'zusätzlicher Tag' : 'zusätzliche Tage'}` : ''}: ${counted} ${counted === 1 ? 'Tag' : 'Tage'}.`);
+        const addDay = el('button', 'button-quiet pay-link pay-extra-add', '+ Arbeitstag hinzufügen');
+        addDay.type = 'button';
+        addDay.addEventListener('click', () => openExtraDay(row));
+        const dayLinks = el('div', 'pay-links');
+        dayLinks.append(addDay, tabLink('Sondertag eintragen oder ändern', 'special'));
+        const dayBox = payBox(`Arbeitstage (${row.workdays ?? '–'})`, dayNote, dayList, dayLinks);
 
         // 3 · Belege
         const receiptList = el('ul', 'pay-days');
@@ -545,6 +620,17 @@
         });
         steps.push(s2.item);
 
+        // 2b. Gemeldete Arbeitstage (Update 43): Dolmetscher melden einen fehlenden Tag – bestätigen oder ablehnen
+        const reported = extraDays.filter(item => item.status === 'gemeldet').sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)));
+        const sE = step('extra', '2b', 'Gemeldete Arbeitstage prüfen', reported.length, reported.length ? 'Ein Dolmetscher sagt: An diesem Tag habe ich gearbeitet, aber er zählt nicht' : (extraDaysReady ? 'Nichts gemeldet' : 'Dafür fehlt Update 43 in der Datenbank'));
+        reported.forEach(item => {
+            sE.body.append(line(`${item.person_name} · ${Abrechnung.longDate(item.date)}`, item.note ? `„${item.note}“` : 'ohne Begründung',
+                button('Bestätigen', 'button-primary', () => decideExtraDay(item, 'bestätigt'), 'Der Tag zählt dann wie ein Arbeitstag'),
+                button('Ablehnen', 'button-quiet-danger', () => decideExtraDay(item, 'abgelehnt')),
+                button('Zur Person', 'button-secondary', () => { openPerson = Abrechnung.key(item.person_name); tab = 'list'; render(); document.querySelector(`.pay-person[data-person="${CSS.escape(Abrechnung.key(item.person_name))}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); })));
+        });
+        steps.push(sE.item);
+
         // 3. Offene Punkte
         const s3 = step('checks', 3, 'Offene Punkte klären', checks.length, checks.length ? 'Fehlende Arbeitstage, Sondertage zum Prüfen, Belege ohne Person' : 'Alles geklärt');
         checks.forEach(text => s3.body.append(line(text, '')));
@@ -653,7 +739,7 @@
 
     // Abschluss: fester Stand der Abrechnung, den die Person im Portal prüft und bestätigt.
     // Kurze Antwort des Büros auf eine angefragte Korrektur (null = abgebrochen).
-    function askReply(row) {
+    function askReply(row, custom = null) {
         return new Promise(resolve => {
             const dialog = el('dialog', 'confirm-dialog pay-reply-dialog');
             const text = el('textarea');
@@ -664,14 +750,15 @@
             const buttons = el('div', 'modal-buttons');
             const cancel = el('button', 'button-secondary', 'Abbrechen');
             cancel.type = 'button';
-            const send = el('button', 'button-primary', 'Ablehnen und neu senden');
+            const send = el('button', 'button-primary', custom ? 'Ablehnen' : 'Ablehnen und neu senden');
             send.type = 'button';
             const done = value => { dialog.close(); dialog.remove(); resolve(value); };
             cancel.addEventListener('click', () => done(null));
             dialog.addEventListener('cancel', event => { event.preventDefault(); done(null); });
             send.addEventListener('click', () => { if (!text.value.trim()) { showToast('Bitte schreib kurz, warum es so bleibt.', 'error'); text.focus(); return; } done(text.value.trim()); });
             buttons.append(cancel, send);
-            dialog.append(el('h2', null, `Korrektur von ${row.name} ablehnen`), el('p', 'statement-dialog-meta', `Angefragt: „${row.statement.response_note}“ – Die Zahlen bleiben, wie sie sind. Die Person bekommt deine Antwort und bestätigt noch einmal.`), text, buttons);
+            if (custom) { text.placeholder = custom; dialog.append(el('h2', null, `Gemeldeten Tag von ${row.name} ablehnen`), el('p', 'statement-dialog-meta', row.statement.response_note ? `Begründung der Person: „${row.statement.response_note}“` : 'Ohne Begründung gemeldet.'), text, buttons); }
+            else dialog.append(el('h2', null, `Korrektur von ${row.name} ablehnen`), el('p', 'statement-dialog-meta', `Angefragt: „${row.statement.response_note}“ – Die Zahlen bleiben, wie sie sind. Die Person bekommt deine Antwort und bestätigt noch einmal.`), text, buttons);
             document.body.append(dialog);
             dialog.showModal();
             text.focus();

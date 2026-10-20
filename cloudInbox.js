@@ -122,7 +122,7 @@
             if (counts.alerts > seen.alerts) messages.push(['Neue Meldung aus einem Fahrzeug', 'fahrzeugakte.html']);
             if (counts.damages > seen.damages) messages.push(['Neuer Schaden gemeldet', 'fahrzeugakte.html']);
             if (counts.accounts > seen.accounts) messages.push(['Ein Konto wartet: neue Anmeldung oder Passwort vergessen', 'team.html']);
-            if (counts.payroll > (seen.payroll || 0)) messages.push(['Abrechnung: neuer Beleg oder Einwand', 'abrechnung.html']);
+            if (counts.payroll > (seen.payroll || 0)) messages.push([(counts.extraDays || 0) > (seen.extraDays || 0) ? 'Abrechnung: ein Dolmetscher meldet einen fehlenden Arbeitstag' : 'Abrechnung: neuer Beleg oder Einwand', 'abrechnung.html']);
             if ((counts.absences || 0) > (seen.absences || 0)) messages.push(['Festangestellte: neuer Urlaubsantrag oder neue Krank-/Notfallmeldung', 'festangestellte.html']);
             if (counts.fest - (counts.absences || 0) > (seen.fest || 0) - (seen.absences || 0)) messages.push(['Festangestellte: neue Überstunden oder Belege', 'festangestellte.html']);
             if ((counts.documents || 0) > (seen.documents || 0)) messages.push(['Neue Unterlage eines Dolmetschers', (counts.prescriptions || 0) > (seen.prescriptions || 0) ? 'neueRezepte.html' : 'neueBerichte.html']);

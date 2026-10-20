@@ -2999,3 +2999,28 @@ dialog.fm-export .field-hint { white-space: normal; margin-bottom: 8px; }
 .fm-export-help ol { margin: 8px 0 4px 18px; padding: 0; display: grid; gap: 4px; }
 .fm-export-help p { margin: 6px 0 0; color: var(--muted); }
 body[data-page="tracking"] .fm-mark { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 7px; background: color-mix(in srgb, #1d4ed8 10%, var(--surface)); color: #1d4ed8; font-size: 11px; font-weight: 700; }
+
+/* ===== 90. Zusätzliche Arbeitstage (Update 43): Büro trägt Tage ein, Dolmetscher melden fehlende Tage ===== */
+.pay-day[data-extra] { flex-wrap: wrap; }
+.pay-day[data-extra="gemeldet"] { background: color-mix(in srgb, #b45309 8%, var(--surface)); }
+.pay-day[data-extra="abgelehnt"] { opacity: .75; }
+.pay-chip.is-extra.is-ok { background: color-mix(in srgb, #18794e 14%, var(--surface)); color: #18794e; }
+.pay-chip.is-extra.is-wait { background: color-mix(in srgb, #b45309 16%, var(--surface)); color: #92400e; }
+.pay-chip.is-extra.is-no { background: color-mix(in srgb, #64748b 14%, var(--surface)); color: #475569; }
+.pay-day-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 4px; }
+.pay-day-actions button { min-height: 34px; padding: 4px 12px; font-size: .88rem; }
+.pay-extra-add { align-self: flex-start; }
+dialog.extra-day-dialog input[type="date"], dialog.extra-day-dialog input[type="text"] { width: 100%; box-sizing: border-box; }
+.my-extra-day { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 0; }
+.my-extra-day.is-gemeldet .my-day-count { color: #92400e; }
+.my-extra-day.is-abgelehnt { opacity: .8; }
+.my-extra-day.is-abgelehnt .my-day-count { color: #64748b; }
+.my-extra-note { width: 100%; color: var(--muted); font-size: .86rem; }
+.my-extra-undo { min-height: 34px; padding: 4px 12px; font-size: .88rem; }
+.my-extra-report { border-bottom: 1px solid var(--line); }
+.my-extra-report summary { color: var(--accent, #1d4ed8); font-weight: 700; cursor: pointer; padding: 8px 0; }
+.my-extra-form { display: grid; gap: 8px; padding: 4px 0 10px; }
+.my-extra-form input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+.my-extra-form button { min-height: 44px; }
+.my-extra-form .my-extra-hint { margin: 0; color: var(--muted); font-size: .84rem; }
+.pay-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }

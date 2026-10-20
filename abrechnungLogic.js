@@ -16,30 +16,22 @@ const Abrechnung = (() => {
     }
 
     // Arbeitstage aus dem Online-Archiv: Tage, an denen die Person mindestens einen beendeten Termin hatte.
-    function countWorkdays(days) {
+    // Zusätzliche Arbeitstage (Update 43): vom Büro eingetragen oder vom Dolmetscher gemeldet und bestätigt – zählen wie ein
+    // Tag mit beendetem Termin. Ein Tag zählt pro Person nur einmal.
+    function workdayDates(days, extraDays) {
         const perPerson = new Map();
+        const add = (name, date) => { const id = key(name); if (!id || !date) return; const list = perPerson.get(id) || []; if (!list.includes(date)) perPerson.set(id, [...list, date].sort()); };
         (days || []).forEach(day => {
-            const names = new Set();
             (Array.isArray(day.records) ? day.records : []).forEach(record => {
                 // Auch die zweite Person im Auftrag (Transport / Dolmetschen / zweites Fahrzeug) hat an dem Tag gearbeitet.
-                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet') [record.Übersetzer, record._zweit].forEach(name => { if (key(name)) names.add(key(name)); });
+                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet') [record.Übersetzer, record._zweit].forEach(name => add(name, day.date));
             });
-            names.forEach(name => perPerson.set(name, (perPerson.get(name) || 0) + 1));
         });
+        (extraDays || []).filter(item => item.status === 'bestätigt').forEach(item => add(item.person_name, item.date));
         return perPerson;
     }
-
-    // Dieselbe Zählung mit den einzelnen Tagen – für die Abrechnung im Portal.
-    function workdayDates(days) {
-        const perPerson = new Map();
-        (days || []).forEach(day => {
-            const names = new Set();
-            (Array.isArray(day.records) ? day.records : []).forEach(record => {
-                if (String(record.Status || '').toLocaleLowerCase('de') === 'beendet') [record.Übersetzer, record._zweit].forEach(name => { if (key(name)) names.add(key(name)); });
-            });
-            names.forEach(name => perPerson.set(name, [...(perPerson.get(name) || []), day.date].sort()));
-        });
-        return perPerson;
+    function countWorkdays(days, extraDays) {
+        return new Map([...workdayDates(days, extraDays)].map(([id, dates]) => [id, dates.length]));
     }
 
     // Sondertage aus dem Live-Tracking: Termine mit eingetragenem Sonderbetrag.

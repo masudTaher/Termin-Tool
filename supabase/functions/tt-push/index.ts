@@ -496,6 +496,20 @@ Deno.serve(async (req) => {
       return json(result);
     }
 
+    if (action === 'extraDay') {
+      // Ein Dolmetscher meldet einen fehlenden Arbeitstag (Update 43): Mitteilung an Einsatzleitung und Sekretariat.
+      const { data: row } = await admin.from('tt_extra_days').select('*').eq('profile_id', profile.id).eq('date', String(input.date ?? '')).eq('status', 'gemeldet').maybeSingle();
+      if (!row) return json({ sent: 0, devices: 0 });
+      const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      const [y, m, d] = String(row.date).split('-');
+      const result = await sendTo((staff ?? []).map((item) => item.id), {
+        title: `ABRECHNUNG · ${profile.full_name} meldet einen fehlenden Arbeitstag`,
+        body: `${d}.${m}.${y}${row.note ? ` – ${String(row.note).slice(0, 160)}` : ''}`,
+        url: 'abrechnung.html', tag: `zusatztag-${row.id}`,
+      });
+      return json(result);
+    }
+
     if (action === 'doctorInfo') {
       if (!['admin', 'sekretariat'].includes(profile.role)) return json({ error: 'Nur Einsatzleitung und Sekretariat.' }, 403);
       const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? '';

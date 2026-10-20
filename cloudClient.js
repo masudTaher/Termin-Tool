@@ -133,9 +133,10 @@ const TerminCloud = (() => {
         // Korrekturen der Dolmetscher (zurückgenommen, geändert, gelöscht), die noch niemand gesehen hat (Update 37). Fehlt die Tabelle: 0.
         const corrections = await client.from('tt_corrections').select('id').is('seen_at', null);
         // Meldungen über einen Vorfahrer (Fahrerakte) und Meldungen des Arztes an die Einsatzleitung (Update 42). Fehlt die Tabelle: 0.
-        const [driverNotes, doctorNotes] = await Promise.all([
+        const [driverNotes, doctorNotes, extraDays] = await Promise.all([
             client.from('tt_driver_notes').select('id, handover_id').is('office_seen_at', null),
-            client.from('tt_doctor_feedback').select('id').is('seen_at', null)
+            client.from('tt_doctor_feedback').select('id').is('seen_at', null),
+            client.from('tt_extra_days').select('id').eq('status', 'gemeldet')     // gemeldete Arbeitstage (Update 43)
         ]);
         const openDriverNotes = driverNotes.error ? 0 : driverNotes.data.length;
         // Ein Übernahme-Hinweis, der schon als Meldung an den Vorfahrer ging, zählt nur einmal.
@@ -146,7 +147,7 @@ const TerminCloud = (() => {
         return { damages: damages.data.length, alerts: alerts.data.length + openNotes + openDriverNotes, driverNotes: openDriverNotes, doctor: doctorNotes.error ? 0 : doctorNotes.data.length, documents: newDocuments.error ? 0 : newDocuments.data.length, reports: newReports, prescriptions: newDocuments.error ? 0 : newDocuments.data.length - newReports,
             requests: newPhotos.error ? 0 : newPhotos.data.filter(item => item.kind === 'schaden' || item.kind === 'meldung').length,
             accounts: isAdmin(profile) ? waitingAccounts + (resets.error ? 0 : resets.data.length) : 0,
-            payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length),
+            payroll: (openReceipts.length - festReceipts) + (objections.error ? 0 : objections.data.length) + (extraDays.error ? 0 : extraDays.data.length), extraDays: extraDays.error ? 0 : extraDays.data.length,
             fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences,
             appointments: newAppointments.error ? 0 : newAppointments.data.length,
             chat: unreadChat.error ? 0 : unreadChat.data.length,

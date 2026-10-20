@@ -109,6 +109,19 @@
          <div id="statementDialogBody" class="statement-dialog-body"></div>
          <div class="modal-buttons"><button type="button" class="button-secondary" id="statementDialogPrint">Drucken</button><button type="button" class="button-primary" id="statementDialogClose">Schließen</button></div>
       </dialog>
+      <!-- Zusätzlicher Arbeitstag von Hand (Update 43) -->
+      <dialog id="extraDayDialog" class="confirm-dialog office-return extra-day-dialog" aria-labelledby="extraDayTitle">
+         <form id="extraDayForm" class="fleet-form" novalidate>
+            <h2 id="extraDayTitle">Arbeitstag hinzufügen</h2>
+            <p class="field-hint" id="extraDayInfo"></p>
+            <label for="extraDayDate">Datum</label>
+            <input id="extraDayDate" type="date" required>
+            <label for="extraDayNote">Vermerk <span class="optional-label">optional</span></label>
+            <input id="extraDayNote" type="text" maxlength="300" placeholder="Zum Beispiel: Begleitung im Krankenhaus, kein Termin im Plan">
+            <p class="field-hint">Der Tag zählt wie ein normaler Arbeitstag (× Tagessatz) und steht bei der Person in „Meine Tage“ als „vom Büro bestätigt“.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="extraDayCancel">Abbrechen</button><button type="submit" class="button-primary" id="extraDaySave">Tag hinzufügen</button></div>
+         </form>
+      </dialog>
       <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto des Belegs"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>
       <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

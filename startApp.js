@@ -224,7 +224,7 @@
             todoItem('Meldungen und Hinweise aus Fahrzeugen', countsOnline.alerts, 'fahrzeugakte.html'),
             todoItem('Neue Schäden', countsOnline.damages, 'fahrzeugakte.html'),
             ...(countsOnline.requests ? [todoItem('Angeforderte Fotos sind da', countsOnline.requests, 'fahrzeugakte.html')] : []),
-            todoItem('Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html'),
+            todoItem(countsOnline.extraDays ? 'Abrechnung: neue Belege, Einwände und gemeldete Arbeitstage' : 'Abrechnung: neue Belege und Einwände', countsOnline.payroll, 'abrechnung.html'),
             todoItem('Festangestellte: Überstunden und Belege prüfen', (countsOnline.fest || 0) - (countsOnline.absences || 0), 'festangestellte.html'),
             ...(countsOnline.absences ? [todoItem('Urlaubsanträge und Krankmeldungen', countsOnline.absences, 'festangestellte.html?reiter=abwesenheiten')] : [])
         );
