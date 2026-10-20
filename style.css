@@ -3024,3 +3024,21 @@ dialog.extra-day-dialog input[type="date"], dialog.extra-day-dialog input[type="
 .my-extra-form button { min-height: 44px; }
 .my-extra-form .my-extra-hint { margin: 0; color: var(--muted); font-size: .84rem; }
 .pay-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
+
+/* ===== 91. Fuhrpark (Update 44): Tausch / Rückgabe, Reifen, Extras für ATU ===== */
+.state-edit { margin-left: 2px; }
+.status-pill[data-tyres=winter] { background: #e3f0ff; color: #1b4f8a; }
+.status-pill[data-tyres=sommer] { background: #fff2cc; color: #7a5200; }
+.status-pill[data-tyres=ganzjahr] { background: #e8f3e8; color: #2b5e2b; }
+.retired-entry .retired-meta { display: block; color: #6b7280; }
+.vehicle-events .vehicle-event[data-kind=tausch] .status-pill, .vehicle-events .vehicle-event[data-kind=rueckgabe] .status-pill { background: #e3f0ff; color: #1b4f8a; }
+.vehicle-events .vehicle-event[data-kind=sonstiges] .status-pill { background: #eef0f3; color: #4b5563; }
+.swap-dialog { width: min(640px, 96vw); }
+.swap-new { margin-top: 6px; padding: 10px 12px; border: 1px solid #d6e2f0; border-radius: 10px; background: #f6f9fd; }
+.swap-new[hidden] { display: none; }
+.swap-new > .field-label { display: block; margin: 0 0 6px; font-size: 1.02rem; }
+.swap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.swap-grid > div { min-width: 0; }
+.swap-grid input, .swap-grid select { width: 100%; }
+@media (max-width: 560px) { .swap-grid { grid-template-columns: 1fr; } }
+.tyre-office-extra { display: block; color: #6b4a00; }

@@ -55,3 +55,6 @@ button, input, textarea { font: inherit; }
 .tyre-dialog textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; resize: vertical; }
 .tyre-dialog-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 @media (max-width: 480px) { .tyre-item { grid-template-columns: 1fr; } .tyre-side { justify-items: stretch; } .tyre-check { display: none; } }
+
+/* Extras vom Büro je Fahrzeug (Update 44) */
+.tyre-item-extra { display: block; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: #fff4d6; color: #6b4a00; font-weight: 600; font-size: 0.95rem; }

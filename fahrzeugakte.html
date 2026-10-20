@@ -36,7 +36,7 @@
                   <button type="button" class="overview-card overview-card-departed" data-fleet-filter="ausgegeben" aria-pressed="false"><span class="overview-label">Ausgegeben</span><strong id="fleetCountOut">0</strong></button>
                   <button type="button" class="overview-card overview-card-done" data-fleet-filter="frei" aria-pressed="false"><span class="overview-label">Frei</span><strong id="fleetCountFree">0</strong></button>
                   <button type="button" class="overview-card overview-card-reserved" data-fleet-filter="reserviert" aria-pressed="false"><span class="overview-label">Reserviert</span><strong id="fleetCountReserved">0</strong></button>
-                  <button type="button" class="overview-card overview-card-service" data-fleet-filter="werkstatt" aria-pressed="false"><span class="overview-label">Werkstatt</span><strong id="fleetCountService">0</strong></button>
+                  <button type="button" class="overview-card overview-card-service" data-fleet-filter="werkstatt" aria-pressed="false"><span class="overview-label">Bei ATU / Werkstatt</span><strong id="fleetCountService">0</strong></button>
                </div>
                <div class="board-chips" id="fleetModels" role="group" aria-label="Nach Modell filtern" hidden></div>
                <div class="board-chips board-flags" id="fleetFlags" role="group" aria-label="Auffälligkeiten" hidden></div>
@@ -81,7 +81,7 @@
 
             <details class="directory-card fold-card" id="retiredSection" hidden>
                <summary><span>Nicht mehr im Fuhrpark</span><b id="retiredCount">0</b></summary>
-               <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen. Ihre Fahrten und Schäden bleiben gespeichert.</p>
+               <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen – getauscht, zurückgegeben oder abgegeben. Ihre Fahrten, Schäden und der Verlauf bleiben gespeichert.</p>
                <ul id="retiredList" class="directory-list"></ul>
             </details>
 
@@ -135,7 +135,8 @@
                            <button type="button" id="fileReturnOpen" class="button-primary" hidden>Rückgabe eintragen</button>
                            <button type="button" id="vehicleEditOpen" class="button-secondary">Daten bearbeiten</button>
                            <button type="button" id="serviceOpen" class="button-secondary">Werkstatt / sperren</button>
-                           <button type="button" id="vehicleRetire" class="button-quiet-danger">Aus dem Fuhrpark nehmen</button>
+                           <button type="button" id="tyreStateOpen" class="button-secondary">Reifen / Extras für ATU</button>
+                           <button type="button" id="vehicleRetire" class="button-quiet-danger">Tausch / Rückgabe / abgeben</button>
                            <button type="button" id="vehicleDelete" class="button-quiet-danger" hidden>Endgültig löschen</button>
                         </div>
                      </div>
@@ -154,6 +155,8 @@
                         <ul id="fileAlertsArchive" class="directory-list file-list"></ul>
                         <h3 class="file-heading">Fahrten und Übergaben</h3>
                         <div class="fleet-table-wrap"><table class="fleet-table"><thead><tr><th>Datum</th><th>Fahrer/in</th><th>Zeit</th><th>Kilometer</th><th>Tank</th><th>Parkort</th><th>Innen</th><th>Außen</th><th>Hinweis</th><th></th></tr></thead><tbody id="fileHandovers"></tbody></table></div>
+                        <h3 class="file-heading">Verlauf: Tausch, Rückgabe, Aufnahme</h3>
+                        <ul id="fileEvents" class="directory-list file-list vehicle-events"></ul>
                      </div>
                   </div>
                </div>
@@ -231,15 +234,82 @@
             <span class="field-label" id="serviceStatusLabel">Zustand</span>
             <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="serviceStatusLabel">
                <label><input type="radio" name="serviceStatus" value="" checked><span>Einsatzbereit</span></label>
-               <label><input type="radio" name="serviceStatus" value="werkstatt"><span>In der Werkstatt</span></label>
+               <label><input type="radio" name="serviceStatus" value="werkstatt"><span>Bei ATU / in der Werkstatt</span></label>
                <label><input type="radio" name="serviceStatus" value="gesperrt"><span>Gesperrt</span></label>
             </div>
             <label for="serviceNote">Grund / Werkstatt <span class="optional-label">optional</span></label>
-            <input id="serviceNote" type="text" maxlength="120" autocomplete="off" placeholder="Zum Beispiel: Inspektion, Mercedes Bonn">
+            <input id="serviceNote" type="text" maxlength="120" autocomplete="off" list="serviceNoteList" placeholder="Zum Beispiel: ATU Bonn, Reifenwechsel">
+            <datalist id="serviceNoteList"><option value="ATU Bonn"></option><option value="ATU Bonn, Reifenwechsel"></option><option value="ATU Bonn, Inspektion"></option><option value="Mercedes Bonn, Inspektion"></option></datalist>
             <label for="serviceUntil">Voraussichtlich wieder da <span class="optional-label">optional</span></label>
             <input id="serviceUntil" type="date">
             <p class="field-hint">Ein Fahrzeug in der Werkstatt oder ein gesperrtes Fahrzeug kann im Portal niemand übernehmen.</p>
             <div class="modal-buttons"><button type="button" class="button-secondary" id="serviceCancel">Abbrechen</button><button type="submit" class="button-primary">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <!-- Reifen und Extras für ATU (Update 44) -->
+      <dialog id="tyreStateDialog" class="confirm-dialog office-return" aria-labelledby="tyreStateTitle">
+         <form id="tyreStateForm" class="fleet-form" novalidate>
+            <h2 id="tyreStateTitle">Reifen / Extras für ATU</h2>
+            <p class="field-hint" id="tyreStateInfo"></p>
+            <span class="field-label" id="tyreStateLabel">Welche Reifen sind drauf?</span>
+            <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="tyreStateLabel">
+               <label><input type="radio" name="tyreState" value="" checked><span>Nicht eingetragen</span></label>
+               <label><input type="radio" name="tyreState" value="sommer"><span>Sommerreifen</span></label>
+               <label><input type="radio" name="tyreState" value="winter"><span>Winterreifen</span></label>
+               <label><input type="radio" name="tyreState" value="ganzjahr"><span>Ganzjahresreifen</span></label>
+            </div>
+            <label for="tyreStateSince">Seit <span class="optional-label">optional</span></label>
+            <input id="tyreStateSince" type="date">
+            <label for="atuNote">Extras für ATU <span class="optional-label">optional</span></label>
+            <textarea id="atuNote" rows="3" maxlength="300" placeholder="Was die Werkstatt außerdem machen oder beachten soll, z. B. „Bremsen quietschen, bitte prüfen“ oder „Scheibenwischer hinten tauschen“"></textarea>
+            <p class="field-hint">Die Extras stehen bei diesem Fahrzeug auf der nächsten Liste für die Werkstatt. Erledigtes löschst du hier wieder.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="tyreStateCancel">Abbrechen</button><button type="submit" class="button-primary" id="tyreStateSave">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <!-- Tausch / Rückgabe / aus dem Fuhrpark nehmen (Update 44) -->
+      <dialog id="swapDialog" class="confirm-dialog office-return swap-dialog" aria-labelledby="swapTitle">
+         <form id="swapForm" class="fleet-form" novalidate>
+            <h2 id="swapTitle">Tausch / Rückgabe</h2>
+            <p class="field-hint" id="swapInfo"></p>
+            <span class="field-label" id="swapKindLabel">Was ist passiert?</span>
+            <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="swapKindLabel">
+               <label><input type="radio" name="swapKind" value="tausch" checked><span>Getauscht gegen ein anderes Fahrzeug</span></label>
+               <label><input type="radio" name="swapKind" value="rueckgabe"><span>Zurückgegeben (z. B. Mietwagen an den Vermieter)</span></label>
+               <label><input type="radio" name="swapKind" value="sonstiges"><span>Aus anderem Grund aus dem Fuhrpark nehmen</span></label>
+            </div>
+            <div id="swapNewBox" class="swap-new">
+               <span class="field-label">Das neue Fahrzeug</span>
+               <label for="swapPlate">Kennzeichen</label>
+               <input id="swapPlate" type="text" maxlength="24" autocomplete="off" placeholder="Zum Beispiel: K MW 5678">
+               <div class="swap-grid">
+                  <div><label for="swapModel">Modell</label><select id="swapModel"><option value="">Anderes Modell …</option><option value="Mercedes E-Klasse">Mercedes E-Klasse</option><option value="BMW 5er">BMW 5er</option><option value="Mercedes V-Klasse">Mercedes V-Klasse</option></select></div>
+                  <div><label for="swapBrand">Marke und Modell</label><input id="swapBrand" type="text" maxlength="40" autocomplete="off" placeholder="z. B. Skoda Octavia"></div>
+                  <div><label for="swapBody">Bauart</label><select id="swapBody"><option value="Kombi">Kombi</option><option value="Limousine">Limousine</option><option value="Bus">Bus / Van</option></select></div>
+                  <div><label for="swapType">Art</label><select id="swapType"><option value="Mietwagen">Mietwagen</option><option value="Diplomatisch">Diplomatisch</option></select></div>
+                  <div><label for="swapMileage">Kilometerstand <span class="optional-label">optional</span></label><input id="swapMileage" type="number" min="0" step="1" inputmode="numeric" placeholder="km"></div>
+                  <div><label for="swapTyres">Reifen</label><select id="swapTyres"><option value="">Nicht eingetragen</option><option value="sommer">Sommerreifen</option><option value="winter">Winterreifen</option><option value="ganzjahr">Ganzjahresreifen</option></select></div>
+               </div>
+               <label for="swapLabel">Hinweis zum neuen Fahrzeug <span class="optional-label">optional</span></label>
+               <input id="swapLabel" type="text" maxlength="60" autocomplete="off" placeholder="z. B. weiß, Automatik">
+               <p class="field-hint" id="swapInherit"></p>
+            </div>
+            <label for="swapNote">Vermerk <span class="optional-label">optional</span></label>
+            <textarea id="swapNote" rows="2" maxlength="400" placeholder="z. B. „Sixt hat getauscht, Rückgabe am 20.10. um 9 Uhr“"></textarea>
+            <p class="field-hint">Das bisherige Fahrzeug verschwindet aus der Liste und steht unter „Nicht mehr im Fuhrpark“ – mit Datum, Art und Vermerk. Fahrten, Schäden und der Verlauf bleiben. Jedes Fahrzeug zeigt im Archiv, gegen was es getauscht wurde.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="swapCancel">Abbrechen</button><button type="submit" class="button-primary" id="swapSave">Tausch eintragen</button></div>
+         </form>
+      </dialog>
+
+      <!-- Extras eines Fahrzeugs auf einer offenen Werkstatt-Liste ändern -->
+      <dialog id="tyreExtraDialog" class="confirm-dialog office-return" aria-labelledby="tyreExtraTitle">
+         <form id="tyreExtraForm" class="fleet-form" novalidate>
+            <h2 id="tyreExtraTitle">Extras für die Werkstatt</h2>
+            <p class="field-hint" id="tyreExtraInfo"></p>
+            <label for="tyreExtraText">Was soll die Werkstatt bei diesem Fahrzeug außerdem machen?</label>
+            <textarea id="tyreExtraText" rows="3" maxlength="300" placeholder="z. B. „Bremsen quietschen, bitte prüfen“"></textarea>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="tyreExtraCancel">Abbrechen</button><button type="submit" class="button-primary" id="tyreExtraSave">Speichern</button></div>
          </form>
       </dialog>
 
@@ -252,6 +322,9 @@
             <input id="tyreNewName" type="text" maxlength="80" placeholder="z. B. Winterreifen 2026">
             <label for="tyreNewNote">Hinweis für die Werkstatt (freiwillig)</label>
             <input id="tyreNewNote" type="text" maxlength="300" placeholder="z. B. Winterreifen aus dem Lager, Termin ab 2. November">
+            <label for="tyreNewTarget">Welche Reifen sind danach drauf?</label>
+            <select id="tyreNewTarget"><option value="">Nur Liste – Reifen am Fahrzeug nicht ändern</option><option value="winter">Winterreifen</option><option value="sommer">Sommerreifen</option><option value="ganzjahr">Ganzjahresreifen</option></select>
+            <p class="field-hint">Hakt die Werkstatt ein Fahrzeug ab, steht das am Fahrzeug („Winterreifen seit …“). Die „Extras für ATU“ je Fahrzeug stehen auf der Liste dabei.</p>
             <span class="field-label">Fahrzeuge auf der Liste</span>
             <p class="field-hint">Vorausgewählt sind die diplomatischen Fahrzeuge. Mietwagen kannst du dazunehmen.</p>
             <ul id="tyreVehicleList" class="tyre-vehicle-list"></ul>

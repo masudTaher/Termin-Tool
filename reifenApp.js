@@ -28,8 +28,10 @@
         const done = items.filter(item => item.done).length;
         $('tyreTitle').textContent = data.title || 'Reifenwechsel';
         $('tyreSub').textContent = `${items.length} ${items.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · Liste vom ${new Date(data.created_at).toLocaleDateString('de-DE')}${data.created_by ? ` · ${data.created_by}` : ''}`;
-        $('tyreNote').hidden = !data.note;
-        $('tyreNote').textContent = data.note || '';
+        const TYRES = { sommer: 'Sommerreifen', winter: 'Winterreifen', ganzjahr: 'Ganzjahresreifen' };
+        const target = data.tyres_to ? `Nach dem Wechsel: ${TYRES[data.tyres_to] || data.tyres_to}.` : '';
+        $('tyreNote').hidden = !data.note && !target;
+        $('tyreNote').textContent = [target, data.note || ''].filter(Boolean).join(' ');
         $('tyreProgress').hidden = !items.length;
         $('tyreBar').style.width = `${items.length ? Math.round(done / items.length * 100) : 0}%`;
         $('tyreProgressText').textContent = done === items.length && items.length ? 'Alle Fahrzeuge erledigt – danke!' : `${done} von ${items.length} erledigt · ${items.length - done} offen`;
@@ -40,6 +42,7 @@
             row.dataset.done = item.done ? 'ja' : '';
             const main = el('div', 'tyre-main');
             main.append(el('strong', 'tyre-plate', item.plate || '–'), el('span', 'tyre-model', [item.vehicle, item.vehicle_type, km(item.mileage)].filter(Boolean).join(' · ')));
+            if (item.extra) main.append(el('span', 'tyre-item-extra', `Bitte außerdem: ${item.extra}`));
             if (item.done) main.append(el('span', 'tyre-done-text', `Erledigt ${when(item.done_at)}${item.done_by ? ` · ${item.done_by}` : ''}`));
             if (item.note) main.append(el('span', 'tyre-item-note', `„${item.note}“`));
             const side = el('div', 'tyre-side');

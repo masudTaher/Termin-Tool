@@ -15,6 +15,11 @@
     let takeoverNotes = [];
     let driverNotes = [];           // Meldungen über den Vorfahrer (Update 42)
     let driverNotesReady = false;
+    let vehicleEvents = [];         // Verlauf: Tausch, Rückgabe, Aufnahme (Update 44)
+    let swapReady = false;          // Update 44 vorhanden (tt_vehicle_events, tt_vehicle_swap, Reifen, Extras für ATU)
+    const TYRES = { sommer: 'Sommerreifen', winter: 'Winterreifen', ganzjahr: 'Ganzjahresreifen' };
+    const SWAP_KIND = { tausch: 'Getauscht', ersetzt: 'Ersetzt', rueckgabe: 'Zurückgegeben', sonstiges: 'Aus dem Fuhrpark genommen', aufnahme: 'Aufgenommen', wieder: 'Wieder aufgenommen' };
+    const tyreText = vehicle => vehicle?.tyres ? `${TYRES[vehicle.tyres] || vehicle.tyres}${vehicle.tyres_since ? ` seit ${formatDate(vehicle.tyres_since)}` : ''}` : '';
     let selectedId = null;
     let fileTab = 'current';
     let sketch = null;
@@ -88,6 +93,9 @@
         driverNotes = driverNotesReady ? driverNoteResult.data : [];
         // Ein Übernahme-Hinweis, der schon als Meldung an den Vorfahrer ging, erscheint nur einmal (als Meldung).
         takeoverNotes = takeoverNotes.filter(item => !driverNotes.some(note => note.handover_id === item.id));
+        const eventResult = await client.from('tt_vehicle_events').select('*').order('created_at', { ascending: false }).limit(500);
+        swapReady = !eventResult.error;
+        vehicleEvents = swapReady ? eventResult.data : [];
         // Letzte Rückgabe je Fahrzeug – für „zuletzt Ahmad, 04.10. 17:40“ bei freien Fahrzeugen
         const returnResult = await client.from('tt_handovers').select('*').not('end_time', 'is', null).order('created_at', { ascending: false }).limit(400);
         lastReturns.clear();
@@ -509,7 +517,11 @@
         ['reparatur', 'In Reparatur', facts => facts.inRepair > 0],
         ['tank', 'Tank niedrig', (facts, vehicle) => vehicle.fuel != null && vehicle.fuel <= 1],
         ['sauber', 'Nicht sauber', (facts, vehicle) => vehicle.clean_inside === false || vehicle.clean_outside === false],
-        ['karte', 'Tankkarte dabei', facts => Boolean(facts.card)]
+        ['karte', 'Tankkarte dabei', facts => Boolean(facts.card)],
+        ['winter', 'Winterreifen', (facts, vehicle) => vehicle.tyres === 'winter'],
+        ['sommer', 'Sommerreifen', (facts, vehicle) => vehicle.tyres === 'sommer'],
+        ['ohnereifen', 'Reifen nicht eingetragen', (facts, vehicle) => swapReady && !vehicle.tyres],
+        ['atu', 'Extras für ATU', (facts, vehicle) => Boolean(vehicle.atu_note)]
     ];
     const VIEW_KEY = 'terminTool.fleet.view.v1';
     const readView = () => { try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (error) { return {}; } };
@@ -590,7 +602,8 @@
         if (facts.holder?.emergency) badges.append(pill('in Arbeit', 'Notdienst'));
         else if (TerminCloud.keepsOvernight(facts.holder)) badges.append(pill('in Arbeit', 'Über Nacht · früher Termin'));
         if (facts.overdue) badges.append(pill(facts.overdue > 1 ? 'offen' : 'in Arbeit', 'Rückgabe offen'));
-        if (vehicle.service_status) badges.append(pill('bekannt', vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Werkstatt'));
+        if (vehicle.service_status) badges.append(pill('bekannt', vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Bei ATU / Werkstatt'));
+        if (vehicle.atu_note) badges.append(pill('in Arbeit', 'Extras für ATU'));
         if (facts.newDamages) badges.append(pill('offen', `${facts.newDamages} ${facts.newDamages === 1 ? 'neuer Schaden' : 'neue Schäden'}`));
         if (facts.inRepair) badges.append(pill('in Arbeit', `${facts.inRepair} in Reparatur`));
         if (facts.knownDamages) badges.append(pill('bekannt', `${facts.knownDamages} ${facts.knownDamages === 1 ? 'Altschaden' : 'Altschäden'}`));
@@ -599,6 +612,8 @@
         if (vehicle.fuel != null && vehicle.fuel <= 1) badges.append(pill('in Arbeit', 'Tank niedrig'));
         if (facts.card) badges.append(pill('bekannt', `Tankkarte ${facts.card.number}`));
         if (!badges.children.length) badges.append(pill('erledigt', 'alles in Ordnung'));
+        // Reifen sind kein Problem, nur eine Angabe – darum nach „alles in Ordnung“.
+        if (vehicle.tyres) { const tyre = pill('bekannt', TYRES[vehicle.tyres] || vehicle.tyres); tyre.dataset.tyres = vehicle.tyres; badges.append(tyre); }
         return badges;
     }
 
@@ -626,13 +641,13 @@
         }
         if (facts.status === 'werkstatt') {
             return [
-                vehicle.service_note || (vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'In der Werkstatt'),
+                vehicle.service_note || (vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Bei ATU / Werkstatt'),
                 [vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · '),
                 reserved
             ];
         }
         const last = facts.last ? `zuletzt ${facts.last.driver_name}, ${formatDate(facts.last.end_date || facts.last.date)} ${String(facts.last.end_time || '').slice(0, 5)}` : '';
-        return [reserved || (vehicle.parking ? `Steht: ${vehicle.parking}` : 'Parkort –'), [reserved && vehicle.parking ? `Steht: ${vehicle.parking}` : '', last].filter(Boolean).join(' · '), ''];
+        return [reserved || `Hier bei uns${vehicle.parking ? ` · ${vehicle.parking}` : ''}`, [reserved ? `Hier bei uns${vehicle.parking ? ` · ${vehicle.parking}` : ''}` : '', last].filter(Boolean).join(' · '), ''];
     }
 
     function flagIcons(vehicle, facts) {
@@ -974,7 +989,7 @@
         const service = $('fileService');
         service.hidden = !vehicle.service_status;
         service.textContent = vehicle.service_status
-            ? [`${vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'In der Werkstatt'}${vehicle.service_note ? ` – ${vehicle.service_note}` : ''}`, vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · ')
+            ? [`${vehicle.service_status === 'gesperrt' ? 'Gesperrt' : 'Bei ATU / Werkstatt'}${vehicle.service_note ? ` – ${vehicle.service_note}` : ''}`, vehicle.service_since ? `seit ${formatDate(vehicle.service_since)}` : '', vehicle.service_until ? `zurück etwa ${formatDate(vehicle.service_until)}` : ''].filter(Boolean).join(' · ')
             : '';
         $('serviceOpen').textContent = vehicle.service_status ? 'Werkstatt / Sperre ändern' : 'Werkstatt / sperren';
         $('fileReturnOpen').hidden = !holder || !TerminCloud.isStaff(profile);
@@ -1001,17 +1016,24 @@
         const shown = fileTab === 'archive' ? archived : current;
         sketch.setMarkers(shown.map((item, index) => ({ id: item.id, x: item.pos_x, y: item.pos_y, status: item.status, label: damageWhat(item), number: index + 1 })));
 
+        const where = holder ? `Unterwegs mit ${holder.driver_name}` : vehicle.service_status === 'gesperrt' ? 'Gesperrt' : vehicle.service_status ? `Bei ATU / Werkstatt${vehicle.service_note ? ` – ${vehicle.service_note}` : ''}` : 'Hier bei uns';
+        const previous = vehicle.replaces ? allVehicles.find(item => item.id === vehicle.replaces) : null;
         const stateRows = [
+            ['Wo', where],
             ['Kilometer', formatKm(vehicle.mileage)],
             ['Tank', vehicle.fuel == null ? '–' : FUEL[vehicle.fuel]],
             ['Parkort', vehicle.parking || '–'],
             ['Innen', cleanText(vehicle.clean_inside)],
             ['Außen', cleanText(vehicle.clean_outside)],
+            ['Reifen', swapReady ? (tyreText(vehicle) || 'nicht eingetragen') : '–'],
+            ['Für ATU', swapReady ? (vehicle.atu_note || '–') : '–'],
+            ...(previous ? [['Vorgänger', `${previous.plate}${previous.retired_at ? ` · getauscht am ${formatDate(previous.retired_at)}` : ''}`]] : []),
             ['Stand', vehicle.state_updated_at ? `${formatDate(vehicle.state_updated_at)}${vehicle.state_updated_by ? `, ${vehicle.state_updated_by}` : ''}` : '–']
         ];
         $('fileState').replaceChildren(...stateRows.flatMap(([term, value]) => {
             const cell = el('dd', null, value);
-            // Kilometer und Parkort lassen sich gleich hier korrigieren (springt zum Feld darunter).
+            cell.dataset.term = term;
+            // Kilometer und Parkort lassen sich gleich hier korrigieren (springt zum Feld darunter); Reifen und Extras im eigenen Fenster.
             const field = { Kilometer: 'fileMileage', Parkort: 'fileParking' }[term];
             if (field && TerminCloud.isStaff(profile)) {
                 const fix = el('button', 'link-button state-fix', 'korrigieren');
@@ -1019,6 +1041,19 @@
                 fix.setAttribute('aria-label', `${term} korrigieren`);
                 fix.addEventListener('click', () => { $(field).scrollIntoView({ block: 'center' }); $(field).focus(); });
                 cell.append(' ', fix);
+            }
+            if ((term === 'Reifen' || term === 'Für ATU') && swapReady) {
+                const fix = el('button', 'link-button state-edit', 'ändern');
+                fix.type = 'button';
+                fix.setAttribute('aria-label', `${term} ändern`);
+                fix.addEventListener('click', () => openTyreState(vehicle));
+                cell.append(' ', fix);
+            }
+            if (term === 'Vorgänger' && previous) {
+                const open = el('button', 'link-button state-edit', 'Verlauf');
+                open.type = 'button';
+                open.addEventListener('click', () => { fileTab = 'archive'; renderFile().then(() => $('fileEvents')?.scrollIntoView({ block: 'center', behavior: 'smooth' })); });
+                cell.append(' ', open);
             }
             return [el('dt', null, term), cell];
         }));
@@ -1085,7 +1120,37 @@
                 row.append(cell);
                 body.append(row);
             }
+            renderEvents(vehicle, $('fileEvents'));
         }
+    }
+
+    // Verlauf eines Fahrzeugs: getauscht gegen …, ersetzt …, zurückgegeben, wieder aufgenommen (Update 44).
+    function eventEntry(item) {
+        const row = el('li', 'vehicle-entry file-entry vehicle-event');
+        row.dataset.kind = item.kind;
+        const other = item.other_vehicle_id ? allVehicles.find(vehicle => vehicle.id === item.other_vehicle_id) : null;
+        const otherPlate = other?.plate || item.other_plate || '';
+        const title = item.kind === 'tausch' ? `Getauscht gegen ${otherPlate || 'ein anderes Fahrzeug'}`
+            : item.kind === 'ersetzt' ? `Ersetzt ${otherPlate || 'ein früheres Fahrzeug'}`
+            : SWAP_KIND[item.kind] || item.kind;
+        const meta = el('span');
+        meta.append(el('strong', null, title), el('small', null, [`${formatDateTime(item.created_at)} Uhr`, item.created_by, item.mileage != null ? formatKm(item.mileage) : '', item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
+        row.append(pill(item.kind === 'ersetzt' || item.kind === 'wieder' || item.kind === 'aufnahme' ? 'erledigt' : 'bekannt', SWAP_KIND[item.kind] || item.kind), meta);
+        if (other) {
+            const actions = el('span', 'vehicle-entry-actions');
+            const open = el('button', 'button-secondary fleet-end-button', other.active ? 'Akte öffnen' : 'Nicht mehr im Fuhrpark');
+            open.type = 'button';
+            open.disabled = !other.active;
+            open.addEventListener('click', () => selectVehicle(other.id));
+            actions.append(open);
+            row.append(actions);
+        }
+        return row;
+    }
+    function renderEvents(vehicle, list) {
+        if (!list) return;
+        const own = vehicleEvents.filter(item => item.vehicle_id === vehicle.id);
+        list.replaceChildren(...(own.length ? own.map(eventEntry) : [el('li', 'directory-empty', !swapReady ? 'Dafür fehlt noch das Datenbank-Update 44.' : 'Noch kein Tausch, keine Rückgabe – das Fahrzeug ist so im Fuhrpark, wie es angelegt wurde.')]));
     }
 
     document.querySelectorAll('[data-file-tab]').forEach(button => {
@@ -1239,21 +1304,114 @@
         await refresh();
     });
 
-    // ---------- Aus dem Fuhrpark nehmen, wieder aufnehmen, endgültig löschen ----------
-    async function retireVehicle(vehicle) {
+    // ---------- Reifen und Extras für ATU (Update 44) ----------
+    let tyreStateVehicle = null;
+    function openTyreState(vehicle) {
+        tyreStateVehicle = vehicle;
+        $('tyreStateTitle').textContent = `${vehicle.plate}: Reifen / Extras für ATU`;
+        $('tyreStateInfo').textContent = [vehicleLabel(vehicle), tyreText(vehicle) ? `bisher: ${tyreText(vehicle)}` : 'Reifen bisher nicht eingetragen'].join(' · ');
+        document.querySelectorAll('input[name=tyreState]').forEach(input => { input.checked = input.value === (vehicle.tyres || ''); });
+        $('tyreStateSince').value = vehicle.tyres_since || '';
+        $('atuNote').value = vehicle.atu_note || '';
+        $('tyreStateDialog').showModal();
+    }
+    $('tyreStateOpen').addEventListener('click', () => {
+        const vehicle = vehicles.find(item => item.id === selectedId);
+        if (!vehicle) return;
+        if (!swapReady) { showToast('Dafür fehlt noch das Datenbank-Update 44 (supabase/update-44.sql).', 'error'); return; }
+        openTyreState(vehicle);
+    });
+    $('tyreStateCancel').addEventListener('click', () => $('tyreStateDialog').close());
+    $('tyreStateForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const vehicle = tyreStateVehicle;
+        if (!vehicle) return;
+        const tyres = document.querySelector('input[name=tyreState]:checked')?.value || '';
+        const since = tyres ? ($('tyreStateSince').value || (vehicle.tyres === tyres ? vehicle.tyres_since : TerminCloud.todayIso())) : null;
+        $('tyreStateSave').disabled = true;
+        const { error } = await client.from('tt_vehicles').update({ tyres, tyres_since: since, atu_note: $('atuNote').value.trim() }).eq('id', vehicle.id);
+        $('tyreStateSave').disabled = false;
+        if (error) { showToast(/tyres|atu_note/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 44 (supabase/update-44.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        $('tyreStateDialog').close();
+        showToast(`${vehicle.plate}: ${tyres ? `${TYRES[tyres]} eingetragen` : 'Reifen nicht eingetragen'}${$('atuNote').value.trim() ? ' · Extras für ATU gespeichert' : ''}`, 'success');
+        await refresh();
+    });
+
+    // ---------- Tausch, Rückgabe, aus dem Fuhrpark nehmen, wieder aufnehmen, endgültig löschen ----------
+    // Ein Mietwagen wird oft getauscht oder zurückgegeben. Das alte Fahrzeug geht aus der Liste, das neue kommt dazu – und beide
+    // wissen voneinander (Verlauf im Archiv der Akte). Ohne Update 44 bleibt nur „aus dem Fuhrpark nehmen“.
+    let swapVehicle = null;
+    function syncSwapFields() {
+        const kind = document.querySelector('input[name=swapKind]:checked')?.value || 'tausch';
+        $('swapNewBox').hidden = kind !== 'tausch';
+        $('swapSave').textContent = kind === 'tausch' ? 'Tausch eintragen' : kind === 'rueckgabe' ? 'Rückgabe eintragen' : 'Aus dem Fuhrpark nehmen';
+    }
+    document.querySelectorAll('input[name=swapKind]').forEach(input => input.addEventListener('change', syncSwapFields));
+    $('swapModel').addEventListener('change', () => { $('swapBrand').hidden = $('swapModel').value !== ''; if ($('swapModel').value === 'Mercedes V-Klasse') $('swapBody').value = 'Bus'; });
+    function openSwap(vehicle) {
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
         if (holder) { showToast(`${vehicle.plate} ist gerade bei ${holder.driver_name}. Bitte zuerst die Rückgabe eintragen.`, 'error'); return; }
-        if (!await confirmDialog(`${vehicle.plate} aus dem Fuhrpark nehmen?\n\nDas Fahrzeug verschwindet auf allen Geräten und im Portal aus der Liste. Fahrten, Schäden und Meldungen bleiben gespeichert, und du kannst es jederzeit wieder aufnehmen.`, 'Aus dem Fuhrpark nehmen')) return;
-        const { error } = await client.from('tt_vehicles').update({ active: false, assigned_to: null }).eq('id', vehicle.id);
-        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        closeFile();
-        showToast(`${vehicle.plate} ist nicht mehr im Fuhrpark`, 'success');
-        await refresh();
+        swapVehicle = vehicle;
+        $('swapTitle').textContent = `${vehicle.plate}: Tausch / Rückgabe`;
+        $('swapInfo').textContent = [vehicleLabel(vehicle), vehicle.type, vehicle.mileage != null ? formatKm(vehicle.mileage) : '', vehicle.assigned_to ? `reserviert für ${profileName(vehicle.assigned_to)}` : ''].filter(Boolean).join(' · ');
+        document.querySelectorAll('input[name=swapKind]').forEach(input => { input.checked = input.value === (vehicle.type === 'Mietwagen' ? 'tausch' : 'sonstiges'); input.disabled = !swapReady && input.value !== 'sonstiges'; });
+        $('swapPlate').value = ''; $('swapModel').value = ''; $('swapBrand').value = ''; $('swapBrand').hidden = false; $('swapBody').value = vehicle.body || 'Kombi';
+        $('swapType').value = vehicle.type === 'Diplomatisch' ? 'Diplomatisch' : 'Mietwagen'; $('swapMileage').value = ''; $('swapTyres').value = ''; $('swapLabel').value = ''; $('swapNote').value = '';
+        $('swapInherit').textContent = `Das neue Fahrzeug übernimmt Standort ${stationOf(vehicle)}${vehicle.assigned_to ? `, den festen Fahrer ${profileName(vehicle.assigned_to)}` : ''}${vehicle.parking ? ` und den Parkort ${vehicle.parking}` : ''}.`;
+        $('swapInfo').textContent += swapReady ? '' : ' · Tausch und Rückgabe brauchen das Datenbank-Update 44.';
+        syncSwapFields();
+        $('swapDialog').showModal();
     }
+    $('swapCancel').addEventListener('click', () => $('swapDialog').close());
+    $('swapForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const vehicle = swapVehicle;
+        if (!vehicle) return;
+        const kind = document.querySelector('input[name=swapKind]:checked')?.value || 'tausch';
+        const note = $('swapNote').value.trim();
+        const save = $('swapSave');
+        if (!swapReady && kind !== 'sonstiges') { showToast('Dafür fehlt noch das Datenbank-Update 44 (supabase/update-44.sql).', 'error'); return; }
+        let payload = null;
+        if (kind === 'tausch') {
+            const plate = $('swapPlate').value.trim().toLocaleUpperCase('de-DE').replace(/\s+/g, ' ');
+            if (!TerminCloud.plateKey(plate)) { showToast('Bitte das Kennzeichen des neuen Fahrzeugs eintragen.', 'error', { target: '#swapPlate' }); return; }
+            const brand = ($('swapModel').value || $('swapBrand').value).trim().replace(/\s+/g, ' ');
+            if (!brand) { showToast('Bitte Marke und Modell des neuen Fahrzeugs eintragen.', 'error', { target: '#swapBrand' }); return; }
+            const mileageText = $('swapMileage').value.trim();
+            if (mileageText && !(Number.isInteger(Number(mileageText)) && Number(mileageText) >= 0)) { showToast('Der Kilometerstand muss eine ganze Zahl sein.', 'error', { target: '#swapMileage' }); return; }
+            const twin = allVehicles.find(item => item.plate_key === TerminCloud.plateKey(plate));
+            if (twin?.active) { showToast(`Das Kennzeichen ${twin.plate} gibt es schon im Fuhrpark.`, 'error', { target: '#swapPlate' }); return; }
+            payload = { plate, brand, body: $('swapBody').value, type: $('swapType').value, label: $('swapLabel').value.trim(), mileage: mileageText, tyres: $('swapTyres').value };
+        }
+        save.disabled = true;
+        if (!swapReady) {
+            // Ohne Update 44: wie bisher nur aus der Liste nehmen.
+            const { error } = await client.from('tt_vehicles').update({ active: false, assigned_to: null }).eq('id', vehicle.id);
+            save.disabled = false;
+            if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+            $('swapDialog').close(); closeFile();
+            showToast(`${vehicle.plate} ist nicht mehr im Fuhrpark`, 'success');
+            await refresh();
+            return;
+        }
+        const { data, error } = await client.rpc('tt_vehicle_swap', { p_vehicle: vehicle.id, p_kind: kind, p_note: note, p_new: payload });
+        save.disabled = false;
+        if (error) { showToast(/tt_vehicle_swap/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 44 (supabase/update-44.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        $('swapDialog').close();
+        closeFile();
+        showToast(kind === 'tausch' ? `${vehicle.plate} getauscht gegen ${data?.new_plate || payload.plate} – das neue Fahrzeug ist im Fuhrpark, das alte unter „Nicht mehr im Fuhrpark“.`
+            : kind === 'rueckgabe' ? `${vehicle.plate} ist zurückgegeben und nicht mehr in der Liste.` : `${vehicle.plate} ist nicht mehr im Fuhrpark`, 'success');
+        await refresh();
+        if (data?.new_id) selectVehicle(data.new_id);
+    });
+    const retireVehicle = vehicle => openSwap(vehicle);
 
     async function restoreVehicle(vehicle) {
-        const { error } = await client.from('tt_vehicles').update({ active: true }).eq('id', vehicle.id);
+        const back = { active: true, retired_at: null, retired_kind: '', retired_note: '', replaced_by: null };
+        let { error } = await client.from('tt_vehicles').update(back).eq('id', vehicle.id);
+        if (error && /retired|replaced/.test(error.message || '')) ({ error } = await client.from('tt_vehicles').update({ active: true }).eq('id', vehicle.id));
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        if (swapReady) await client.from('tt_vehicle_events').insert({ vehicle_id: vehicle.id, kind: 'wieder', note: vehicle.replaced_by ? `zuvor getauscht gegen ${allVehicles.find(item => item.id === vehicle.replaced_by)?.plate || '–'}` : '' });
         showToast(`${vehicle.plate} ist wieder im Fuhrpark`, 'success');
         await refresh();
     }
@@ -1279,10 +1437,20 @@
         $('retiredSection').hidden = !retired.length;
         $('retiredCount').textContent = String(retired.length);
         $('retiredList').replaceChildren(...retired.map(vehicle => {
-            const row = el('li', 'vehicle-entry');
+            const row = el('li', 'vehicle-entry retired-entry');
+            row.dataset.kind = vehicle.retired_kind || '';
             const meta = el('span');
+            const successor = vehicle.replaced_by ? allVehicles.find(item => item.id === vehicle.replaced_by) : null;
+            const how = vehicle.retired_kind === 'tausch' ? `getauscht gegen ${successor?.plate || '–'}` : vehicle.retired_kind === 'rueckgabe' ? 'zurückgegeben' : vehicle.retired_kind === 'sonstiges' ? 'aus dem Fuhrpark genommen' : '';
             meta.append(el('strong', null, vehicle.plate), el('small', null, [vehicle.brand, vehicle.body, vehicle.type, vehicle.mileage != null ? formatKm(vehicle.mileage) : ''].filter(Boolean).join(' · ')));
+            if (how || vehicle.retired_at) meta.append(el('small', 'retired-meta', [how, vehicle.retired_at ? `am ${formatDate(vehicle.retired_at)}` : '', vehicle.retired_note ? `„${vehicle.retired_note}“` : ''].filter(Boolean).join(' · ')));
             const actions = el('span', 'vehicle-entry-actions');
+            if (successor?.active) {
+                const open = el('button', 'button-quiet', `Akte ${successor.plate}`);
+                open.type = 'button';
+                open.addEventListener('click', () => selectVehicle(successor.id));
+                actions.append(open);
+            }
             const back = el('button', 'button-secondary fleet-end-button', 'Wieder aufnehmen');
             back.type = 'button';
             back.addEventListener('click', () => restoreVehicle(vehicle));
@@ -1655,7 +1823,7 @@
             box.dataset.id = campaign.id;
             const head = el('div', 'tyre-campaign-head');
             const title = el('div');
-            title.append(el('strong', null, campaign.title), el('small', null, [`Liste vom ${formatDate(campaign.created_at)}`, campaign.created_by_name, campaign.note ? `Hinweis: ${campaign.note}` : ''].filter(Boolean).join(' · ')));
+            title.append(el('strong', null, campaign.title), el('small', null, [`Liste vom ${formatDate(campaign.created_at)}`, campaign.created_by_name, campaign.tyres_to ? `danach: ${TYRES[campaign.tyres_to] || campaign.tyres_to}` : '', campaign.note ? `Hinweis: ${campaign.note}` : ''].filter(Boolean).join(' · ')));
             const progress = el('div', 'tyre-office-progress');
             const bar = el('div', 'tyre-office-bar'); const fill = el('i'); fill.style.width = `${list.length ? Math.round(done / list.length * 100) : 0}%`; bar.append(fill);
             progress.append(bar, el('span', null, done === list.length && list.length ? 'Alles erledigt' : `${done} von ${list.length} erledigt`));
@@ -1680,6 +1848,7 @@
                 row.dataset.done = item.done ? 'ja' : '';
                 const meta = el('span');
                 meta.append(el('strong', null, item.plate), el('small', null, [item.vehicle, item.vehicle_type, item.mileage != null ? formatKm(item.mileage) : '', item.done ? `erledigt ${formatDateTime(item.done_at)}${item.done_by ? ` von ${item.done_by}` : ''}` : 'offen', item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
+                if (item.extra) meta.append(el('small', 'tyre-office-extra', `Extras: ${item.extra}`));
                 const toggle = el('button', item.done ? 'button-quiet' : 'button-secondary fleet-end-button', item.done ? 'Wieder offen' : 'Erledigt');
                 toggle.type = 'button';
                 toggle.addEventListener('click', async () => {
@@ -1689,7 +1858,15 @@
                     if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
                     await loadTyre();
                 });
-                row.append(pill(item.done ? 'erledigt' : 'offen', item.done ? 'Erledigt' : 'Offen'), meta, toggle);
+                const actions = el('span', 'vehicle-entry-actions');
+                if (swapReady) {
+                    const extra = el('button', 'button-quiet', item.extra ? 'Extras ändern' : 'Extras');
+                    extra.type = 'button';
+                    extra.addEventListener('click', () => openTyreExtra(item));
+                    actions.append(extra);
+                }
+                actions.append(toggle);
+                row.append(pill(item.done ? 'erledigt' : 'offen', item.done ? 'Erledigt' : 'Offen'), meta, actions);
                 return row;
             }));
             box.append(head, rows);
@@ -1719,6 +1896,9 @@
         const now = new Date();
         $('tyreNewName').value = `Reifenwechsel ${now.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`;
         $('tyreNewNote').value = '';
+        // Oktober bis Dezember: meist auf Winterreifen; März bis Mai: auf Sommerreifen.
+        $('tyreNewTarget').value = !swapReady ? '' : now.getMonth() >= 9 ? 'winter' : now.getMonth() >= 2 && now.getMonth() <= 4 ? 'sommer' : '';
+        $('tyreNewTarget').disabled = !swapReady;
         $('tyreVehicleList').replaceChildren(...vehicles.slice().sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true })).map(vehicle => {
             const row = el('li');
             const label = el('label', 'tyre-vehicle-option');
@@ -1726,7 +1906,7 @@
             box.type = 'checkbox';
             box.value = vehicle.id;
             box.checked = vehicle.type !== 'Mietwagen' && stationOf(vehicle) === 'Bonn';
-            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
             row.append(label);
             return row;
         }));
@@ -1739,15 +1919,41 @@
         if (!chosen.length) { showToast('Bitte mindestens ein Fahrzeug auswählen.', 'info'); return; }
         const title = $('tyreNewName').value.trim() || 'Reifenwechsel';
         $('tyreNewSave').disabled = true;
-        const campaign = await client.from('tt_tyre_campaigns').insert({ created_by: profile.id, created_by_name: profile.full_name || 'Einsatzleitung', title, note: $('tyreNewNote').value.trim(), token: tyreToken() }).select().single();
+        const target = swapReady ? $('tyreNewTarget').value : '';
+        const campaign = await client.from('tt_tyre_campaigns').insert({ created_by: profile.id, created_by_name: profile.full_name || 'Einsatzleitung', title, note: $('tyreNewNote').value.trim(), token: tyreToken(), ...(swapReady ? { tyres_to: target } : {}) }).select().single();
         if (campaign.error) { $('tyreNewSave').disabled = false; showToast(TerminCloud.germanError(campaign.error), 'error'); return; }
-        const items = await client.from('tt_tyre_items').insert(chosen.map((vehicle, index) => ({ campaign_id: campaign.data.id, vehicle_id: vehicle.id, plate: vehicle.plate, vehicle: [vehicle.brand, vehicle.body].filter(Boolean).join(' '), vehicle_type: vehicle.type || '', mileage: vehicle.mileage ?? null, position: index + 1 })));
+        // Die „Extras für ATU“ jedes Fahrzeugs kommen mit auf die Liste (Update 44).
+        const items = await client.from('tt_tyre_items').insert(chosen.map((vehicle, index) => ({ campaign_id: campaign.data.id, vehicle_id: vehicle.id, plate: vehicle.plate, vehicle: [vehicle.brand, vehicle.body].filter(Boolean).join(' '), vehicle_type: vehicle.type || '', mileage: vehicle.mileage ?? null, position: index + 1, ...(swapReady ? { extra: vehicle.atu_note || '' } : {}) })));
         $('tyreNewSave').disabled = false;
         if (items.error) { showToast(TerminCloud.germanError(items.error), 'error'); return; }
         $('tyreNewDialog').close();
         showToast(`Liste „${title}“ mit ${chosen.length} Fahrzeugen erstellt.`, 'success');
         await loadTyre();
         showTyreLink(campaign.data);
+    });
+    // Extras eines Fahrzeugs auf einer offenen Liste ändern – die Werkstatt sieht es sofort; am Fahrzeug bleibt es als „Extras für ATU“ stehen.
+    let tyreExtraItem = null;
+    function openTyreExtra(item) {
+        tyreExtraItem = item;
+        $('tyreExtraInfo').textContent = `${item.plate} · ${[item.vehicle, item.vehicle_type].filter(Boolean).join(' · ')}`;
+        $('tyreExtraText').value = item.extra || '';
+        $('tyreExtraDialog').showModal();
+        $('tyreExtraText').focus();
+    }
+    $('tyreExtraCancel').addEventListener('click', () => $('tyreExtraDialog').close());
+    $('tyreExtraForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const item = tyreExtraItem;
+        if (!item) return;
+        const extra = $('tyreExtraText').value.trim();
+        $('tyreExtraSave').disabled = true;
+        const { error } = await client.from('tt_tyre_items').update({ extra, updated_at: new Date().toISOString() }).eq('id', item.id);
+        if (!error && item.vehicle_id) await client.from('tt_vehicles').update({ atu_note: extra }).eq('id', item.vehicle_id);
+        $('tyreExtraSave').disabled = false;
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        $('tyreExtraDialog').close();
+        showToast(extra ? `Extras für ${item.plate} gespeichert – die Werkstatt sieht sie auf der Liste.` : `Extras für ${item.plate} entfernt.`, 'success');
+        await refresh();
     });
 
     // ---------- Rückgabe durch die Einsatzleitung ----------
