@@ -498,7 +498,8 @@
         if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) fährt wieder hinaus?\n\nNächster Termin: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join(', ')}`, 'Ausfahrt eintragen'))) return;
         if (needName()) return;
         button.disabled = true;
-        const { error } = await gateRpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(stop => ({ ...stop, done: '' })) });
+        // Nur die Termindaten mitschicken – nicht die Hilfsfelder der Anzeige (row, doneAt), sonst landet die alte Fahrt in jedem Termin.
+        const { error } = await gateRpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(({ row: _row, doneAt: _doneAt, ...stop }) => ({ ...stop, done: '' })) });
         button.disabled = false;
         if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
         await load();
