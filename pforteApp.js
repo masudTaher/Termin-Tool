@@ -16,6 +16,38 @@
     let known = null;             // schon gesehene Meldungen (für das Aufleuchten und den Ton)
     let busy = false;
     let lastNudge = Date.now();
+    let log = [];                 // Protokoll des Tages: Nachträge, Korrekturen, Bestätigungen (Update 45)
+    let unreported = [];          // laut App unterwegs, aber nicht gemeldet (Update 45)
+    let people = [];              // Personen für den Nachtrag
+    let cars = [];                // Fahrzeuge für den Nachtrag
+    let has45 = true;             // Update 45 vorhanden (Name der Pforte, Nachtrag, Korrektur, Protokoll)
+    let fixRow = null;
+
+    // Name der Person an der Pforte: Das Konto teilen sich mehrere – der Name steht bei jeder Bestätigung und im Bericht.
+    // Das Büro ist mit eigenem Konto angemeldet – dessen Name gilt, wenn oben nichts steht.
+    const who = () => $('gateWho').value.trim().replace(/\s+/g, ' ').slice(0, 80) || (isStaff() ? (profile?.full_name || '') : '');
+    try { $('gateWho').value = localStorage.getItem('gate.who') || ''; } catch (error) { /* ohne Speicher */ }
+    $('gateWho').addEventListener('change', () => { try { localStorage.setItem('gate.who', who()); } catch (error) { /* ohne Speicher */ } });
+    function needName() {
+        if (who()) return false;
+        banner('Bitte zuerst oben deinen Namen eintragen – dann steht bei jeder Buchung, wer an der Pforte war.', 'error');
+        $('gateWho').focus();
+        return true;
+    }
+    // Aufruf einer Pforten-Funktion mit dem Namen der Pforte. Ohne Update 45 kennen die Funktionen p_by nicht – dann ohne.
+    async function gateRpc(name, args) {
+        if (has45) {
+            const result = await client.rpc(name, { ...args, p_by: who() });
+            if (!result.error || !/p_by|could not find the function|schema cache/i.test(result.error.message || '')) return result;
+            has45 = false;
+        }
+        return client.rpc(name, args);
+    }
+    const pad = value => String(value).padStart(2, '0');
+    const localStamp = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const fromLocal = value => { if (!value) return null; const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date; };
+    const dayShort = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    const stampText = iso => `${dayShort(iso)} ${clock(iso)}`;
 
     const today = () => TerminCloud.todayIso();
     const canGate = account => Boolean(account?.active && ['pforte', 'admin', 'sekretariat'].includes(account.role));
@@ -25,11 +57,15 @@
         $('gateAuth').hidden = view !== 'auth';
         $('gateApp').hidden = view !== 'app';
     }
+    let bannerTimer = 0;
     function banner(text, kind = 'info') {
         const box = $('gateStatus');
         box.hidden = !text;
         box.textContent = text || '';
         box.dataset.kind = kind;
+        window.clearTimeout(bannerTimer);
+        // Eine Erfolgsmeldung verschwindet von selbst; Fehler bleiben, bis es weitergeht.
+        if (text && kind === 'success') bannerTimer = window.setTimeout(() => { if (box.dataset.kind === 'success') banner(''); }, 12000);
     }
     function ask(text, yesLabel = 'Ja') {
         const dialog = $('gateConfirm');
@@ -129,12 +165,69 @@
     };
 
     function render() {
-        const people = groups();
+        const everyone = groups();
         const order = { angemeldet: 0, imhaus: 1, draussen: 2 };
-        const main = people.filter(group => group.state !== 'fertig').sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
-        const back = people.filter(group => group.state === 'fertig').sort((left, right) => String(right.current.in_at).localeCompare(String(left.current.in_at)));
+        // Fahrten früherer Tage, die nie als zurück eingetragen wurden, stehen in ihrem eigenen Block (nicht zwischen den heutigen).
+        const old = everyone.filter(group => group.state !== 'fertig' && group.current.date !== day).sort((left, right) => String(left.current.out_at).localeCompare(String(right.current.out_at)));
+        const main = everyone.filter(group => group.state !== 'fertig' && group.current.date === day).sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
+        const back = everyone.filter(group => group.state === 'fertig').sort((left, right) => String(right.current.in_at).localeCompare(String(left.current.in_at)));
+        $('gateOldSection').hidden = !old.length;
+        $('gateOldList').replaceChildren(...old.map(group => {
+            const row = group.current;
+            const card = el('li', 'gate-card');
+            card.dataset.id = row.id;
+            card.dataset.state = group.state;
+            card.dataset.old = 'ja';
+            const car = el('div', 'gate-car');
+            car.append(el('strong', 'gate-driver', row.driver_name || 'Unbekannt'), el('span', 'gate-plate', row.plate || 'ohne Fahrzeug'), el('span', 'gate-model', row.vehicle || ''));
+            const info = el('div', 'gate-info');
+            info.append(el('span', 'gate-fact', destination(row)));
+            info.append(el('span', 'gate-between', `Seit ${dayLong(row.date)} nicht als zurück eingetragen${confirmedAt(row) ? '' : ' (Ausfahrt nie bestätigt)'}`));
+            const time = el('div', 'gate-time');
+            time.append(el('span', 'gate-time-label', `raus am ${dayShort(leftAt(row))}`), el('strong', '', clock(leftAt(row))), el('span', 'gate-since', `vor ${span(leftAt(row), new Date())}`));
+            const side = el('div', 'gate-side');
+            if (has45) {
+                const fix = el('button', 'gate-button gate-return gate-fix-old', 'Rückkehr nachtragen');
+                fix.type = 'button';
+                fix.addEventListener('click', () => openFix(row, true));
+                side.append(fix);
+            } else {
+                const done = el('button', 'gate-button gate-return', 'Ist zurück');
+                done.type = 'button';
+                done.addEventListener('click', () => setBack(row, true, done));
+                side.append(done);
+            }
+            if (!confirmedAt(row)) {
+                const drop = el('button', 'gate-button gate-button-quiet gate-drop', 'Nicht gefahren');
+                drop.type = 'button';
+                drop.addEventListener('click', () => dropRow(row, drop));
+                side.append(drop);
+            }
+            if (isStaff()) {
+                const remove = el('button', 'gate-button gate-button-quiet gate-remove', 'Löschen');
+                remove.type = 'button';
+                remove.addEventListener('click', () => removeRow(row, remove));
+                side.append(remove);
+            }
+            card.append(car, info, time, side);
+            return card;
+        }));
+        // Laut App unterwegs, aber nicht gemeldet: ein Klick trägt die Ausfahrt mit allen bekannten Angaben ein.
+        $('gateUnreported').hidden = !(unreported.length && day === today());
+        $('gateUnreportedList').replaceChildren(...unreported.map(item => {
+            const row = el('li', 'gate-unreported-item');
+            row.dataset.profile = item.profile_id;
+            const text = el('div', 'gate-unreported-text');
+            text.append(el('strong', '', `${item.full_name}${item.plate ? ` · ${item.plate}` : ''}${item.vehicle ? ` (${item.vehicle})` : ''}`));
+            text.append(el('span', '', `${item.source === 'auftrag' ? '„Losgefahren“ gedrückt' : item.source === 'beides' ? 'Fahrzeug übernommen und „Losgefahren“ gedrückt' : 'Fahrzeug in der App übernommen'}${item.since ? ` um ${clock(item.since)} Uhr` : ''}${item.jobs ? ` · Termine: ${item.jobs}` : ''}`));
+            const add = el('button', 'gate-button gate-confirm-out gate-unreported-add', 'Ausfahrt eintragen');
+            add.type = 'button';
+            add.addEventListener('click', () => openManual(item));
+            row.append(text, add);
+            return row;
+        }));
         const waiting = main.filter(group => group.state === 'angemeldet');
-        const outside = main.filter(group => group.state === 'draussen');
+        const outside = [...main.filter(group => group.state === 'draussen'), ...old];
         const inside = main.filter(group => group.state === 'imhaus');
         $('gateCountWait').textContent = String(waiting.length);
         $('gateCountWaitBox').dataset.open = waiting.length ? 'ja' : '';
@@ -142,7 +235,7 @@
         $('gateCountBack').textContent = String(inside.length + back.length);
         const live = day === today();
         $('gateOutTitle').textContent = live ? [waiting.length ? 'Angemeldet' : '', inside.length ? 'im Haus (fährt noch einmal)' : '', 'draußen'].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase()) : `Noch offen am ${dayLong(day)}`;
-        $('gateOutEmpty').hidden = main.length > 0;
+        $('gateOutEmpty').hidden = main.length > 0 || old.length > 0;
         $('gateOutEmpty').textContent = live ? 'Im Moment ist niemand angemeldet und niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.';
         $('gateBackTitle').textContent = live ? 'Heute fertig' : 'Zurück';
         $('gateBackEmpty').hidden = back.length > 0;
@@ -231,12 +324,19 @@
                 drop.addEventListener('click', () => dropRow(row, drop));
                 side.append(confirm, drop);
             }
+            if (has45 && (confirmedAt(row) || row.in_at)) {
+                const fix = el('button', 'gate-button gate-button-quiet gate-fix', 'Zeiten korrigieren');
+                fix.type = 'button';
+                fix.addEventListener('click', () => openFix(row, false));
+                side.append(fix);
+            }
             if (isStaff()) {
                 const remove = el('button', 'gate-button gate-button-quiet gate-remove', 'Löschen');
                 remove.type = 'button';
                 remove.addEventListener('click', () => removeRow(row, remove));
                 side.append(remove);
             }
+            if (row.by_gate || row.fixed_at) info.append(el('span', 'gate-fact gate-entered', `${row.by_gate ? `Nachgetragen von ${row.entered_by || 'der Pforte'}` : ''}${row.by_gate && row.fixed_at ? ' · ' : ''}${row.fixed_at ? `korrigiert von ${row.fixed_by || 'der Pforte'} (${stampText(row.fixed_at)})` : ''}`));
             card.append(car, info, time, side);
             return card;
         }));
@@ -260,6 +360,13 @@
             undo.type = 'button';
             undo.addEventListener('click', () => setBack(row, false, undo));
             side.append(undo);
+            if (has45) {
+                const fix = el('button', 'gate-button gate-button-quiet gate-fix', 'Zeiten korrigieren');
+                fix.type = 'button';
+                fix.addEventListener('click', () => openFix(row, false));
+                side.append(fix);
+            }
+            if (row.by_gate || row.fixed_at) text.append(el('span', 'gate-entered', `${row.by_gate ? `nachgetragen von ${row.entered_by || 'der Pforte'}` : ''}${row.by_gate && row.fixed_at ? ' · ' : ''}${row.fixed_at ? `korrigiert von ${row.fixed_by || 'der Pforte'}` : ''}`));
             item.append(text, side);
             return item;
         }));
@@ -267,7 +374,7 @@
         const all = rows.filter(row => row.date === day).sort((left, right) => String(left.driver_name).localeCompare(String(right.driver_name), 'de') || String(left.out_at).localeCompare(String(right.out_at)));
         const tripNo = new Map();
         $('gateReportTitle').textContent = `Pforte – Bewegungen am ${dayLong(day)}`;
-        $('gateReportSub').textContent = `Medical Office Bonn · gedruckt am ${new Date().toLocaleDateString('de-DE')} um ${clock(new Date())} Uhr${profile?.full_name ? ` von ${profile.full_name}` : ''}`;
+        $('gateReportSub').textContent = `Medical Office Bonn · gedruckt am ${new Date().toLocaleDateString('de-DE')} um ${clock(new Date())} Uhr${who() ? ` von ${who()} (Pforte)` : profile?.full_name ? ` von ${profile.full_name}` : ''}`;
         $('gateReportBody').replaceChildren(...all.map((row, index) => {
             const line = el('tr');
             const stops = stopsOf(row);
@@ -276,8 +383,17 @@
             const count = all.filter(other => personKey(other) === key).length;
             [String(index + 1), `${row.driver_name}${count > 1 ? ` (${tripNo.get(key)}. Fahrt)` : ''}`, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
                 stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
-                [...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / ')]
+                [[...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / '), row.by_gate ? `nachgetragen (${row.entered_by || 'Pforte'})` : '', row.fixed_at ? `korrigiert (${row.fixed_by || 'Pforte'})` : ''].filter(Boolean).join('\n')]
                 .forEach(value => line.append(el('td', '', value || '')));
+            return line;
+        }));
+        // Nachträge und Korrekturen des Tages (Protokoll, Update 45)
+        const ACTION = { bestaetigt: 'Ausfahrt bestätigt', zurueck: 'Rückkehr eingetragen', nachtrag: 'Nachtrag', korrektur: 'Korrektur', wieder_raus: 'Fährt wieder raus', fertig: 'Heute fertig', nicht_gefahren: 'Nicht gefahren', zurueckgenommen: 'Zurückgenommen' };
+        const important = log.filter(item => ['nachtrag', 'korrektur', 'nicht_gefahren', 'zurueckgenommen'].includes(item.action));
+        $('gateReportLogBox').hidden = !important.length;
+        $('gateReportLog').replaceChildren(...important.map(item => {
+            const line = el('tr');
+            [clock(item.at), item.driver_name, item.plate, `${ACTION[item.action] || item.action}${item.detail ? `: ${item.detail}` : ''}`, item.by_name].forEach(value => line.append(el('td', '', value || '')));
             return line;
         }));
         if (!all.length) { const line = el('tr'); const cell = el('td', '', 'An diesem Tag gab es keine Ausfahrten.'); cell.colSpan = 11; line.append(cell); $('gateReportBody').append(line); }
@@ -303,7 +419,18 @@
             // Stand der Aufträge (Update 38) – fehlt die Funktion noch, zählt nur, was die App mitschickt.
             const progress = await client.rpc('tt_gate_jobs', { p_date: day });
             jobs = progress.error ? [] : (progress.data || []);
-            banner('');
+            // Protokoll des Tages und nicht gemeldete Fahrten (Update 45) – fehlt das Update, bleibt beides leer.
+            if (has45) {
+                const [logResult, missing] = await Promise.all([
+                    client.from('tt_gate_log').select('*').eq('date', day).order('at'),
+                    day === today() ? client.rpc('tt_gate_unreported', { p_date: day }) : Promise.resolve({ data: [] })
+                ]);
+                if (logResult.error && /does not exist|schema cache|relation/i.test(logResult.error.message || '')) has45 = false;
+                log = logResult.error ? [] : logResult.data;
+                unreported = missing.error ? [] : (missing.data || []);
+            } else { log = []; unreported = []; }
+            $('gateManualOpen').hidden = !has45;
+            if ($('gateStatus').dataset.kind !== 'success') banner('');
             // Neue Meldung seit dem letzten Blick? Dann kurz aufleuchten lassen und einen Ton geben.
             const ids = new Set(data.map(row => row.id));
             if (known && day === today() && data.some(row => !known.has(row.id) && !row.in_at)) chime();
@@ -317,16 +444,18 @@
     const need31 = error => /could not find the function|schema cache|does not exist/i.test(error?.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 31). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error);
     async function setOut(row, ok, button) {
         if (!ok && !(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) ist doch nicht hinausgefahren?\n\nDie Meldung wartet dann wieder auf deine Bestätigung.`, 'Bestätigung zurücknehmen'))) return;
+        if (needName()) return;
         button.disabled = true;
-        const { error } = await client.rpc('tt_gate_out', { p_id: row.id, p_ok: ok });
+        const { error } = await gateRpc('tt_gate_out', { p_id: row.id, p_ok: ok });
         button.disabled = false;
         if (error) { banner(need31(error), 'error'); return; }
         await load();
     }
     async function dropRow(row, button) {
         if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) ist nicht gefahren?\n\nDie Meldung wird herausgenommen.`, 'Meldung herausnehmen'))) return;
+        if (needName()) return;
         button.disabled = true;
-        const { error } = await client.rpc('tt_gate_drop', { p_id: row.id });
+        const { error } = await gateRpc('tt_gate_drop', { p_id: row.id });
         button.disabled = false;
         if (error) { banner(need31(error), 'error'); return; }
         await load();
@@ -334,8 +463,9 @@
 
     async function setBack(row, back, button) {
         if (!back && !(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) ist doch noch nicht zurück?`, 'Wieder nach „Draußen“'))) return;
+        if (needName()) return;
         button.disabled = true;
-        const { error } = await client.rpc('tt_gate_return', { p_id: row.id, p_back: back });
+        const { error } = await gateRpc('tt_gate_return', { p_id: row.id, p_back: back });
         button.disabled = false;
         if (error) { banner(TerminCloud.germanError(error), 'error'); return; }
         await load();
@@ -343,16 +473,18 @@
     // „Fährt wieder raus“: neue Ausfahrt mit den noch offenen Terminen – sofort bestätigt, die Person sieht sie in ihrer App.
     async function goAgain(row, rest, button) {
         if (!(await ask(`${row.driver_name} (${row.plate || 'ohne Fahrzeug'}) fährt wieder hinaus?\n\nNächster Termin: ${rest.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join(', ')}`, 'Ausfahrt eintragen'))) return;
+        if (needName()) return;
         button.disabled = true;
-        const { error } = await client.rpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(stop => ({ ...stop, done: '' })) });
+        const { error } = await gateRpc('tt_gate_again', { p_id: row.id, p_stops: rest.map(stop => ({ ...stop, done: '' })) });
         button.disabled = false;
         if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
         await load();
     }
     // „Heute fertig“ (p_done = true): Die Person ist zurück und fährt nicht mehr – auch wenn noch ein Termin offen steht.
     async function setDone(row, done, button) {
+        if (needName()) return;
         button.disabled = true;
-        const { error } = await client.rpc('tt_gate_done', { p_id: row.id, p_done: done });
+        const { error } = await gateRpc('tt_gate_done', { p_id: row.id, p_done: done });
         button.disabled = false;
         if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 38). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
         await load();
@@ -366,6 +498,100 @@
         await load();
     }
 
+    // ---------- Nachtrag und Korrektur (Update 45) ----------
+    const formStatus = (id, text, kind = 'error') => { const box = $(id); box.hidden = !text; box.textContent = text || ''; box.dataset.kind = kind; };
+    async function loadChoices() {
+        const [peopleResult, carResult] = await Promise.all([client.rpc('tt_gate_people'), client.rpc('tt_gate_vehicles')]);
+        people = peopleResult.error ? [] : (peopleResult.data || []);
+        cars = carResult.error ? [] : (carResult.data || []);
+        return !peopleResult.error;
+    }
+    async function openManual(preset = null) {
+        if (needName()) return;
+        if (!(await loadChoices())) { banner('Dafür fehlt noch ein Datenbank-Update (Update 45). Bitte der Einsatzleitung Bescheid sagen.', 'error'); return; }
+        $('gateManualPerson').replaceChildren(el('option', '', 'Bitte wählen …'), ...people.map(person => { const option = el('option', '', `${person.full_name}${person.role !== 'dolmetscher' ? ' (Büro)' : ''}`); option.value = person.id; return option; }));
+        $('gateManualPerson').firstChild.value = '';
+        $('gateManualVehicle').replaceChildren(el('option', '', 'Ohne Fahrzeug / zu Fuß'), ...cars.map(car => { const option = el('option', '', `${car.plate} · ${car.vehicle}${car.holder ? ` (laut App bei ${car.holder})` : ''}`); option.value = car.plate; option.dataset.vehicle = car.vehicle; return option; }));
+        $('gateManualVehicle').firstChild.value = '';
+        $('gateManualPerson').value = preset?.profile_id || '';
+        $('gateManualVehicle').value = preset?.plate || '';
+        $('gateManualNote').value = preset?.jobs ? `Termine: ${preset.jobs}` : '';
+        $('gateManualOut').value = localStamp(preset?.since ? new Date(preset.since) : new Date());
+        $('gateManualOut').max = localStamp(new Date());
+        $('gateManualBack').checked = false;
+        $('gateManualIn').value = ''; $('gateManualIn').disabled = true;
+        $('gateManualHint').textContent = preset ? `${preset.full_name} ist laut App unterwegs, hat sich aber nicht an der Pforte gemeldet. Prüfe die Zeit und trag die Ausfahrt ein.` : 'Für Fahrten, die nicht in der App gemeldet wurden. Der Eintrag steht im Tagesbericht mit deinem Namen.';
+        formStatus('gateManualStatus', '');
+        $('gateManual').showModal();
+        if (!preset) $('gateManualPerson').focus();
+    }
+    // Wird ein Fahrzeug gewählt, das laut App gerade jemand hat, wird die Person vorgeschlagen (und umgekehrt).
+    $('gateManualVehicle').addEventListener('change', () => {
+        const car = cars.find(item => item.plate === $('gateManualVehicle').value);
+        if (car?.holder_id && !$('gateManualPerson').value) $('gateManualPerson').value = car.holder_id;
+    });
+    $('gateManualPerson').addEventListener('change', () => {
+        const car = cars.find(item => item.holder_id && item.holder_id === $('gateManualPerson').value);
+        if (car && !$('gateManualVehicle').value) $('gateManualVehicle').value = car.plate;
+    });
+    $('gateManualBack').addEventListener('change', () => { $('gateManualIn').disabled = !$('gateManualBack').checked; if ($('gateManualBack').checked && !$('gateManualIn').value) $('gateManualIn').value = localStamp(new Date()); });
+    $('gateManualOpen').addEventListener('click', () => openManual(null));
+    $('gateManualCancel').addEventListener('click', () => $('gateManual').close());
+    $('gateManualForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const person = people.find(item => item.id === $('gateManualPerson').value);
+        if (!person) { formStatus('gateManualStatus', 'Bitte die Person auswählen.'); $('gateManualPerson').focus(); return; }
+        const out = fromLocal($('gateManualOut').value);
+        if (!out) { formStatus('gateManualStatus', 'Bitte Datum und Uhrzeit der Ausfahrt eintragen.'); $('gateManualOut').focus(); return; }
+        if (out > new Date(Date.now() + 5 * 60000)) { formStatus('gateManualStatus', 'Die Ausfahrt liegt in der Zukunft – bitte prüfen.'); $('gateManualOut').focus(); return; }
+        const back = $('gateManualBack').checked ? fromLocal($('gateManualIn').value) : null;
+        if ($('gateManualBack').checked && !back) { formStatus('gateManualStatus', 'Bitte Datum und Uhrzeit der Rückkehr eintragen.'); $('gateManualIn').focus(); return; }
+        if (back && back < out) { formStatus('gateManualStatus', 'Die Rückkehr liegt vor der Ausfahrt – bitte Zeiten prüfen.'); $('gateManualIn').focus(); return; }
+        const car = cars.find(item => item.plate === $('gateManualVehicle').value);
+        $('gateManualSave').disabled = true;
+        const { error } = await client.rpc('tt_gate_manual', { p_profile: person.id, p_plate: car?.plate || '', p_vehicle: car?.vehicle || '', p_note: $('gateManualNote').value.trim(), p_stops: [], p_out_at: out.toISOString(), p_in_at: back ? back.toISOString() : null, p_by: who() });
+        $('gateManualSave').disabled = false;
+        if (error) { formStatus('gateManualStatus', TerminCloud.germanError(error)); return; }
+        $('gateManual').close();
+        banner(`${person.full_name}: Ausfahrt ${dayShort(out)} ${clock(out)} Uhr eingetragen${back ? `, zurück ${clock(back)} Uhr` : ''} – von ${who()}.`, 'success');
+        await load();
+    });
+    function openFix(row, backNow) {
+        if (needName()) return;
+        fixRow = row;
+        $('gateFixTitle').textContent = backNow ? 'Rückkehr nachtragen' : 'Zeiten korrigieren';
+        $('gateFixInfo').textContent = `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'} · ${destination(row)} · bisher: raus ${stampText(leftAt(row))}${row.in_at ? `, zurück ${stampText(row.in_at)}` : ', noch draußen'}`;
+        $('gateFixOut').value = localStamp(new Date(leftAt(row)));
+        $('gateFixOut').max = localStamp(new Date());
+        $('gateFixBack').checked = Boolean(row.in_at) || backNow;
+        $('gateFixIn').disabled = !$('gateFixBack').checked;
+        $('gateFixIn').value = row.in_at ? localStamp(new Date(row.in_at)) : backNow ? localStamp(new Date()) : '';
+        $('gateFixReason').value = backNow ? 'Rückkehr an der Pforte nicht eingetragen' : '';
+        formStatus('gateFixStatus', '');
+        $('gateFix').showModal();
+        (backNow ? $('gateFixIn') : $('gateFixReason')).focus();
+    }
+    $('gateFixBack').addEventListener('change', () => { $('gateFixIn').disabled = !$('gateFixBack').checked; if ($('gateFixBack').checked && !$('gateFixIn').value) $('gateFixIn').value = localStamp(new Date()); });
+    $('gateFixCancel').addEventListener('click', () => $('gateFix').close());
+    $('gateFixForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const row = fixRow;
+        if (!row) return;
+        const out = fromLocal($('gateFixOut').value);
+        if (!out) { formStatus('gateFixStatus', 'Bitte Datum und Uhrzeit der Ausfahrt eintragen.'); $('gateFixOut').focus(); return; }
+        const back = $('gateFixBack').checked ? fromLocal($('gateFixIn').value) : null;
+        if ($('gateFixBack').checked && !back) { formStatus('gateFixStatus', 'Bitte Datum und Uhrzeit der Rückkehr eintragen.'); $('gateFixIn').focus(); return; }
+        if (back && back < out) { formStatus('gateFixStatus', 'Die Rückkehr liegt vor der Ausfahrt – bitte Zeiten prüfen.'); $('gateFixIn').focus(); return; }
+        if (!$('gateFixReason').value.trim()) { formStatus('gateFixStatus', 'Bitte einen Grund angeben – er steht im Protokoll.'); $('gateFixReason').focus(); return; }
+        $('gateFixSave').disabled = true;
+        const { error } = await client.rpc('tt_gate_fix', { p_id: row.id, p_out_at: out.toISOString(), p_in_at: back ? back.toISOString() : null, p_reason: $('gateFixReason').value.trim(), p_by: who() });
+        $('gateFixSave').disabled = false;
+        if (error) { formStatus('gateFixStatus', TerminCloud.germanError(error)); return; }
+        $('gateFix').close();
+        banner(`${row.driver_name}: Zeiten korrigiert – raus ${stampText(out)}${back ? `, zurück ${stampText(back)}` : ', noch draußen'} (${who()}).`, 'success');
+        await load();
+    });
+
     async function start() {
         if (!client) { show('auth'); $('gateAuthStatus').textContent = 'Die Verbindung zur Datenbank konnte nicht geladen werden. Bitte das Internet prüfen und die Seite neu laden.'; return; }
         try { profile = await TerminCloud.getProfile(true); } catch (error) { profile = null; }
@@ -376,6 +602,7 @@
             return;
         }
         day = today();
+        if (isStaff() && !$('gateWho').value) $('gateWho').placeholder = profile.full_name || 'Dein Name';
         $('gateDay').value = day;
         $('gateDay').max = day;
         $('gateOffice').hidden = !isStaff();
@@ -419,6 +646,6 @@
         load();
     }, 8000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
-    window.PforteApp = { state: () => ({ day, rows, profile }), load };
+    window.PforteApp = { state: () => ({ day, rows, profile, log, unreported, has45 }), load };
     start();
 })();

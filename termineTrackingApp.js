@@ -310,6 +310,7 @@ function renderTrackingTable(data) {
                 + `<div class="vehicle-line"><select class="vehicle-select" data-index="${index}" aria-label="Fahrzeug für Termin ${index + 1}">${renderVehicleOptions(termin)}</select>`
                 + `<button type="button" class="special-button${special ? ' has-value' : ''}" data-index="${index}" title="${special ? `Sonderkonditionen: ${special} €${termin.Sondergrund ? ` – ${escapeHtml(termin.Sondergrund)}` : ''} (ändern)` : 'Sonderkonditionen: Betrag in Euro, der für diesen Tag statt des Tagessatzes gilt'}" aria-label="Sonderkonditionen für Termin ${index + 1}${special ? `: ${special} Euro` : ''}">${special ? `${special}&nbsp;€` : 'Sonder'}</button>`
                 + `</div>`
+                + renderVehicleSuggestion(termin)
                 // Zurückgezogener Auftrag: Die letzte Rückmeldung (z. B. „Absage – krank“) bleibt sichtbar – auch im Archiv.
                 + (!termin['Rückmeldung'] && termin['Letzte_Rückmeldung'] ? `<span class="response-pill" data-response="Zurückgezogen" title="Der Auftrag wurde zurückgezogen – das war die letzte Rückmeldung aus dem Portal">Zurückgezogen · ${escapeHtml(termin['Letzte_Rückmeldung'])}</span>` : '')
                 + (termin['Rückmeldung'] ? `<span class="response-pill" data-response="${escapeHtml(String(termin['Rückmeldung']).split(' – ')[0])}" title="Rückmeldung aus dem Dolmetscher-Portal">${escapeHtml(termin['Rückmeldung'])}</span>`
@@ -559,6 +560,7 @@ window.applyCurrentVehicles = applyCurrentVehicles;
         else if (button.classList.contains('quick-status')) setTrackingStatus(index, button.dataset.status);
         else if (button.classList.contains('second-add') || button.classList.contains('second-line')) openSecondDialog(index);
         else if (button.classList.contains('special-button')) openSpecialDialog(index);
+        else if (button.classList.contains('vehicle-suggest')) { const select = button.closest('td').querySelector('.vehicle-select'); if (select) { select.value = button.dataset.plate; updateVehicleFromSelect(select); } }
         else if (button.classList.contains('storno-note')) openStornoDialog(index, stornoKind(trackingData[index]));
     });
     tableBody.addEventListener('change', event => {
@@ -1406,16 +1408,30 @@ function formatTime(date) {
     return `${hours}:${minutes}:${seconds}`;
 }
 
-function findVehiclePlateForInterpreter(name, exceptTermin) {
-    if (!name) return '';
+// Welches Auto gehört zu dieser Person? „sure“ = sie hat es wirklich (heute schon eingetragen oder gerade übernommen) – dann wird
+// es direkt eingetragen. Ihr festes (reserviertes) Fahrzeug ist nur ein Vorschlag: Das Büro übernimmt ihn mit einem Klick.
+function findVehicleForInterpreter(name, exceptTermin) {
+    if (!name) return null;
     const other = trackingData.find(termin => termin !== exceptTermin && termin.Fahrzeug
         && getAppointmentInterpreterName(termin).toLocaleLowerCase('de') === name.toLocaleLowerCase('de'));
-    if (other) return other.Fahrzeug;
-    if (typeof getCurrentFleetVehicleForDriver !== 'function') return '';
+    if (other) return { plate: other.Fahrzeug, sure: true, why: 'heute schon eingetragen' };
+    if (typeof getCurrentFleetVehicleForDriver !== 'function') return null;
     const current = getCurrentFleetVehicleForDriver(name)?.plate;
-    if (current) return current;
-    // Fest angestellte Dolmetscher: ihr festes Fahrzeug aus der Online-Datenbank.
-    return readActiveFleetVehicles().find(vehicle => sameFleetDriver(vehicle.assignedName, name))?.plate || '';
+    if (current) return { plate: current, sure: true, why: 'gerade übernommen' };
+    // Fest angestellte Dolmetscher: ihr festes Fahrzeug aus der Online-Datenbank – nur als Vorschlag.
+    const fixed = readActiveFleetVehicles().find(vehicle => sameFleetDriver(vehicle.assignedName, name))?.plate || '';
+    return fixed ? { plate: fixed, sure: false, why: 'festes Fahrzeug' } : null;
+}
+function findVehiclePlateForInterpreter(name, exceptTermin) {
+    const found = findVehicleForInterpreter(name, exceptTermin);
+    return found?.sure ? found.plate : '';
+}
+// Vorschlag unter dem Fahrzeug-Feld: nur, wenn noch kein Auto eingetragen ist.
+function renderVehicleSuggestion(termin) {
+    if (termin.Fahrzeug || getTrackingStatusGroup(termin) !== 'offen') return '';
+    const found = findVehicleForInterpreter(getAppointmentInterpreterName(termin), termin);
+    if (!found || found.sure) return '';
+    return `<button type="button" class="vehicle-suggest" data-index="${trackingData.indexOf(termin)}" data-plate="${escapeHtml(found.plate)}" title="Vorschlag: das feste Fahrzeug dieser Person. Erst mit diesem Klick wird es eingetragen.">Vorschlag: ${escapeHtml(found.plate)} ✓</button>`;
 }
 
 function ensureVehicleColumn() {
@@ -1433,7 +1449,8 @@ function updateInterpreterFromInput(input) {
     if (value && typeof addInterpreterName === 'function') addInterpreterName(value);
     input.value = value;
 
-    // Hat die Person heute schon ein Fahrzeug, wird es direkt vorgeschlagen.
+    // Hat die Person das Auto wirklich (heute schon eingetragen oder gerade übernommen), wird es direkt eingetragen.
+    // Ihr festes Fahrzeug erscheint nur als Vorschlag-Knopf.
     const vehicleSelect = input.closest('td').querySelector('.vehicle-select');
     if (value && !termin.Fahrzeug) {
         const plate = findVehiclePlateForInterpreter(value, termin);
@@ -1442,7 +1459,12 @@ function updateInterpreterFromInput(input) {
             termin.Fahrzeug = plate;
         }
     }
-    if (vehicleSelect) vehicleSelect.innerHTML = renderVehicleOptions(termin);
+    if (vehicleSelect) {
+        vehicleSelect.innerHTML = renderVehicleOptions(termin);
+        vehicleSelect.closest('td').querySelector('.vehicle-suggest')?.remove();
+        const suggestion = renderVehicleSuggestion(termin);
+        if (suggestion) vehicleSelect.closest('.vehicle-line').insertAdjacentHTML('afterend', suggestion);
+    }
     // Die Markierung „FileMaker-Datei ✓“ gilt nur für den Namen, der in der Datei stand.
     const mark = input.closest('td')?.querySelector('.fm-mark');
     if (mark && termin._fmExport !== value) mark.remove();

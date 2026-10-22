@@ -84,7 +84,8 @@
             client.from('tt_fuel_card_log').select('*').order('created_at', { ascending: false }).limit(40)
         ]);
         fuelReady = !cardResult.error;
-        fuelCards = cardResult.error ? [] : cardResult.data;
+        // Nach Nummer sortiert, wie Menschen zählen (TK-2 vor TK-10).
+        fuelCards = (cardResult.error ? [] : cardResult.data).slice().sort((left, right) => String(left.number || '').localeCompare(String(right.number || ''), 'de', { numeric: true, sensitivity: 'base' }));
         fuelLog = cardLogResult.error ? [] : cardLogResult.data;
         const noteResult = await client.from('tt_handovers').select('*').eq('note_seen', false).order('created_at', { ascending: false }).limit(200);
         takeoverNotes = noteResult.error ? [] : noteResult.data.filter(item => item.start_note);

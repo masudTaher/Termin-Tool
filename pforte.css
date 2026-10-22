@@ -164,3 +164,39 @@ a.gate-button { display: inline-flex; align-items: center; text-decoration: none
 .gate-trips { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; color: var(--soft); font-size: clamp(.9rem, 1vw, 1.15rem); font-weight: 650; }
 .gate-trips li.is-current { color: var(--ink); font-weight: 800; }
 .gate-finish, .gate-reopen { min-height: 40px; padding: 6px 12px; font-size: .84rem; }
+
+/* ===== Update 45: Name der Pforte, Nachtrag, Korrektur, alte offene Fahrten, nicht gemeldete Fahrten ===== */
+.gate-who { display: grid; gap: 2px; color: var(--soft); font-size: .74rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.gate-who input { min-height: 44px; width: 170px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--ink); font: inherit; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.gate-who input:placeholder-shown { border-color: #f0a020; background: #fffaf0; }
+.gate-old { margin-bottom: 18px; padding: 14px 16px; border: 2px dashed var(--warn); border-radius: 18px; background: #fff7ed; }
+.gate-old h2 { color: var(--warn); }
+.gate-old-hint { margin: -4px 0 12px; color: #7a4a00; font-size: 1rem; font-weight: 600; }
+.gate-old .gate-list { gap: 12px; }
+.gate-unreported { margin-bottom: 18px; padding: 14px 16px; border: 2px solid #0a84d6; border-radius: 18px; background: #eef6ff; }
+.gate-unreported h2 { color: #0a5aa0; }
+.gate-unreported-list { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.gate-unreported-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.gate-unreported-text { display: grid; gap: 2px; }
+.gate-unreported-text strong { font-size: clamp(1.05rem, 1.3vw, 1.4rem); }
+.gate-unreported-text span { color: var(--soft); font-weight: 600; }
+.gate-unreported-add { min-height: 56px; padding: 0 18px; font-size: 1.05rem; }
+.gate-entered { color: var(--soft); font-size: .92rem; font-weight: 600; }
+.gate-form-dialog { width: min(640px, calc(100% - 32px)); }
+.gate-form-dialog h2 { margin: 0 0 6px; font-size: 1.4rem; }
+.gate-form-dialog label { display: block; margin: 12px 0 4px; color: var(--soft); font-size: .8rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.gate-form-dialog .gate-check { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-size: 1rem; color: var(--ink); }
+.gate-form-dialog .gate-check input { width: 22px; height: 22px; }
+.gate-form-dialog .gate-sub-label { margin-top: 6px; }
+.gate-form-dialog input[type=text], .gate-form-dialog input[type=datetime-local], .gate-form-dialog select { width: 100%; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--ink); font: inherit; color-scheme: light; }
+.gate-form-dialog input:disabled { opacity: .5; }
+.gate-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.gate-form-dialog .gate-form-hint { margin: 4px 0 0; color: var(--soft); font-size: .98rem; font-weight: 600; line-height: 1.4; white-space: normal; }
+.gate-form-dialog .gate-form-status { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: #fde8e8; color: #8a1c1c; font-size: 1rem; font-weight: 700; white-space: normal; }
+.gate-form-dialog .gate-form-status[data-kind=success] { background: #d8f5e6; color: #0f5132; }
+.gate-optional { color: var(--soft); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.gate-fix-old { background: linear-gradient(180deg, #f5b02e, #e08e0b); color: #2b1a00; }
+@media (max-width: 700px) { .gate-form-grid { grid-template-columns: 1fr; } .gate-who input { width: 130px; } }
+@media print { .gate-report h2 { margin: 18px 0 6px; font-size: 1rem; } .gate-form-dialog { display: none !important; } }
+.gate-banner[data-kind="success"] { background: #d8f5e6; color: #0f5132; }
+.gate-old .gate-side .gate-button { white-space: normal; line-height: 1.15; font-size: clamp(1rem, 1.2vw, 1.35rem); padding: 10px 12px; }

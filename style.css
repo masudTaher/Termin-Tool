@@ -3042,3 +3042,7 @@ dialog.extra-day-dialog input[type="date"], dialog.extra-day-dialog input[type="
 .swap-grid input, .swap-grid select { width: 100%; }
 @media (max-width: 560px) { .swap-grid { grid-template-columns: 1fr; } }
 .tyre-office-extra { display: block; color: #6b4a00; }
+
+/* ===== 92. Live-Tracking: Fahrzeug nur vorschlagen (festes Fahrzeug) – erst der Klick trägt es ein ===== */
+body[data-page="tracking"] #dataTable .vehicle-suggest { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 3px 9px; border: 1px dashed #1b4f8a; border-radius: 999px; background: #eef4fb; color: #1b4f8a; font-size: .8rem; font-weight: 700; cursor: pointer; }
+body[data-page="tracking"] #dataTable .vehicle-suggest:hover { background: #dbe8f8; }

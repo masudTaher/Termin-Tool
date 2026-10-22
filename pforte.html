@@ -35,7 +35,9 @@
                <div class="gate-count is-back"><b id="gateCountBack">0</b><span>zurück</span></div>
             </div>
             <div class="gate-tools">
+               <label class="gate-who" for="gateWho"><span>Pförtner/in</span><input id="gateWho" type="text" maxlength="80" autocomplete="off" placeholder="Dein Name"></label>
                <label class="gate-day" for="gateDay"><span>Tag</span><input id="gateDay" type="date"></label>
+               <button type="button" id="gateManualOpen" class="gate-button gate-button-quiet gate-manual-open" title="Nur falls eine Fahrt nicht über die App gemeldet wurde">Vergessen? Nachtragen</button>
                <button type="button" id="gatePrint" class="gate-button">Tagesbericht drucken</button>
                <button type="button" id="gateFull" class="gate-button">Vollbild</button>
                <a id="gateOffice" class="gate-button gate-button-quiet" href="index.html" hidden>Zur Einsatzleitung</a>
@@ -45,6 +47,17 @@
          <p id="gateStatus" class="gate-banner" role="status" aria-live="polite" hidden></p>
          <main class="gate-main">
             <section class="gate-out" aria-labelledby="gateOutTitle">
+               <!-- Laut App unterwegs (Fahrzeug übernommen oder „Losgefahren“), aber an der Pforte nicht gemeldet – Update 45 -->
+               <section class="gate-unreported" id="gateUnreported" aria-labelledby="gateUnreportedTitle" hidden>
+                  <h2 id="gateUnreportedTitle">Laut App unterwegs – nicht an der Pforte gemeldet</h2>
+                  <ul id="gateUnreportedList" class="gate-unreported-list"></ul>
+               </section>
+               <!-- Ausfahrten früherer Tage, die nie als zurück eingetragen wurden -->
+               <section class="gate-old" id="gateOldSection" aria-labelledby="gateOldTitle" hidden>
+                  <h2 id="gateOldTitle">Von früheren Tagen noch offen</h2>
+                  <p class="gate-old-hint">Diese Fahrten wurden nie als „zurück“ eingetragen. Bitte die Rückkehr nachtragen (Datum und Uhrzeit) – oder korrigieren, falls die Person gar nicht gefahren ist.</p>
+                  <ul id="gateOldList" class="gate-list"></ul>
+               </section>
                <h2 id="gateOutTitle">Draußen</h2>
                <ul id="gateOutList" class="gate-list"></ul>
                <p id="gateOutEmpty" class="gate-empty" hidden>Im Moment ist niemand draußen.</p>
@@ -66,8 +79,49 @@
             <tbody id="gateReportBody"></tbody>
          </table>
          <p id="gateReportSum" class="gate-report-sum"></p>
+         <div id="gateReportLogBox" hidden>
+            <h2>Nachträge und Korrekturen</h2>
+            <table><thead><tr><th>Uhrzeit</th><th>Fahrer/in</th><th>Fahrzeug</th><th>Was</th><th>Pforte</th></tr></thead><tbody id="gateReportLog"></tbody></table>
+         </div>
          <p class="gate-report-sign">Unterschrift Pforte: ______________________________</p>
       </section>
+
+      <!-- Ausfahrt nachtragen (Update 45): wer, welches Auto, wohin, raus wann – und falls schon zurück: wann -->
+      <dialog id="gateManual" class="gate-confirm gate-form-dialog" aria-labelledby="gateManualTitle">
+         <form id="gateManualForm" novalidate>
+            <h2 id="gateManualTitle">Ausfahrt nachtragen</h2>
+            <p class="gate-form-hint" id="gateManualHint">Für Fahrten, die nicht in der App gemeldet wurden. Der Eintrag steht im Tagesbericht mit deinem Namen.</p>
+            <label for="gateManualPerson">Wer ist gefahren?</label>
+            <select id="gateManualPerson"></select>
+            <label for="gateManualVehicle">Fahrzeug</label>
+            <select id="gateManualVehicle"></select>
+            <label for="gateManualNote">Wohin / Bemerkung <span class="gate-optional">optional</span></label>
+            <input id="gateManualNote" type="text" maxlength="300" autocomplete="off" placeholder="z. B. Köln, Dr. Müller · Termin 10:00">
+            <div class="gate-form-grid">
+               <div><label for="gateManualOut">Raus am (Datum und Uhrzeit)</label><input id="gateManualOut" type="datetime-local"></div>
+               <div><label class="gate-check"><input type="checkbox" id="gateManualBack"><span>Ist schon zurück</span></label><label for="gateManualIn" class="gate-sub-label">Zurück am</label><input id="gateManualIn" type="datetime-local" disabled></div>
+            </div>
+            <p id="gateManualStatus" class="gate-form-status" role="status" aria-live="polite" hidden></p>
+            <div class="gate-confirm-buttons"><button type="button" id="gateManualCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="gateManualSave" class="gate-button gate-button-main">Eintragen</button></div>
+         </form>
+      </dialog>
+
+      <!-- Zeiten korrigieren (Update 45) -->
+      <dialog id="gateFix" class="gate-confirm gate-form-dialog" aria-labelledby="gateFixTitle">
+         <form id="gateFixForm" novalidate>
+            <h2 id="gateFixTitle">Zeiten korrigieren</h2>
+            <p class="gate-form-hint" id="gateFixInfo"></p>
+            <div class="gate-form-grid">
+               <div><label for="gateFixOut">Raus am (Datum und Uhrzeit)</label><input id="gateFixOut" type="datetime-local"></div>
+               <div><label class="gate-check"><input type="checkbox" id="gateFixBack"><span>Ist zurück</span></label><label for="gateFixIn" class="gate-sub-label">Zurück am</label><input id="gateFixIn" type="datetime-local" disabled></div>
+            </div>
+            <label for="gateFixReason">Grund der Korrektur</label>
+            <input id="gateFixReason" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Rückkehr vergessen einzutragen, kam um 16:40">
+            <p class="gate-form-hint">Die alte und die neue Zeit stehen mit deinem Namen im Protokoll und im Tagesbericht.</p>
+            <p id="gateFixStatus" class="gate-form-status" role="status" aria-live="polite" hidden></p>
+            <div class="gate-confirm-buttons"><button type="button" id="gateFixCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="gateFixSave" class="gate-button gate-button-main">Korrektur speichern</button></div>
+         </form>
+      </dialog>
 
       <dialog id="gateConfirm" class="gate-confirm">
          <p id="gateConfirmText"></p>
