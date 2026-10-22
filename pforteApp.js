@@ -152,7 +152,8 @@
             const open = stops.filter(stop => !stop.doneAt);
             const done = stops.filter(stop => Boolean(stop.doneAt));
             let state;
-            if (!current.in_at) state = confirmedAt(current) ? 'draussen' : 'angemeldet';
+            // „Kommt heute nicht mehr ins Büro“ (Update 46): abgeschlossen, auch ohne Rückkehr.
+            if (!current.in_at) state = current.away_reason ? 'weg' : confirmedAt(current) ? 'draussen' : 'angemeldet';
             else if (current.final || !open.length || current.date !== today()) state = 'fertig';
             else state = 'imhaus';
             return { key: personKey(current), list, current, stops, open, done, state, trips: list.filter(row => confirmedAt(row) || row.in_at) };
@@ -161,16 +162,16 @@
     const tripLine = (row, index, count) => {
         const label = count > 1 ? `${index + 1}. Fahrt: ` : '';
         if (!confirmedAt(row) && !row.in_at) return `${label}gemeldet ${clock(row.out_at)} – wartet auf Bestätigung`;
-        return `${label}raus ${clock(leftAt(row))}${row.in_at ? ` → zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})` : ' → noch draußen'}`;
+        return `${label}raus ${clock(leftAt(row))}${row.in_at ? ` → zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})` : row.away_reason ? ' → kommt nicht zurück' : ' → noch draußen'}`;
     };
 
     function render() {
         const everyone = groups();
         const order = { angemeldet: 0, imhaus: 1, draussen: 2 };
         // Fahrten früherer Tage, die nie als zurück eingetragen wurden, stehen in ihrem eigenen Block (nicht zwischen den heutigen).
-        const old = everyone.filter(group => group.state !== 'fertig' && group.current.date !== day).sort((left, right) => String(left.current.out_at).localeCompare(String(right.current.out_at)));
-        const main = everyone.filter(group => group.state !== 'fertig' && group.current.date === day).sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
-        const back = everyone.filter(group => group.state === 'fertig').sort((left, right) => String(right.current.in_at).localeCompare(String(left.current.in_at)));
+        const old = everyone.filter(group => group.state !== 'fertig' && group.state !== 'weg' && group.current.date !== day).sort((left, right) => String(left.current.out_at).localeCompare(String(right.current.out_at)));
+        const main = everyone.filter(group => group.state !== 'fertig' && group.state !== 'weg' && group.current.date === day).sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
+        const back = everyone.filter(group => group.state === 'fertig' || group.state === 'weg').sort((left, right) => String(right.current.in_at || right.current.away_at || '').localeCompare(String(left.current.in_at || left.current.away_at || '')));
         $('gateOldSection').hidden = !old.length;
         $('gateOldList').replaceChildren(...old.map(group => {
             const row = group.current;
@@ -294,6 +295,12 @@
                 done.type = 'button';
                 done.addEventListener('click', () => setBack(row, true, done));
                 side.append(done);
+                if (has45) {
+                    const away = el('button', 'gate-button gate-button-quiet gate-away', 'Kommt nicht zurück');
+                    away.type = 'button';
+                    away.addEventListener('click', () => openAway(row));
+                    side.append(away);
+                }
                 if ('out_confirmed_at' in row) {
                     const unconfirm = el('button', 'gate-button gate-button-quiet gate-unconfirm', 'Doch nicht draußen');
                     unconfirm.type = 'button';
@@ -344,11 +351,27 @@
             const row = group.current;
             const item = el('li', 'gate-back-row');
             item.dataset.id = row.id;
+            item.dataset.state = group.state;
             const text = el('div', 'gate-back-text');
             text.append(el('strong', '', `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'}`));
-            if (group.list.length > 1) { text.append(el('span', '', `${group.list.length} Fahrten: ${group.list.map((trip, index) => tripLine(trip, index, 1)).join(' · ')}`)); }
+            if (group.state === 'weg') {
+                text.append(el('span', 'gate-away-text', `Kommt heute nicht zurück – ${AWAY[row.away_reason] || row.away_reason}${row.away_note ? `: ${row.away_note}` : ''} · eingetragen ${clock(row.away_at)} Uhr${row.away_by ? ` von ${row.away_by}` : ''}`));
+                text.append(el('span', '', `${destination(row)} · raus ${clock(leftAt(row))}`));
+            } else if (group.list.length > 1) { text.append(el('span', '', `${group.list.length} Fahrten: ${group.list.map((trip, index) => tripLine(trip, index, 1)).join(' · ')}`)); }
             else text.append(el('span', '', `${destination(row)} · raus ${clock(leftAt(row))} · zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})`));
             const side = el('div', 'gate-back-side');
+            if (group.state === 'weg') {
+                const back = el('button', 'gate-button gate-button-quiet gate-doch-zurueck', 'Ist doch zurück');
+                back.type = 'button';
+                back.addEventListener('click', () => setBack(row, true, back));
+                const lift = el('button', 'gate-button gate-button-quiet gate-away-undo', 'Vermerk aufheben');
+                lift.type = 'button';
+                lift.addEventListener('click', () => setAway(row, '', '', lift));
+                side.append(back, lift);
+                if (has45) { const fix = el('button', 'gate-button gate-button-quiet gate-fix', 'Zeiten korrigieren'); fix.type = 'button'; fix.addEventListener('click', () => openFix(row, false)); side.append(fix); }
+                item.append(text, side);
+                return item;
+            }
             if (row.final && group.open.length && row.date === today()) {
                 text.append(el('span', 'gate-back-rest', `Noch offen: ${group.open.map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ')}`));
                 const reopen = el('button', 'gate-button gate-button-quiet gate-reopen', 'Fährt doch wieder raus');
@@ -382,14 +405,14 @@
             tripNo.set(key, (tripNo.get(key) || 0) + 1);
             const count = all.filter(other => personKey(other) === key).length;
             [String(index + 1), `${row.driver_name}${count > 1 ? ` (${tripNo.get(key)}. Fahrt)` : ''}`, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
-                stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
+                stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : row.away_reason ? `kommt nicht zurück (${AWAY[row.away_reason] || row.away_reason})` : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
                 [[...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / '), row.by_gate ? `nachgetragen (${row.entered_by || 'Pforte'})` : '', row.fixed_at ? `korrigiert (${row.fixed_by || 'Pforte'})` : ''].filter(Boolean).join('\n')]
                 .forEach(value => line.append(el('td', '', value || '')));
             return line;
         }));
         // Nachträge und Korrekturen des Tages (Protokoll, Update 45)
-        const ACTION = { bestaetigt: 'Ausfahrt bestätigt', zurueck: 'Rückkehr eingetragen', nachtrag: 'Nachtrag', korrektur: 'Korrektur', wieder_raus: 'Fährt wieder raus', fertig: 'Heute fertig', nicht_gefahren: 'Nicht gefahren', zurueckgenommen: 'Zurückgenommen' };
-        const important = log.filter(item => ['nachtrag', 'korrektur', 'nicht_gefahren', 'zurueckgenommen'].includes(item.action));
+        const ACTION = { bestaetigt: 'Ausfahrt bestätigt', zurueck: 'Rückkehr eingetragen', nachtrag: 'Nachtrag', korrektur: 'Korrektur', wieder_raus: 'Fährt wieder raus', fertig: 'Heute fertig', nicht_gefahren: 'Nicht gefahren', zurueckgenommen: 'Zurückgenommen', nicht_zurueck: 'Kommt nicht zurück', doch_zurueck: 'Vermerk aufgehoben' };
+        const important = log.filter(item => ['nachtrag', 'korrektur', 'nicht_gefahren', 'zurueckgenommen', 'nicht_zurueck', 'doch_zurueck'].includes(item.action));
         $('gateReportLogBox').hidden = !important.length;
         $('gateReportLog').replaceChildren(...important.map(item => {
             const line = el('tr');
@@ -398,7 +421,7 @@
         }));
         if (!all.length) { const line = el('tr'); const cell = el('td', '', 'An diesem Tag gab es keine Ausfahrten.'); cell.colSpan = 11; line.append(cell); $('gateReportBody').append(line); }
         const older = main.filter(group => group.current.date !== day).length;
-        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Fahrt' : 'Fahrten'} · ${all.filter(row => row.in_at).length} zurück · ${all.filter(row => !row.in_at && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
+        $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Fahrt' : 'Fahrten'} · ${all.filter(row => row.in_at).length} zurück${all.some(row => !row.in_at && row.away_reason) ? ` · ${all.filter(row => !row.in_at && row.away_reason).length} kommt nicht zurück (Bereitschaft / früher Termin)` : ''} · ${all.filter(row => !row.in_at && !row.away_reason && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
         tick();
     }
 
@@ -410,7 +433,7 @@
             // Wer an einem früheren Tag hinausfuhr und nie als zurück eingetragen wurde, bleibt heute unter „Draußen“ stehen.
             if (!error && day === today()) {
                 const earlier = await client.from('tt_gate').select('*').lt('date', day).is('in_at', null).order('out_at').limit(40);
-                if (!earlier.error) data = [...earlier.data, ...data];
+                if (!earlier.error) data = [...earlier.data.filter(row => !row.away_reason), ...data];
             }
             if (error) {
                 banner(/does not exist|schema cache|relation/i.test(error.message || '') ? 'Die Anzeige ist in der Datenbank noch nicht eingerichtet (Update 30 fehlt). Bitte der Einsatzleitung Bescheid sagen.' : `Keine Verbindung: ${TerminCloud.germanError(error)}`, 'error');
@@ -590,6 +613,41 @@
         $('gateFix').close();
         banner(`${row.driver_name}: Zeiten korrigiert – raus ${stampText(out)}${back ? `, zurück ${stampText(back)}` : ', noch draußen'} (${who()}).`, 'success');
         await load();
+    });
+
+    // ---------- „Kommt heute nicht mehr ins Büro“ (Update 46) ----------
+    const AWAY = { bereitschaft: 'Bereitschaft / Notdienst', frueh: 'früher Termin morgen', sonstiges: 'sonstiges' };
+    let awayRow = null;
+    async function setAway(row, reason, note, button) {
+        if (needName()) return;
+        if (!reason && !(await ask(`Den Vermerk „kommt nicht zurück“ für ${row.driver_name} aufheben?\n\nDie Person steht dann wieder unter „Draußen“.`, 'Vermerk aufheben'))) return;
+        if (button) button.disabled = true;
+        const { error } = await client.rpc('tt_gate_away', { p_id: row.id, p_reason: reason, p_note: note, p_by: who() });
+        if (button) button.disabled = false;
+        if (error) { banner(/could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 46). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return false; }
+        banner(reason ? `${row.driver_name}: kommt heute nicht zurück – ${AWAY[reason]} (${who()}).` : `${row.driver_name}: Vermerk aufgehoben – wieder unter „Draußen“.`, 'success');
+        await load();
+        return true;
+    }
+    function openAway(row) {
+        if (needName()) return;
+        awayRow = row;
+        $('gateAwayInfo').textContent = `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'} · ${destination(row)} · raus ${clock(leftAt(row))} Uhr`;
+        document.querySelectorAll('input[name=gateAwayReason]').forEach(input => { input.checked = input.value === 'bereitschaft'; });
+        $('gateAwayNote').value = '';
+        formStatus('gateAwayStatus', '');
+        $('gateAway').showModal();
+    }
+    $('gateAwayCancel').addEventListener('click', () => $('gateAway').close());
+    $('gateAwayForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const reason = document.querySelector('input[name=gateAwayReason]:checked')?.value || 'bereitschaft';
+        const note = $('gateAwayNote').value.trim();
+        if (reason === 'sonstiges' && !note) { formStatus('gateAwayStatus', 'Bitte kurz angeben, warum die Person nicht mehr kommt.'); $('gateAwayNote').focus(); return; }
+        $('gateAwaySave').disabled = true;
+        const ok = await setAway(awayRow, reason, note, null);
+        $('gateAwaySave').disabled = false;
+        if (ok) $('gateAway').close();
     });
 
     async function start() {

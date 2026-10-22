@@ -3046,3 +3046,20 @@ dialog.extra-day-dialog input[type="date"], dialog.extra-day-dialog input[type="
 /* ===== 92. Live-Tracking: Fahrzeug nur vorschlagen (festes Fahrzeug) – erst der Klick trägt es ein ===== */
 body[data-page="tracking"] #dataTable .vehicle-suggest { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 3px 9px; border: 1px dashed #1b4f8a; border-radius: 999px; background: #eef4fb; color: #1b4f8a; font-size: .8rem; font-weight: 700; cursor: pointer; }
 body[data-page="tracking"] #dataTable .vehicle-suggest:hover { background: #dbe8f8; }
+
+/* ===== 93. Pforte: „Komme heute nicht mehr ins Büro“ (Update 46) ===== */
+.gate-box[data-state="weg"] { border-color: #6f42c1; background: #f6f1fd; }
+.gate-box-away { margin-top: 8px; }
+.gate-sheet-choices { display: grid; gap: 8px; margin: 10px 0 4px; }
+.gate-away-choice[aria-pressed="true"] { border-color: var(--brand); background: var(--brand); color: #fff; }
+.gate-away-choice[aria-pressed="true"] small { color: inherit; opacity: .85; }
+.gate-away-choice span { display: grid; gap: 2px; }
+
+/* ===== 94. Fuhrpark: freie Namen – Reserviert für / Tankkarte an Personen ohne Konto (Update 47) ===== */
+.fleet-inline { display: flex; gap: 8px; align-items: center; }
+.fleet-inline[hidden] { display: none; }
+.fleet-inline input { flex: 1 1 auto; min-width: 0; }
+.fleet-inline button { flex: 0 0 auto; }
+.fuel-name-input { width: 170px; max-width: 100%; }
+/* Abrechnung, dunkel: Schrittnummer auf hellem Türkis lesbar (Kontrast) */
+:root[data-theme="dark"] .pay-step:not([data-done="ja"]) .pay-step-no { color: #05201e; }

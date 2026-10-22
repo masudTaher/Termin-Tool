@@ -2374,6 +2374,8 @@ if (!window.TerminContact) {
         if (data && myHandover) Object.assign(myHandover, data);
         // Mitteilung an die Einsatzleitung, klar getrennt von den Terminen.
         TerminCloud.callFunction?.({ action: 'vehicle', kind: 'keep' })?.catch?.(() => null);
+        // Wer das Auto über Nacht behält, kommt heute nicht mehr ins Büro – das weiß dann auch die Pforte (Update 46).
+        window.PortalGate?.markAway?.(reason === 'notdienst' ? 'bereitschaft' : reason === 'frueh' ? 'frueh' : '', 'Auto bleibt über Nacht')?.catch?.(() => null);
         toast(reason === 'notdienst' ? 'Notdienst eingetragen – das Auto bleibt bei dir.'
             : reason === 'frueh' ? 'Eingetragen – das Auto bleibt über Nacht bei dir.'
             : 'Zurückgenommen – bitte gib das Auto heute zurück.', 'success');
@@ -2406,8 +2408,8 @@ if (!window.TerminContact) {
         const taken = new Set(openHandovers.map(item => item.vehicle_id));
         // Das eigene feste Fahrzeug steht oben, danach diplomatische Fahrzeuge, dann Mietwagen.
         const rank = vehicle => vehicle.assigned_to === profile.id ? 0 : vehicle.type === 'Diplomatisch' ? 1 : vehicle.type === 'Mietwagen' ? 2 : 3;
-        // Fest reservierte Fahrzeuge sieht nur die Person, für die sie reserviert sind.
-        const mine = vehicle => !vehicle.assigned_to || vehicle.assigned_to === profile.id;
+        // Fest reservierte Fahrzeuge sieht nur die Person, für die sie reserviert sind – mit Namen ohne Konto (driver_note, Update 47) niemand.
+        const mine = vehicle => vehicle.assigned_to ? vehicle.assigned_to === profile.id : !String(vehicle.driver_note || '').trim();
         // Fahrzeuge in der Werkstatt oder gesperrte werden gar nicht erst angeboten.
         return vehicles.filter(vehicle => !taken.has(vehicle.id) && mine(vehicle) && !vehicle.service_status).sort((left, right) => rank(left) - rank(right) || String(left.plate).localeCompare(String(right.plate), 'de'));
     }

@@ -200,3 +200,8 @@ a.gate-button { display: inline-flex; align-items: center; text-decoration: none
 @media print { .gate-report h2 { margin: 18px 0 6px; font-size: 1rem; } .gate-form-dialog { display: none !important; } }
 .gate-banner[data-kind="success"] { background: #d8f5e6; color: #0f5132; }
 .gate-old .gate-side .gate-button { white-space: normal; line-height: 1.15; font-size: clamp(1rem, 1.2vw, 1.35rem); padding: 10px 12px; }
+.gate-choices { display: grid; gap: 8px; margin: 6px 0 4px; }
+.gate-form-dialog .field-label-plain { display: block; margin: 12px 0 4px; color: var(--soft); font-size: .8rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.gate-back-row[data-state="weg"] { border-left-color: #6f42c1; background: #f6f1fd; }
+.gate-away-text { display: block; color: #4b2a85; font-weight: 750; }
+.gate-doch-zurueck { border-color: #18794e; color: #18794e; font-weight: 800; }

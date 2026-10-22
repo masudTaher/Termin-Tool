@@ -123,6 +123,25 @@
          </form>
       </dialog>
 
+      <!-- Kommt heute nicht mehr ins Büro (Update 46) -->
+      <dialog id="gateAway" class="gate-confirm gate-form-dialog" aria-labelledby="gateAwayTitle">
+         <form id="gateAwayForm" novalidate>
+            <h2 id="gateAwayTitle">Kommt heute nicht mehr zurück</h2>
+            <p class="gate-form-hint" id="gateAwayInfo"></p>
+            <span class="field-label-plain">Warum?</span>
+            <div class="gate-choices">
+               <label class="gate-check"><input type="radio" name="gateAwayReason" value="bereitschaft" checked><span>Bereitschaft / Notdienst</span></label>
+               <label class="gate-check"><input type="radio" name="gateAwayReason" value="frueh"><span>Früher Termin morgen – fährt von zu Hause</span></label>
+               <label class="gate-check"><input type="radio" name="gateAwayReason" value="sonstiges"><span>Sonstiges</span></label>
+            </div>
+            <label for="gateAwayNote">Bemerkung <span class="gate-optional">bei „Sonstiges“ Pflicht</span></label>
+            <input id="gateAwayNote" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Termin 7:30 in Köln">
+            <p class="gate-form-hint">Die Ausfahrt gilt damit als abgeschlossen und bleibt nicht bis morgen „draußen“ stehen. Kommt die Person doch, trägst du „Ist doch zurück“ ein.</p>
+            <p id="gateAwayStatus" class="gate-form-status" role="status" aria-live="polite" hidden></p>
+            <div class="gate-confirm-buttons"><button type="button" id="gateAwayCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="gateAwaySave" class="gate-button gate-button-main">Eintragen</button></div>
+         </form>
+      </dialog>
+
       <dialog id="gateConfirm" class="gate-confirm">
          <p id="gateConfirmText"></p>
          <div class="gate-confirm-buttons"><button type="button" id="gateConfirmNo" class="gate-button gate-button-quiet">Abbrechen</button><button type="button" id="gateConfirmYes" class="gate-button gate-button-main">Ja</button></div>

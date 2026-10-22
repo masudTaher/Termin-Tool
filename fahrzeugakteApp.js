@@ -47,6 +47,9 @@
     const damageWhat = item => [item.category, item.description].filter((text, index, list) => text && list.indexOf(text) === index).join(' – ');
     const cleanText = value => value == null ? '–' : value ? 'sauber' : 'nicht sauber';
     const profileName = id => profiles.find(item => item.id === id)?.full_name || '';
+    // Reserviert für: eine Person mit Konto (assigned_to) oder ein selbst eingetragener Name ohne Konto (driver_note, Update 47).
+    const reservedName = vehicle => vehicle?.assigned_to ? (profileName(vehicle.assigned_to) || '–') : String(vehicle?.driver_note || '').trim();
+    const OTHER_NAME = '__name';
 
     function setStatus(message, kind = 'info') {
         const status = $('fileStatus');
@@ -574,7 +577,7 @@
             ? (holder.date < TerminCloud.todayIso() ? 2 : now.getHours() >= 16 ? 1 : 0) : 0;
         return {
             holder,
-            status: holder ? 'ausgegeben' : vehicle.service_status ? 'werkstatt' : vehicle.assigned_to ? 'reserviert' : 'frei',
+            status: holder ? 'ausgegeben' : vehicle.service_status ? 'werkstatt' : reservedName(vehicle) ? 'reserviert' : 'frei',
             overdue,
             minutesOut: holder ? Math.max(0, Math.round((now - startOf(holder)) / 60000)) : 0,
             card: holder ? fuelCards.find(card => card.holder_id && card.holder_id === holder.driver_id) || null : null,
@@ -632,7 +635,7 @@
 
     // Wer / wo / seit wann – der wichtigste Text einer Zeile.
     function whoLines(vehicle, facts) {
-        const reserved = vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : '';
+        const reserved = reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}` : '';
         if (facts.holder) {
             return [
                 `${facts.holder.driver_name}${facts.holder.emergency ? ' · Notdienst' : TerminCloud.keepsOvernight(facts.holder) ? ' · über Nacht (früher Termin)' : ''}`,
@@ -682,7 +685,7 @@
     function matchesQuery(vehicle, facts) {
         if (!fleetQuery) return true;
         const haystack = fold([vehicle.plate, String(vehicle.plate || '').replace(/[\s-]/g, ''), vehicle.brand, vehicle.body, vehicle.type, vehicle.label, vehicle.parking,
-            facts.holder?.driver_name, profileName(vehicle.assigned_to), vehicle.service_note, facts.card?.number].filter(Boolean).join(' '));
+            facts.holder?.driver_name, reservedName(vehicle), vehicle.service_note, facts.card?.number].filter(Boolean).join(' '));
         return fold(fleetQuery).split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
     }
 
@@ -982,7 +985,7 @@
         $('vehicleFile').hidden = false;
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
         $('fileTitle').textContent = vehicleLabel(vehicle);
-        $('fileSubtitle').textContent = [vehicle.type, vehicle.assigned_to ? `Reserviert für ${profileName(vehicle.assigned_to) || '–'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : TerminCloud.keepsOvernight(holder) ? ' (über Nacht, früher Termin)' : ''}` : 'frei'].filter(Boolean).join(' · ');
+        $('fileSubtitle').textContent = [vehicle.type, reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : TerminCloud.keepsOvernight(holder) ? ' (über Nacht, früher Termin)' : ''}` : 'frei'].filter(Boolean).join(' · ');
         fillArt($('fileArt'), vehicle);
         $('fileBadges').replaceChildren(...vehicleBadges(vehicle, vehicleFacts(vehicle)).children);
         $('filePhotoRemove').hidden = !vehicle.photo_path;
@@ -1060,12 +1063,15 @@
         }));
 
         const assigned = $('fileAssigned');
-        assigned.replaceChildren(...[{ id: '', full_name: 'Kein fester Fahrer' }, ...profiles.filter(item => item.active)].map(item => {
-            const option = el('option', null, item.id ? `${item.full_name}${item.employment === 'fest' ? ' (fest)' : ''}` : item.full_name);
+        assigned.replaceChildren(...[{ id: '', full_name: 'Kein fester Fahrer' }, ...profiles.filter(item => item.active), { id: OTHER_NAME, full_name: 'Anderer Name (ohne Konto) …' }].map(item => {
+            const option = el('option', null, item.id && item.id !== OTHER_NAME ? `${item.full_name}${item.employment === 'fest' ? ' (fest)' : ''}` : item.full_name);
             option.value = item.id;
             return option;
         }));
-        assigned.value = vehicle.assigned_to || '';
+        const ownName = !vehicle.assigned_to && String(vehicle.driver_note || '').trim();
+        assigned.value = vehicle.assigned_to || (ownName ? OTHER_NAME : '');
+        $('fileAssignedNameBox').hidden = !ownName;
+        $('fileAssignedName').value = ownName || '';
         $('fileMileage').value = '';
         $('fileMileage').placeholder = vehicle.mileage == null ? 'km' : String(vehicle.mileage);
         $('fileParking').value = '';
@@ -1159,11 +1165,26 @@
     });
 
     $('fileAssigned').addEventListener('change', async () => {
-        const { error } = await client.from('tt_vehicles').update({ assigned_to: $('fileAssigned').value || null }).eq('id', selectedId);
+        const value = $('fileAssigned').value;
+        // „Anderer Name“: erst den Namen eintragen, gespeichert wird mit „Speichern“ (oder Enter).
+        if (value === OTHER_NAME) { $('fileAssignedNameBox').hidden = false; $('fileAssignedName').focus(); return; }
+        $('fileAssignedNameBox').hidden = true;
+        const { error } = await client.from('tt_vehicles').update({ assigned_to: value || null, driver_note: '' }).eq('id', selectedId);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast('Fester Fahrer gespeichert', 'success');
+        showToast(value ? `Reserviert für ${profileName(value)}` : 'Reservierung aufgehoben', 'success');
         await refresh();
     });
+    async function saveAssignedName() {
+        const name = $('fileAssignedName').value.trim().replace(/\s+/g, ' ');
+        if (!name) { showToast('Bitte trag den Namen ein.', 'error', { target: '#fileAssignedName' }); return; }
+        if (name.length > 80) { showToast('Der Name ist zu lang (höchstens 80 Zeichen).', 'error', { target: '#fileAssignedName' }); return; }
+        const { error } = await client.from('tt_vehicles').update({ assigned_to: null, driver_note: name }).eq('id', selectedId);
+        if (error) { showToast(/driver_note/i.test(error.message || '') ? 'Für Namen ohne Konto fehlt noch das Datenbank-Update 47.' : TerminCloud.germanError(error), 'error'); return; }
+        showToast(`Reserviert für ${name} (ohne Konto)`, 'success');
+        await refresh();
+    }
+    $('fileAssignedNameSave').addEventListener('click', saveAssignedName);
+    $('fileAssignedName').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); saveAssignedName(); } });
 
     $('fileSettings').addEventListener('submit', async event => {
         event.preventDefault();
@@ -1247,9 +1268,10 @@
         if (!brand) { showToast('Bitte wähle das Modell oder trage Marke und Modell ein.', 'error', { target: '#vehicleFormBrand' }); return; }
         const mileageText = $('vehicleFormMileage').value.trim();
         if (mileageText && !(Number(mileageText) >= 0)) { showToast('Der Kilometerstand muss eine Zahl sein.', 'error', { target: '#vehicleFormMileage' }); return; }
+        const vehicle = editVehicleId ? vehicles.find(item => item.id === editVehicleId) : null;
         const twin = allVehicles.find(item => item.plate_key === key && item.id !== editVehicleId);
         if (twin && (twin.active || editVehicleId)) { showToast(`Das Kennzeichen ${twin.plate} gibt es schon${twin.active ? ' im Fuhrpark' : ' (unter „Nicht mehr im Fuhrpark“)'}.`, 'error', { target: '#vehicleFormPlate' }); return; }
-        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim(), station: $('vehicleFormStation').value, driver_note: $('vehicleFormStation').value === 'Heidelberg' ? $('vehicleFormDriver').value.trim() : '' };
+        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim(), station: $('vehicleFormStation').value, driver_note: $('vehicleFormStation').value === 'Heidelberg' ? $('vehicleFormDriver').value.trim() : (vehicle?.station !== 'Heidelberg' && vehicle?.driver_note || '') };
         const state = mileageText ? { mileage: Number(mileageText), state_updated_at: new Date().toISOString(), state_updated_by: profile.full_name || '' } : {};
         const submit = $('vehicleFormSubmit');
         submit.disabled = true;
@@ -1354,11 +1376,11 @@
         if (holder) { showToast(`${vehicle.plate} ist gerade bei ${holder.driver_name}. Bitte zuerst die Rückgabe eintragen.`, 'error'); return; }
         swapVehicle = vehicle;
         $('swapTitle').textContent = `${vehicle.plate}: Tausch / Rückgabe`;
-        $('swapInfo').textContent = [vehicleLabel(vehicle), vehicle.type, vehicle.mileage != null ? formatKm(vehicle.mileage) : '', vehicle.assigned_to ? `reserviert für ${profileName(vehicle.assigned_to)}` : ''].filter(Boolean).join(' · ');
+        $('swapInfo').textContent = [vehicleLabel(vehicle), vehicle.type, vehicle.mileage != null ? formatKm(vehicle.mileage) : '', reservedName(vehicle) ? `reserviert für ${reservedName(vehicle)}` : ''].filter(Boolean).join(' · ');
         document.querySelectorAll('input[name=swapKind]').forEach(input => { input.checked = input.value === (vehicle.type === 'Mietwagen' ? 'tausch' : 'sonstiges'); input.disabled = !swapReady && input.value !== 'sonstiges'; });
         $('swapPlate').value = ''; $('swapModel').value = ''; $('swapBrand').value = ''; $('swapBrand').hidden = false; $('swapBody').value = vehicle.body || 'Kombi';
         $('swapType').value = vehicle.type === 'Diplomatisch' ? 'Diplomatisch' : 'Mietwagen'; $('swapMileage').value = ''; $('swapTyres').value = ''; $('swapLabel').value = ''; $('swapNote').value = '';
-        $('swapInherit').textContent = `Das neue Fahrzeug übernimmt Standort ${stationOf(vehicle)}${vehicle.assigned_to ? `, den festen Fahrer ${profileName(vehicle.assigned_to)}` : ''}${vehicle.parking ? ` und den Parkort ${vehicle.parking}` : ''}.`;
+        $('swapInherit').textContent = `Das neue Fahrzeug übernimmt Standort ${stationOf(vehicle)}${reservedName(vehicle) ? `, den festen Fahrer ${reservedName(vehicle)}` : ''}${vehicle.parking ? ` und den Parkort ${vehicle.parking}` : ''}.`;
         $('swapInfo').textContent += swapReady ? '' : ' · Tausch und Rückgabe brauchen das Datenbank-Update 44.';
         syncSwapFields();
         $('swapDialog').showModal();
@@ -1524,7 +1546,7 @@
             const row = el('li', 'vehicle-entry file-entry fuel-entry');
             const meta = el('span');
             meta.append(el('strong', null, `Tankkarte ${card.number}`),
-                el('small', null, given(card) ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'}${!card.holder_id && card.holder_name === 'Heidelberg' ? ' (Kollegen)' : ''} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
+                el('small', null, given(card) ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'}${!card.holder_id ? (card.holder_name === 'Heidelberg' ? ' (Kollegen)' : ' (ohne Konto)') : ''} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
             if (card.note) meta.append(el('small', null, card.note));
             const actions = el('span', 'vehicle-entry-actions');
             if (admin && given(card)) {
@@ -1535,13 +1557,27 @@
             } else if (admin) {
                 const select = el('select');
                 select.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
-                select.append(...[{ id: '', full_name: 'Ausgeben an …' }, { id: '__heidelberg', full_name: 'Heidelberg (Kollegen)' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
+                select.append(...[{ id: '', full_name: 'Ausgeben an …' }, { id: '__heidelberg', full_name: 'Heidelberg (Kollegen)' }, { id: OTHER_NAME, full_name: 'Anderer Name (ohne Konto) …' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
+                // „Anderer Name“: Feld für den Namen erscheint neben der Auswahl (Update 47).
+                const nameInput = el('input', 'fuel-name-input');
+                nameInput.type = 'text'; nameInput.maxLength = 80; nameInput.placeholder = 'Name, z. B. Herr Vizechef'; nameInput.autocomplete = 'off'; nameInput.hidden = true;
+                nameInput.setAttribute('aria-label', `Tankkarte ${card.number}: Name ohne Konto`);
+                select.addEventListener('change', () => { nameInput.hidden = select.value !== OTHER_NAME; if (!nameInput.hidden) nameInput.focus(); });
                 const give = el('button', 'button-secondary fleet-end-button', 'Ausgeben');
                 give.type = 'button';
-                give.addEventListener('click', () => {
+                const giveNow = () => {
                     if (!select.value) { showToast('Bitte wähle zuerst, wer die Karte bekommt.', 'error', { target: select }); return; }
-                    if (select.value === '__heidelberg') setFuelCard(card, null, give, 'Heidelberg'); else setFuelCard(card, select.value, give);
-                });
+                    if (select.value === '__heidelberg') { setFuelCard(card, null, give, 'Heidelberg'); return; }
+                    if (select.value === OTHER_NAME) {
+                        const name = nameInput.value.trim().replace(/\s+/g, ' ');
+                        if (!name) { showToast('Bitte trag den Namen ein.', 'error', { target: nameInput }); return; }
+                        setFuelCard(card, null, give, name);
+                        return;
+                    }
+                    setFuelCard(card, select.value, give);
+                };
+                give.addEventListener('click', giveNow);
+                nameInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); giveNow(); } });
                 const remove = el('button', 'button-quiet-danger', 'Entfernen');
                 remove.type = 'button';
                 remove.addEventListener('click', async () => {
@@ -1551,9 +1587,9 @@
                     showToast(`Tankkarte ${card.number} entfernt`, 'success');
                     await refresh();
                 });
-                actions.append(select, give, remove);
+                actions.append(select, nameInput, give, remove);
             }
-            row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id ? 'ausgegeben' : 'Heidelberg') : 'im Büro'), meta, actions);
+            row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id || card.holder_name !== 'Heidelberg' ? 'ausgegeben' : 'Heidelberg') : 'im Büro'), meta, actions);
             return row;
         }));
         $('fuelLog').replaceChildren(...fuelLog.map(item => {
@@ -1572,8 +1608,10 @@
             ({ error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId }));
         }
         button.disabled = false;
+        // Ohne Update 47 nimmt die Datenbank nur „Heidelberg“ als Namen ohne Konto an.
+        if (error && /Unbekannter Standort/i.test(error.message || '')) { showToast('Für Namen ohne Konto fehlt noch das Datenbank-Update 47.', 'error'); return; }
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast(place ? `Tankkarte ${card.number} ist jetzt bei den Kollegen in ${place}` : profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
+        showToast(place === 'Heidelberg' ? `Tankkarte ${card.number} ist jetzt bei den Kollegen in Heidelberg` : place ? `Tankkarte ${card.number} ausgegeben an ${place} (ohne Konto)` : profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
         await refresh();
     }
 

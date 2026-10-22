@@ -113,7 +113,11 @@
                      <form id="fileSettings" class="fleet-form">
                         <label for="fileAssigned">Reserviert für (fester Fahrer)</label>
                         <select id="fileAssigned"></select>
-                        <p class="field-hint">Ein reserviertes Fahrzeug sehen andere Dolmetscher im Portal nicht.</p>
+                        <div id="fileAssignedNameBox" class="fleet-inline" hidden>
+                           <input id="fileAssignedName" type="text" maxlength="80" autocomplete="off" placeholder="Name, z. B. Herr Vizechef">
+                           <button type="button" id="fileAssignedNameSave" class="button-secondary">Speichern</button>
+                        </div>
+                        <p class="field-hint">Ein reserviertes Fahrzeug sehen andere Dolmetscher im Portal nicht. Hat die Person kein Konto in der App (z. B. der Vizechef), wähle „Anderer Name“ und trag den Namen selbst ein.</p>
                         <span class="field-label" id="fileFixTitle">Stand korrigieren</span>
                         <p class="field-hint">Falsch eingetragen? Trag hier den richtigen Kilometerstand oder Parkort ein – ein Feld genügt. Der bisherige Wert steht grau im Feld.</p>
                         <label for="fileMileage">Kilometerstand</label>

@@ -309,7 +309,8 @@ const TerminCloud = (() => {
         const keptByCloudKey = new Map(kept.filter(vehicle => vehicle.cloudKey).map(vehicle => [vehicle.cloudKey, vehicle]));
         const localVehicles = cloudVehicles.map(cloud => {
             const local = keptByCloudKey.get(cloud.plate_key);
-            const assignedName = (profiles || []).find(item => item.id === cloud.assigned_to)?.full_name || '';
+            // Mit Konto (assigned_to) oder als selbst eingetragener Name ohne Konto (driver_note, Update 47).
+            const assignedName = (profiles || []).find(item => item.id === cloud.assigned_to)?.full_name || (cloud.station !== 'Heidelberg' ? String(cloud.driver_note || '').trim() : '');
             // Eine Änderung von hier, die noch nicht hochgeladen werden konnte, bleibt stehen (nächster Versuch beim nächsten Abgleich).
             if (local?.dirty) return { ...local, assignedName, service: cloud.service_status || '' };
             return {

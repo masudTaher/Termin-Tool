@@ -16,7 +16,10 @@
     const allowed = () => { const profile = core.profile(); return Boolean(profile?.active && (TerminCloud.isStaff(profile) || (profile.role === 'dolmetscher' && profile.employment === 'fest'))); };
     // Bestätigt ist die Ausfahrt erst, wenn die Pforte es eingetragen hat (vor Update 31 gab es das Feld nicht).
     const confirmedAt = row => ('out_confirmed_at' in row ? row.out_confirmed_at : row.out_at) || null;
-    const openRow = () => rows.find(row => !row.in_at) || null;
+    // Offen = draußen und nicht „kommt heute nicht mehr zurück“ (Update 46). Die abgeschlossene Meldung von heute zeigt die App trotzdem.
+    const openRow = () => rows.find(row => !row.in_at && !row.away_reason) || null;
+    const awayRow = () => rows.find(row => !row.in_at && row.away_reason && row.date === TerminCloud.todayIso()) || null;
+    const AWAY = { bereitschaft: 'Bereitschaft / Notdienst', frueh: 'früher Termin morgen', sonstiges: 'sonstiges' };
     const lastBack = () => rows.filter(row => row.in_at).sort((left, right) => String(right.in_at).localeCompare(String(left.in_at)))[0] || null;
 
     // Die Aufträge dieser Ausfahrt: alle von heute, die noch anstehen. Was nach der Abfahrt fertig wurde, bleibt stehen –
@@ -39,18 +42,29 @@
         box.hidden = !ready || !allowed();
         if (box.hidden) return;
         const row = openRow();
+        const away = row ? null : awayRow();
         const back = lastBack();
         const confirmed = row && confirmedAt(row);
-        box.dataset.state = row ? (confirmed ? 'draussen' : 'angemeldet') : 'da';
+        box.dataset.state = row ? (confirmed ? 'draussen' : 'angemeldet') : away ? 'weg' : 'da';
         box.replaceChildren();
         const text = el('div', 'gate-box-text');
-        if (row) {
+        if (away) {
+            text.append(el('strong', '', `Du kommst heute nicht mehr ins Büro – ${AWAY[away.away_reason] || away.away_reason}${away.away_note ? `: ${away.away_note}` : ''}`),
+                el('span', '', `Die Pforte weiß Bescheid (eingetragen ${clock(away.away_at)} Uhr). Deine Ausfahrt gilt als abgeschlossen.`));
+            const undo = el('button', 'button-secondary gate-box-undo', 'Doch zurück ins Büro');
+            undo.type = 'button';
+            undo.addEventListener('click', () => setAway(away, '', '', undo));
+            box.append(text, undo);
+        } else if (row) {
             const stops = Array.isArray(row.stops) ? row.stops : [];
             const facts = el('span', '', [row.plate || 'ohne Dienstfahrzeug', stops.length ? `${stops.length} ${stops.length === 1 ? 'Auftrag' : 'Aufträge'}` : row.note].filter(Boolean).join(' · '));
             if (confirmed) {
                 // Die Pforte hat die Ausfahrt bestätigt: Jetzt gilt die Person als draußen – zurücknehmen kann das nur noch die Pforte.
-                text.append(el('strong', '', `Die Pforte hat deine Ausfahrt bestätigt · ${clock(confirmed)} Uhr`), facts, el('span', 'gate-box-hint', 'Wenn du zurück bist, trägt die Pforte das ein.'));
-                box.append(text);
+                text.append(el('strong', '', `Die Pforte hat deine Ausfahrt bestätigt · ${clock(confirmed)} Uhr`), facts, el('span', 'gate-box-hint', 'Wenn du zurück bist, trägt die Pforte das ein. Kommst du heute nicht mehr ins Büro (Bereitschaft, früher Termin morgen), sag es hier – dann bleibt nichts offen.'));
+                const away = el('button', 'button-secondary gate-box-away', 'Komme heute nicht mehr ins Büro');
+                away.type = 'button';
+                away.addEventListener('click', () => openAwaySheet(row, away));
+                box.append(text, away);
             } else {
                 text.append(el('strong', '', `An die Pforte gemeldet · ${clock(row.out_at)} Uhr`), facts, el('span', 'gate-box-hint', 'Bitte an der Pforte kurz bestätigen lassen – erst dann giltst du als hinausgefahren.'));
                 const undo = el('button', 'button-secondary gate-box-undo', 'Zurücknehmen');
@@ -119,6 +133,75 @@
         dialog.showModal();
     }
 
+    // „Komme heute nicht mehr ins Büro“ (Update 46): Bereitschaft / Notdienst, früher Termin morgen oder sonstiges mit Grund.
+    async function setAway(row, reason, note, button) {
+        if (button) button.disabled = true;
+        const { error } = await client.rpc('tt_gate_away', { p_id: row.id, p_reason: reason, p_note: note });
+        if (button) button.disabled = false;
+        if (error) { toast(missing(error) || /could not find the function/i.test(error.message || '') ? 'Das ist in der Datenbank noch nicht eingerichtet (Update 46). Bitte sag der Einsatzleitung Bescheid.' : TerminCloud.germanError(error), 'error'); return false; }
+        toast(reason ? 'Die Pforte weiß Bescheid – du kommst heute nicht mehr ins Büro.' : 'Zurückgenommen – die Pforte trägt deine Rückkehr ein, wenn du da bist.', 'success');
+        await load();
+        return true;
+    }
+    function openAwaySheet(row, button) {
+        const dialog = el('dialog', 'confirm-dialog gate-sheet');
+        dialog.setAttribute('aria-labelledby', 'gateAwayTitle');
+        const title = el('h2', '', 'Komme heute nicht mehr ins Büro');
+        title.id = 'gateAwayTitle';
+        const hint = el('p', 'field-hint', 'Die Pforte sieht das sofort – deine Ausfahrt gilt dann als abgeschlossen und bleibt nicht bis morgen offen.');
+        const choices = el('div', 'gate-sheet-choices');
+        let chosen = 'bereitschaft';
+        const options = [['bereitschaft', 'Bereitschaft / Notdienst', 'ich gehe direkt in den Dienst'], ['frueh', 'Früher Termin morgen', 'ich fahre morgen von zu Hause los'], ['sonstiges', 'Sonstiges', 'bitte kurz begründen']];
+        const buttons = options.map(([reason, label, small]) => {
+            const choice = el('button', 'choice-button gate-away-choice');
+            choice.type = 'button';
+            choice.dataset.reason = reason;
+            choice.setAttribute('aria-pressed', String(reason === chosen));
+            const text = el('span', '');
+            text.append(el('strong', '', label), el('small', '', small));
+            choice.append(text);
+            choice.addEventListener('click', () => { chosen = reason; buttons.forEach(item => item.setAttribute('aria-pressed', String(item.dataset.reason === chosen))); note.focus(); });
+            return choice;
+        });
+        choices.append(...buttons);
+        const noteLabel = el('label', 'field-label', 'Bemerkung (bei „Sonstiges“ Pflicht)');
+        noteLabel.htmlFor = 'gateAwayNote';
+        const note = el('input');
+        note.id = 'gateAwayNote';
+        note.type = 'text';
+        note.maxLength = 200;
+        note.placeholder = 'zum Beispiel: Termin 7:30 in Köln';
+        const status = el('p', 'gate-sheet-status');
+        status.setAttribute('role', 'alert');
+        const bar = el('div', 'modal-buttons');
+        const cancel = el('button', 'button-secondary', 'Abbrechen');
+        cancel.type = 'button';
+        const ok = el('button', 'button-primary', 'Pforte Bescheid geben');
+        ok.type = 'button';
+        bar.append(cancel, ok);
+        dialog.append(title, hint, choices, noteLabel, note, status, bar);
+        document.body.append(dialog);
+        cancel.addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => dialog.remove());
+        ok.addEventListener('click', async () => {
+            if (chosen === 'sonstiges' && !note.value.trim()) { status.textContent = 'Bitte kurz angeben, warum du heute nicht mehr ins Büro kommst.'; note.focus(); return; }
+            ok.disabled = true;
+            const done = await setAway(row, chosen, note.value.trim(), null);
+            ok.disabled = false;
+            if (done) { dialog.close(); button?.focus?.(); }
+        });
+        dialog.showModal();
+    }
+    // Vom „Auto über Nacht behalten“ aus (portalApp.js): Notdienst → Bereitschaft, früher Termin → früher Termin; '' hebt auf.
+    async function markAway(reason, note = '') {
+        const row = reason ? (openRow() || null) : awayRow();
+        if (!row) return false;
+        const { error } = await client.rpc('tt_gate_away', { p_id: row.id, p_reason: reason, p_note: note });
+        if (error) return false;
+        await load();
+        return true;
+    }
+
     async function takeBack(row, button) {
         const yes = await core.askYesNo({ title: 'Meldung zurücknehmen?', text: 'Die Pforte sieht deine Meldung dann nicht mehr. Das ist richtig, wenn du doch nicht fährst oder dich vertippt hast.', okLabel: 'Zurücknehmen', cancelLabel: 'Abbrechen' });
         if (!yes) return;
@@ -174,13 +257,13 @@
             const { data, error } = await client.from('tt_gate').select('*').eq('profile_id', profile.id).order('out_at', { ascending: false }).limit(20);
             if (error) { ready = false; render(); return; }      // Update 30 fehlt noch (oder kein Netz): kein Knopf, der nicht funktioniert
             ready = true;
-            rows = data.filter(row => row.date === today || !row.in_at);
+            rows = data.filter(row => row.date === today || (!row.in_at && !row.away_reason));
             render();
             await keepCurrent();
         } finally { busy = false; }
     }
 
-    window.PortalGate = { load, autoReport, refresh: () => { if (ready) { render(); keepCurrent(); } }, state: () => ({ rows, ready }) };
+    window.PortalGate = { load, autoReport, markAway, refresh: () => { if (ready) { render(); keepCurrent(); } }, state: () => ({ rows, ready }) };
     window.setInterval(() => { if (!document.hidden && core.view() === 'vehicle') load(); }, 30000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
     load();
