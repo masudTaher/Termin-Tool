@@ -228,7 +228,11 @@ a.gate-button { display: inline-flex; align-items: center; text-decoration: none
   .gate-day input { min-height: 58px; padding: 6px 12px; font-size: 1.05rem; }
   .gate-tools .gate-button, .gate-form-dialog .gate-button, .gate-confirm-buttons .gate-button { min-height: 58px; padding: 10px 18px; font-size: 1rem; }
   .gate-tools .gate-button-quiet { border-color: var(--line); }
-  .gate-main { gap: 20px; padding: 16px 24px 20px; }
+  .gate-main { grid-template-columns: minmax(0, 1fr) clamp(360px, 29vw, 600px); gap: 20px; padding: 16px 24px 20px; }
+  /* „Heute fertig“: Text über die ganze Breite, die Knöpfe darunter nebeneinander */
+  .gate-back-row { grid-template-columns: 1fr; gap: 8px; }
+  .gate-back-side { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .gate-back-side .gate-button { flex: 1 1 auto; min-height: 44px; }
   .gate-main h2 { margin-bottom: 10px; font-size: clamp(1.05rem, 1.2vw, 1.35rem); }
   .gate-card { grid-template-columns: minmax(220px, 23%) minmax(0, 1fr) auto minmax(250px, 21%); }
   .gate-card > div { padding: 16px 20px; }
@@ -245,4 +249,81 @@ a.gate-button { display: inline-flex; align-items: center; text-decoration: none
   .gate-empty-small { font-size: 1.1rem; }
   .gate-banner { margin: 10px 24px 0; font-size: 1.05rem; }
   .gate-unreported-add { font-size: 1.1rem; }
+}
+
+/* ===== Update 50: Fernseher-Anzeige – die Seite füllt den ganzen Bildschirm, dunkler Kopf, Felder wachsen mit, von Weitem lesbar ===== */
+/* Die Fläche liegt immer in der dritten Zeile – auch wenn kein Hinweis (gelbes Band) eingeblendet ist; vorher blieb dann unten ein leerer Streifen. */
+.gate-main { grid-row: 3; }
+@media (min-width: 1100px) {
+  html { font-size: clamp(18px, 1.15vw, 24px); }
+  body { background: radial-gradient(900px 500px at 10% 0%, #ffffff 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #dde9f7 0%, transparent 60%), var(--bg); }
+  /* Kopf: dunkel, Uhr und Zähler groß; links Titel + Uhr, rechts oben die Zähler, rechts unten die Werkzeuge */
+  .gate-top { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "title clock counts" "tools tools tools"; align-items: center; gap: 12px 36px; padding: 16px 32px; border-bottom: 0; background: linear-gradient(120deg, #0b1a2c 0%, #10304f 55%, #0b4d80 100%); color: #fff; box-shadow: 0 12px 34px rgba(12, 27, 46, .28); }
+  .gate-title { grid-area: title; }
+  .gate-clock { grid-area: clock; padding-left: 36px; border-left: 1px solid rgba(255, 255, 255, .18); }
+  .gate-counts { grid-area: counts; justify-self: end; gap: 14px; }
+  .gate-tools { grid-area: tools; justify-self: stretch; justify-content: flex-end; margin-left: 0; gap: 10px 12px; }
+  .gate-top .gate-kicker { color: #7cc4ff; font-size: .74rem; }
+  .gate-title h1 { font-size: clamp(2.2rem, 2.8vw, 3.4rem); color: #fff; }
+  .gate-clock strong { position: relative; padding-left: .55em; font-size: clamp(2.6rem, 4.4vw, 5.4rem); font-weight: 850; letter-spacing: -.02em; color: #fff; }
+  .gate-clock strong::before { content: ""; position: absolute; left: 0; top: 50%; width: .3em; height: .3em; margin-top: -.15em; border-radius: 50%; background: #35d07f; box-shadow: 0 0 0 .12em rgba(53, 208, 127, .3); animation: gate-live 2s ease-in-out infinite; }
+  @keyframes gate-live { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .gate-clock strong::before { animation: none; } }
+  .gate-clock span { padding-left: .55em; color: #b9c8da; font-size: clamp(1rem, 1.2vw, 1.4rem); }
+  .gate-count { min-width: 150px; padding: 10px 20px; border-color: rgba(255, 255, 255, .18); border-radius: 18px; background: rgba(255, 255, 255, .08); color: #fff; }
+  .gate-count b { font-size: clamp(2rem, 2.9vw, 3.4rem); color: #fff; }
+  .gate-count span { color: #b9c8da; font-size: .8rem; }
+  .gate-count.is-wait b { color: #c9d4e0; }
+  .gate-count.is-out b { color: #7cc4ff; }
+  .gate-count.is-back b { color: #5ddc9a; }
+  .gate-count.is-wait[data-open="ja"] { border-color: #f6b63a; background: rgba(246, 182, 58, .2); }
+  .gate-count.is-wait[data-open="ja"] b { color: #ffcb63; }
+  .gate-who, .gate-day { color: #b9c8da; }
+  .gate-who input, .gate-day input { border-color: rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .1); color: #fff; color-scheme: dark; }
+  .gate-who input::placeholder { color: #ffd9a0; }
+  .gate-who input:placeholder-shown { border-color: #f6b63a; background: rgba(246, 182, 58, .18); }
+  .gate-tools .gate-button { border-color: rgba(255, 255, 255, .24); background: rgba(255, 255, 255, .1); color: #fff; }
+  .gate-tools .gate-button:hover { border-color: #7cc4ff; background: rgba(255, 255, 255, .18); }
+  .gate-tools .gate-button-quiet { border-color: rgba(255, 255, 255, .16); background: transparent; color: #d3deea; }
+  /* Fläche: beide Spalten so hoch wie der Bildschirm; die Felder wachsen, bis alles gefüllt ist */
+  .gate-main { gap: 24px; padding: 20px 32px 24px; }
+  .gate-main h2 { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .gate-main h2::before { content: ""; width: 6px; height: 1.1em; border-radius: 3px; background: var(--glow); }
+  .gate-old h2::before { background: var(--warn); }
+  .gate-unreported h2::before { background: #0a5aa0; }
+  .gate-back h2::before { background: var(--go); }
+  #gateOutList { flex: 1 1 auto; grid-auto-rows: minmax(max-content, 1fr); align-content: stretch; gap: 18px; }
+  #gateOutList:empty, .gate-back-list:empty { display: none; }
+  .gate-back { padding: 16px 18px 18px; border: 1px solid var(--line); border-radius: 26px; background: rgba(255, 255, 255, .72); box-shadow: 0 8px 26px rgba(12, 27, 46, .06); }
+  .gate-back-list { flex: 1 1 auto; gap: 12px; }
+  .gate-back-row { padding: 16px 18px; border-radius: 18px; border-left-width: 6px; }
+  .gate-empty-small { flex: 1 1 auto; }
+  .gate-empty { border-width: 3px; border-radius: 26px; font-size: clamp(1.5rem, 2.4vw, 3rem); }
+  /* Ein Feld je Person – Rundung, Schatten, und die Schrift wächst, wenn nur ein oder zwei Felder da sind */
+  #gateOutList { --k: 1; }
+  .gate-card { grid-template-columns: minmax(calc(205px * var(--k)), 23%) minmax(0, 1fr) auto minmax(calc(230px * var(--k)), 21%); }
+  .gate-card { border-radius: 26px; box-shadow: 0 12px 34px rgba(12, 27, 46, .09); }
+  .gate-card > div { padding: calc(16px * var(--k)) calc(22px * var(--k)); }
+  .gate-driver { font-size: calc(clamp(1.5rem, 2.3vw, 2.8rem) * var(--k)); }
+  .gate-plate { font-size: calc(clamp(1.05rem, 1.5vw, 1.7rem) * var(--k)); padding: calc(4px * var(--k)) calc(12px * var(--k)); white-space: nowrap; }
+  .gate-model { font-size: calc(clamp(.9rem, 1vw, 1.15rem) * var(--k)); }
+  .gate-stop-text strong { font-size: calc(clamp(1.15rem, 1.6vw, 1.9rem) * var(--k)); }
+  .gate-stop-text span, .gate-between, .gate-trips { font-size: calc(clamp(.95rem, 1.1vw, 1.3rem) * var(--k)); }
+  .gate-stop-no { width: calc(38px * var(--k)); height: calc(38px * var(--k)); font-size: calc(1.1rem * var(--k)); }
+  .gate-stops { gap: calc(10px * var(--k)); }
+  .gate-time strong { font-size: calc(clamp(1.7rem, 2.4vw, 3rem) * var(--k)); }
+  .gate-since, .gate-fact { font-size: calc(clamp(.9rem, 1vw, 1.15rem) * var(--k)); }
+  .gate-time-label, .gate-wait-label { font-size: calc(.8rem * var(--k)); }
+  .gate-stops-count, .gate-inside-label, .gate-trip-count { font-size: calc(.95rem * var(--k)); }
+  .gate-return, .gate-confirm-out { min-height: calc(clamp(86px, 9vh, 130px) * var(--k)); font-size: calc(clamp(1.2rem, 1.7vw, 2rem) * var(--k)); border-radius: 18px; }
+  .gate-again { min-height: calc(52px * var(--k)); font-size: calc(1rem * var(--k)); }
+  .gate-side .gate-button-quiet { min-height: calc(48px * var(--k)); font-size: calc(.92rem * var(--k)); }
+}
+/* Sehr großer Bildschirm (Fernseher ab 1600 Pixel): noch etwas mehr Luft und Schrift */
+@media (min-width: 1600px) {
+  .gate-main { padding: 24px 36px 28px; gap: 28px; }
+  .gate-top { padding: 18px 36px; }
+  .gate-card { grid-template-columns: minmax(calc(215px * var(--k)), 24%) minmax(0, 1fr) auto minmax(calc(240px * var(--k)), 21%); }
+  .gate-back-text strong { font-size: 1.18rem; }
+  .gate-back-text span { font-size: 1rem; }
 }

@@ -439,7 +439,24 @@
         const older = main.filter(group => group.current.date !== day).length;
         $('gateReportSum').textContent = `${all.length} ${all.length === 1 ? 'Fahrt' : 'Fahrten'} · ${all.filter(row => row.in_at).length} zurück${all.some(row => !row.in_at && row.away_reason) ? ` · ${all.filter(row => !row.in_at && row.away_reason).length} kommt nicht zurück (Bereitschaft / früher Termin)` : ''} · ${all.filter(row => !row.in_at && !row.away_reason && confirmedAt(row)).length} noch draußen${all.some(row => !row.in_at && !confirmedAt(row)) ? ` · ${all.filter(row => !row.in_at && !confirmedAt(row)).length} gemeldet, von der Pforte nicht bestätigt` : ''}${older ? ` · dazu ${older} noch draußen von früheren Tagen` : ''}`;
         tick();
+        fit();
     }
+
+    // Fernseher (Update 50): Sind nur ein oder zwei Felder da, wächst die Schrift, bis die Fläche gefüllt ist – aber nur so weit, dass nichts abgeschnitten wird.
+    let fitTimer = 0;
+    function fit() {
+        const list = $('gateOutList');
+        if (!list || window.innerWidth < 1100) { if (list) list.style.removeProperty('--k'); return; }
+        const count = list.children.length;
+        const steps = count === 1 ? [1.32, 1.2, 1.1, 1] : count === 2 ? [1.14, 1.07, 1] : [1];
+        for (const k of steps) {
+            list.style.setProperty('--k', String(k));
+            const tooWide = [...list.querySelectorAll('.gate-side, .gate-car, .gate-time')].some(part => part.scrollWidth > part.clientWidth + 2);
+            const tooTight = [...list.querySelectorAll('.gate-card')].some(card => { const info = card.querySelector('.gate-info'); return info && info.clientWidth < card.clientWidth * 0.3; });
+            if (!tooWide && !tooTight && list.scrollHeight <= list.clientHeight + 2) return;
+        }
+    }
+    window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fit, 150); });
 
     async function load() {
         if (busy || !profile) return;
