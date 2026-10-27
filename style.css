@@ -13,7 +13,7 @@
   --line-strong: #cbd5e1;
   --ink: #152238;
   --ink-soft: #334155;
-  --muted: #64748b;
+  --muted: #5b6b80;
   --brand: #1769aa;
   --brand-dark: #0f507f;
   --brand-soft: #e8f2fb;
@@ -3081,3 +3081,20 @@ body[data-page="tracking"] #dataTable .vehicle-suggest:hover { background: #dbe8
 .chat-urgent { display: inline-block; margin: 0 0 4px; padding: 2px 10px; border-radius: 999px; background: #b42318; color: #fff; font-size: .74rem; font-weight: 850; letter-spacing: .06em; }
 .chat-urgent-dot { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #b42318; color: #fff; font-size: .7rem; font-weight: 850; }
 .chat-person.has-urgent { border-color: #b42318; }
+
+/* ===== §96 (R74): Erinnerungskasten im Live-Tracking kompakt; „Später“ beim Hinweis auf Mitteilungen ===== */
+.reminder-banner-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.reminder-banner .reminder-enable-inline { min-height: 32px; padding: 4px 12px; font-size: .82rem; }
+.reminder-banner ul.reminder-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.reminder-chips li { padding: 4px 11px; border-radius: 999px; background: rgba(255, 255, 255, .75); font-size: .86rem; font-weight: 500; line-height: 1.35; }
+.reminder-chips li b { font-weight: 750; }
+.reminder-chips li small { color: var(--muted); font-size: .8rem; }
+:root[data-theme="dark"] .reminder-chips li { background: rgba(0, 0, 0, .28); }
+.start-notices .notice-row { display: flex; align-items: stretch; gap: 6px; }
+.start-notices .notice-row .notice-soft { flex: 1 1 auto; }
+.start-notices .notice-later { flex: 0 0 auto; min-height: 0; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); font-size: .82rem; font-weight: 600; }
+.start-notices .notice-later:hover { color: var(--ink); border-color: var(--brand); }
+.offline-band { position: sticky; top: 0; z-index: 60; margin: 0; padding: 8px 16px; background: var(--warn); color: #fff; font-size: .9rem; font-weight: 700; text-align: center; }
+:root[data-theme="dark"] .offline-band { color: #0b1622; }
+html[data-text="big"] { font-size: 112.5%; }
+.text-size-buttons .button-secondary[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }

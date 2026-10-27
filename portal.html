@@ -45,6 +45,7 @@
          </span>
       </header>
 
+      <p id="offlineBand" class="offline-band" role="status" hidden>Kein Internet – die App zeigt den letzten Stand. Senden klappt wieder, sobald du online bist.</p>
       <main class="portal-main">
          <p id="portalStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
@@ -814,6 +815,14 @@
                   <h2 id="pushTitle" class="card-title">Mitteilungen aufs Handy</h2>
                   <p class="portal-text" id="pushInfo">Du bekommst eine Mitteilung bei neuen Aufträgen, Nachrichten und wenn das Auto nach 16 Uhr noch nicht zurück ist.</p>
                   <button type="button" class="button-primary big-button" id="pushToggle">Mitteilungen einschalten</button>
+               </section>
+               <section class="directory-card" aria-labelledby="textSizeTitle">
+                  <h2 id="textSizeTitle" class="card-title">Schriftgröße</h2>
+                  <p class="portal-text">Wenn dir die Schrift zu klein ist: hier wird alles in der App etwas größer.</p>
+                  <div class="portal-guide-buttons text-size-buttons">
+                     <button type="button" class="button-secondary portal-wide-button" id="textSizeNormal" aria-pressed="true">Normal</button>
+                     <button type="button" class="button-secondary portal-wide-button" id="textSizeBig" aria-pressed="false">Größer</button>
+                  </div>
                </section>
                <section class="directory-card" aria-labelledby="installTitle" id="installCard" hidden>
                   <h2 id="installTitle" class="card-title">Als App auf das Handy legen</h2>

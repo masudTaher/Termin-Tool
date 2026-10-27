@@ -164,28 +164,33 @@ function renderTrackingReminderBanner(reminders) {
         return;
     }
 
+    // Kompakt (R74): Überschrift und Ton-Knopf in einer Zeile, die Termine als kleine Chips – so bleibt die Tabelle im Blick.
+    const head = document.createElement('div');
+    head.className = 'reminder-banner-head';
     const heading = document.createElement('strong');
     heading.textContent = `${reminders.length === 1 ? 'Noch ein Termin' : `${reminders.length} Termine`} offen und bald fällig`;
-    banner.append(heading);
-    const list = document.createElement('ul');
-    reminders.forEach(reminder => {
-        const item = document.createElement('li');
-        item.textContent = `${reminder.time} Uhr — ${reminder.patientName}, ${reminder.place} — in ca. ${reminder.minutesRemaining} Min.`;
-        list.append(item);
-    });
-    banner.append(list);
-
+    head.append(heading);
     if (!trackingReminderSoundEnabled) {
-        const help = document.createElement('p');
-        help.className = 'reminder-banner-help';
-        help.textContent = 'Der Browser benötigt einen Klick, bevor er Töne abspielen darf.';
         const activate = document.createElement('button');
         activate.type = 'button';
         activate.className = 'button-secondary reminder-enable-inline';
         activate.textContent = 'Erinnerungston einschalten';
+        activate.title = 'Der Browser benötigt einen Klick, bevor er Töne abspielen darf.';
         activate.addEventListener('click', enableTrackingReminderSound);
-        banner.append(help, activate);
+        head.append(activate);
     }
+    banner.append(head);
+    const list = document.createElement('ul');
+    list.className = 'reminder-chips';
+    reminders.forEach(reminder => {
+        const item = document.createElement('li');
+        item.innerHTML = `<b></b> · <span></span> · <small></small>`;
+        item.querySelector('b').textContent = `${reminder.time} Uhr`;
+        item.querySelector('span').textContent = `${reminder.patientName}, ${reminder.place}`;
+        item.querySelector('small').textContent = `in ca. ${reminder.minutesRemaining} Min.`;
+        list.append(item);
+    });
+    banner.append(list);
     banner.hidden = false;
 }
 

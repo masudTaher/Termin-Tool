@@ -357,6 +357,21 @@ if (!window.TerminContact) {
     $('openMessages').addEventListener('click', () => goTo('messages'));
     $('openAccount').addEventListener('click', () => goTo('account'));
 
+    // ---------- Kein Internet: schmales Band oben (R74) ----------
+    const showOffline = () => { const band = $('offlineBand'); if (band) band.hidden = navigator.onLine !== false; };
+    window.addEventListener('online', showOffline); window.addEventListener('offline', showOffline); showOffline();
+
+    // ---------- Schriftgröße: Normal / Größer – bleibt auf diesem Handy gespeichert (R74) ----------
+    const TEXT_KEY = 'terminTool.portal.textSize';
+    function applyTextSize(size) {
+        document.documentElement.dataset.text = size === 'big' ? 'big' : '';
+        $('textSizeNormal')?.setAttribute('aria-pressed', String(size !== 'big'));
+        $('textSizeBig')?.setAttribute('aria-pressed', String(size === 'big'));
+    }
+    applyTextSize(localStorage.getItem(TEXT_KEY));
+    $('textSizeNormal')?.addEventListener('click', () => { localStorage.setItem(TEXT_KEY, 'normal'); applyTextSize('normal'); });
+    $('textSizeBig')?.addEventListener('click', () => { localStorage.setItem(TEXT_KEY, 'big'); applyTextSize('big'); });
+
     // ---------- Hell / Dunkel: Knopf oben neben der Glocke ----------
     // Die Wahl bleibt auf diesem Handy gespeichert. Ohne eigene Wahl gilt die Einstellung des Handys (siehe portal.html).
     const THEME_KEY = 'terminTool.portal.theme';
@@ -552,12 +567,19 @@ if (!window.TerminContact) {
     // Einmaliger Hinweis auf der Startseite, solange Mitteilungen möglich, aber noch aus sind.
     async function addPushNotice() {
         if (await TerminCloud.pushState() !== 'off' || $('pushNotice')) return;
+        // „Später“: der Hinweis bleibt dann sieben Tage weg (Update 50 / R74).
+        if (Number(localStorage.getItem('portal.pushNoticeLater') || 0) > Date.now()) return;
         const item = document.createElement('li');
         item.id = 'pushNotice';
+        item.className = 'notice-row';
         const button = el('button', 'notice-soft', 'Mitteilungen einschalten – dann siehst du Aufträge und Nachrichten sofort');
         button.type = 'button';
         button.addEventListener('click', () => switchPush(true));
-        item.append(button);
+        const later = el('button', 'notice-later', 'Später');
+        later.type = 'button';
+        later.title = 'Den Hinweis sieben Tage lang nicht mehr zeigen';
+        later.addEventListener('click', () => { localStorage.setItem('portal.pushNoticeLater', String(Date.now() + 7 * 24 * 60 * 60 * 1000)); item.remove(); });
+        item.append(button, later);
         $('startNotices').append(item);
     }
 

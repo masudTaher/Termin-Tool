@@ -675,7 +675,7 @@
             renderCheck();
             if ($('akteDoc').open) renderDoc();
         } });
-        if (!doc.pages.length) { docs = docs.filter(item => item !== doc); $('akteDoc').close(); return; }
+        if (!doc.pages.length) { docs = docs.filter(item => item !== doc); renderCheck(); $('akteDoc').close(); return; }
         refreshDoc(doc);
         renderDoc();
     });

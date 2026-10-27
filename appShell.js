@@ -177,6 +177,13 @@
         document.body.append(toasts);
 
         applyTheme(readTheme());
+        // Kein Internet: schmales Band oben (R74)
+        const offlineBand = document.createElement('p');
+        offlineBand.id = 'offlineBand'; offlineBand.className = 'offline-band'; offlineBand.setAttribute('role', 'status'); offlineBand.hidden = true;
+        offlineBand.textContent = 'Kein Internet – die Seite zeigt den letzten Stand. Speichern klappt wieder, sobald die Verbindung da ist.';
+        document.body.prepend(offlineBand);
+        const showOffline = () => { offlineBand.hidden = navigator.onLine !== false; };
+        window.addEventListener('online', showOffline); window.addEventListener('offline', showOffline); showOffline();
         document.getElementById('themeToggle').addEventListener('click', () => {
             const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
             try { localStorage.setItem(THEME_KEY, next); } catch (error) { /* Auswahl gilt dann nur bis zum Neuladen. */ }
