@@ -3063,3 +3063,21 @@ body[data-page="tracking"] #dataTable .vehicle-suggest:hover { background: #dbe8
 .fuel-name-input { width: 170px; max-width: 100%; }
 /* Abrechnung, dunkel: Schrittnummer auf hellem Türkis lesbar (Kontrast) */
 :root[data-theme="dark"] .pay-step:not([data-done="ja"]) .pay-step-no { color: #05201e; }
+
+/* ===== 95. Eilmeldung: Hilfe / Korrektur anfragen (Update 49) ===== */
+.help-button { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; border-style: dashed; color: #8a1c1c; border-color: #e3b4b4; }
+.help-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.help-sheet textarea { width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; resize: vertical; }
+.help-context { margin: 6px 0 0; color: var(--muted); font-size: .82rem; }
+.help-choice[aria-pressed="true"] { border-color: #b42318; background: #b42318; color: #fff; }
+.urgent-band { position: sticky; top: 0; z-index: 60; display: grid; gap: 4px; margin-left: var(--nav-w, 0); padding: 8px 14px; background: #b42318; color: #fff; box-shadow: 0 6px 18px rgba(180, 35, 24, .35); }
+.urgent-band-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px 14px; color: #fff; text-decoration: none; }
+.urgent-band-item strong { font-size: .95rem; letter-spacing: .04em; }
+.urgent-band-item span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.urgent-band-item em { padding: 4px 12px; border-radius: 999px; background: #fff; color: #b42318; font-style: normal; font-weight: 800; }
+.urgent-band-item:hover em { background: #ffe4e1; }
+@media (max-width: 700px) { .urgent-band { margin-left: 0; } .urgent-band-item { grid-template-columns: 1fr auto; } .urgent-band-item span { grid-column: 1 / -1; white-space: normal; } }
+.chat-row.is-urgent .chat-bubble { border: 2px solid #b42318; }
+.chat-urgent { display: inline-block; margin: 0 0 4px; padding: 2px 10px; border-radius: 999px; background: #b42318; color: #fff; font-size: .74rem; font-weight: 850; letter-spacing: .06em; }
+.chat-urgent-dot { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #b42318; color: #fff; font-size: .7rem; font-weight: 850; }
+.chat-person.has-urgent { border-color: #b42318; }

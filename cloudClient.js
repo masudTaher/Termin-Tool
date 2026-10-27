@@ -129,7 +129,7 @@ const TerminCloud = (() => {
         // Neue Termine, die Dolmetscher gemeldet haben (Seite „Neue Termine“). Fehlt die Tabelle noch, zählt es als 0.
         const newAppointments = await client.from('tt_new_appointments').select('id').eq('status', 'neu');
         // Ungelesene Chat-Nachrichten der Dolmetscher (Seite „Nachrichten“). Fehlt die Tabelle noch, zählt es als 0.
-        const unreadChat = await client.from('tt_chat').select('id').eq('from_staff', false).is('read_at', null);
+        const unreadChat = await client.from('tt_chat').select('id, urgent, kind, sender_name, thread_id, body, created_at').eq('from_staff', false).is('read_at', null);
         // Korrekturen der Dolmetscher (zurückgenommen, geändert, gelöscht), die noch niemand gesehen hat (Update 37). Fehlt die Tabelle: 0.
         const corrections = await client.from('tt_corrections').select('id').is('seen_at', null);
         // Meldungen über einen Vorfahrer (Fahrerakte) und Meldungen des Arztes an die Einsatzleitung (Update 42). Fehlt die Tabelle: 0.
@@ -151,6 +151,8 @@ const TerminCloud = (() => {
             fest: festReceipts + (overtime.error ? 0 : overtime.data.length) + absences, absences,
             appointments: newAppointments.error ? 0 : newAppointments.data.length,
             chat: unreadChat.error ? 0 : unreadChat.data.length,
+            // Eilmeldungen (Update 49): ungelesene Hilfe-/Korrektur-Anfragen – rotes Band in allen Büro-Seiten
+            urgent: unreadChat.error ? [] : unreadChat.data.filter(item => item.urgent).map(item => ({ id: item.id, kind: item.kind || '', name: item.sender_name || 'Dolmetscher', threadId: item.thread_id, text: String(item.body || '').split('\n')[0].slice(0, 160), at: item.created_at })),
             corrections: corrections.error ? 0 : corrections.data.length };
     }
 
@@ -329,6 +331,10 @@ const TerminCloud = (() => {
         const today = todayIso();
         const { data: cloudHandovers, error: handoverError } = await client.from('tt_handovers').select('*').eq('date', today);
         if (handoverError) return { ok: false, reason: germanError(handoverError) };
+        // Offene Übernahmen aus der Dolmetscher-App (auch von früheren Tagen, z. B. Notdienst): Die App ist die Wahrheit – eine
+        // Zuweisung aus dem Live-Tracking darf daneben keine zweite offene Übernahme anlegen (Update 48).
+        const openCloud = await client.from('tt_handovers').select('id, vehicle_id, driver_id, date').is('end_time', null).then(result => (result.error ? [] : result.data || []), () => []);
+        const notes = [];
         const profileIdByName = name => (profiles || []).find(item => sameName(item.full_name, name))?.id || null;
 
         const allLocal = readFleetList(FLEET_HANDOVERS_KEY);
@@ -353,8 +359,22 @@ const TerminCloud = (() => {
                 end_mileage: item.endMileage === '' || item.endMileage == null ? null : Number(item.endMileage),
                 note: item.note || ''
             };
-            if (!cloud) toPush.push(row);
-            else if (item.endTime && !cloud.end_time) toPush.push(row);                 // lokal beendet
+            if (!cloud) {
+                const openOfDriver = row.driver_id ? openCloud.find(other => other.driver_id === row.driver_id) : null;
+                if (openOfDriver && openOfDriver.vehicle_id === cloudVehicleId && cloudById.has(openOfDriver.id)) {
+                    // Dieselbe Fahrt wurde in der App schon übernommen: lokal unter der Online-Kennung weiterführen.
+                    item.id = openOfDriver.id; handoversChanged = true;
+                } else if (openOfDriver) {
+                    const plate = cloudVehicleById.get(openOfDriver.vehicle_id)?.plate || 'einem Fahrzeug';
+                    if (openOfDriver.vehicle_id !== cloudVehicleId) notes.push(`${item.driver} hat laut App noch ${plate} – ${vehicle?.plate || item.vehiclePlate} wurde deshalb nicht als Übernahme eingetragen (Vorschlag bleibt im Tracking)`);
+                } else toPush.push(row);
+            }
+            else if (item.endTime && !cloud.end_time) {                                  // lokal beendet
+                // Von der Zuweisung im Live-Tracking beendet, online aber eine echte Übernahme aus der App (mit Kilometerstand):
+                // Die App ist die Wahrheit – die Übernahme bleibt offen, lokal wird das Ende zurückgenommen (Update 48).
+                if (item.endedBy === 'tracking' && cloud.start_mileage != null) { item.endTime = ''; delete item.endedBy; handoversChanged = true; }
+                else toPush.push(row);
+            }
             else if (cloud.end_time && !item.endTime) {                                  // online beendet (z. B. im Portal)
                 item.endTime = String(cloud.end_time).slice(0, 5);
                 if (cloud.end_mileage != null) item.endMileage = cloud.end_mileage;
@@ -380,7 +400,7 @@ const TerminCloud = (() => {
             if (error) return { ok: false, reason: germanError(error) };
         }
         if (handoversChanged) saveFleetList(FLEET_HANDOVERS_KEY, allLocal);
-        return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length, problems: vehicleProblems };
+        return { ok: true, changed: vehiclesChanged || handoversChanged, pushed: toPush.length, problems: vehicleProblems, notes };
     }
 
     // Chat: Die Einsatzleitung schreibt in das Gespräch einer Person (dort kann sie antworten). Mit options.title geht die

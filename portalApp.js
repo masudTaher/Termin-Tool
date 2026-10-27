@@ -76,6 +76,7 @@ if (!window.TerminContact) {
 
     // Anzeige oben: grün = gespeichert oder gesendet (5 Sekunden), rot = Problem (bleibt länger).
     // Ein Tipp auf die rote Anzeige führt zur Stelle des Fehlers (target: Element oder CSS-Auswahl).
+    let lastErrorText = '';   // letzte Fehlermeldung – kommt in eine Hilfe-Anfrage (Update 49)
     const TOAST_ICONS = {
         success: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.800 2.800L16.500 9.500"/></svg>',
         error: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 19.500h18z"/><path d="M12 10v4.500M12 17h.01"/></svg>',
@@ -107,6 +108,7 @@ if (!window.TerminContact) {
         const text = document.createElement('span');
         text.textContent = message;
         item.append(text);
+        if (kind === 'error') lastErrorText = `${message} (${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr)`;
         const duration = kind === 'error' ? 10000 : action ? 10000 : 5000;
         item.style.setProperty('--toast-time', `${duration}ms`);
         const problem = kind === 'error' ? (typeof target === 'function' ? target : findProblem(target)) : null;
@@ -2261,7 +2263,9 @@ if (!window.TerminContact) {
         }
         vehicles = vehicleResult.data.filter(vehicle => vehicle.station !== 'Heidelberg');   // Fahrzeuge der Kollegen in Heidelberg (Update 41) gehören nicht hierher
         openHandovers = handoverResult.data;
-        myHandover = openHandovers.find(item => item.driver_id === profile.id) || null;
+        // Mehrere offene Übernahmen (z. B. eine vom Büro im Live-Tracking eingetragene ohne Kilometer): Es gilt die mit Kilometerstand, sonst die neueste.
+        myHandover = openHandovers.filter(item => item.driver_id === profile.id)
+            .sort((left, right) => (Number(right.start_mileage != null) - Number(left.start_mileage != null)) || String(right.created_at || '').localeCompare(String(left.created_at || '')))[0] || null;
         const myVehicle = myHandover ? vehicleById(myHandover.vehicle_id) : null;
         const fixedVehicle = vehicles.find(vehicle => vehicle.assigned_to === profile.id) || null;
         const free = freeVehicles();
@@ -2775,12 +2779,14 @@ if (!window.TerminContact) {
         const button = event.currentTarget;
         button.disabled = true;
         try {
-            const { error } = await client.rpc('tt_return_vehicle', {
-                p_mileage: back.mileage, p_fuel: back.fuel, p_parking: back.parking,
-                p_clean_inside: back.inside, p_clean_outside: back.outside
-            });
+            const args = { p_mileage: back.mileage, p_fuel: back.fuel, p_parking: back.parking, p_clean_inside: back.inside, p_clean_outside: back.outside };
+            // Genau die gezeigte Übernahme zurückgeben (Update 48) – ohne das Update kennt die Datenbank p_handover noch nicht.
+            let { error } = await client.rpc('tt_return_vehicle', { ...args, p_handover: myHandover?.id || null });
+            if (error && /could not find the function|p_handover/i.test(error.message || '')) ({ error } = await client.rpc('tt_return_vehicle', args));
             if (error) {
-                toast(TerminCloud.germanError(error), 'error');
+                const message = TerminCloud.germanError(error);
+                // Klappt die Rückgabe nicht, kann die Person direkt um Hilfe bitten – als Eilmeldung an die Einsatzleitung (Update 49).
+                toast(message, 'error', null, { label: 'Hilfe anfragen', run: () => openHelpSheet({ kind: 'hilfe', text: `Ich kann das Fahrzeug nicht zurückgeben. Meldung: ${message}` }) });
                 if (/kilometer/i.test(error.message || '')) returnWizard.show(1);
                 return;
             }
@@ -2796,6 +2802,78 @@ if (!window.TerminContact) {
             button.disabled = false;
         }
     });
+
+    // ---------- Hilfe / Korrektur anfragen: Eilmeldung an die Einsatzleitung (Update 49) ----------
+    // Etwas klappt nicht (z. B. Auto lässt sich nicht zurückgeben) oder etwas ist falsch eingetragen: Die Person schreibt kurz, was los ist.
+    // Die Nachricht landet als EILMELDUNG bei Einsatzleitung und Sekretariat (Handy + rotes Band in allen Büro-Seiten, bis gelesen).
+    const HELP_KINDS = [['hilfe', 'Technisches Problem', 'etwas klappt nicht – z. B. Auto lässt sich nicht zurückgeben'], ['korrektur', 'Korrektur anfragen', 'etwas ist falsch eingetragen – Zeit, Auto, Termin']];
+    function helpContext() {
+        const car = myHandover ? vehicleById(myHandover.vehicle_id) : null;
+        return [car ? `Fahrzeug: ${car.plate}` : 'kein Fahrzeug übernommen', lastErrorText ? `Letzte Meldung der App: ${lastErrorText}` : ''].filter(Boolean).join(' · ');
+    }
+    function openHelpSheet(preset = {}) {
+        const dialog = el('dialog', 'confirm-dialog gate-sheet help-sheet');
+        dialog.setAttribute('aria-labelledby', 'helpTitle');
+        const title = el('h2', '', 'Hilfe oder Korrektur anfragen');
+        title.id = 'helpTitle';
+        const hint = el('p', 'field-hint', 'Geht sofort als Eilmeldung an die Einsatzleitung. Schreib kurz, was nicht klappt oder was falsch eingetragen ist.');
+        let chosen = preset.kind === 'korrektur' ? 'korrektur' : 'hilfe';
+        const choices = el('div', 'gate-sheet-choices');
+        const buttons = HELP_KINDS.map(([kind, label, small]) => {
+            const choice = el('button', 'choice-button gate-away-choice help-choice');
+            choice.type = 'button';
+            choice.dataset.kind = kind;
+            choice.setAttribute('aria-pressed', String(kind === chosen));
+            const text = el('span', '');
+            text.append(el('strong', '', label), el('small', '', small));
+            choice.append(text);
+            choice.addEventListener('click', () => { chosen = kind; buttons.forEach(item => item.setAttribute('aria-pressed', String(item.dataset.kind === chosen))); body.focus(); });
+            return choice;
+        });
+        choices.append(...buttons);
+        const label = el('label', 'field-label', 'Was ist los?');
+        label.htmlFor = 'helpText';
+        const body = el('textarea');
+        body.id = 'helpText'; body.rows = 4; body.maxLength = 1500; body.placeholder = 'zum Beispiel: Die Rückgabe springt immer zurück zu Schritt 1.';
+        body.value = preset.text || '';
+        const context = el('p', 'help-context', helpContext());
+        const status = el('p', 'gate-sheet-status');
+        status.setAttribute('role', 'alert');
+        const bar = el('div', 'modal-buttons');
+        const cancel = el('button', 'button-secondary', 'Abbrechen');
+        cancel.type = 'button';
+        const ok = el('button', 'button-primary', 'Eilmeldung senden');
+        ok.type = 'button';
+        ok.id = 'helpSend';
+        bar.append(cancel, ok);
+        dialog.append(title, hint, choices, label, body, context, status, bar);
+        document.body.append(dialog);
+        cancel.addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => dialog.remove());
+        ok.addEventListener('click', async () => {
+            const text = body.value.trim();
+            if (text.length < 5) { status.textContent = 'Bitte schreib kurz, was los ist.'; body.focus(); return; }
+            ok.disabled = true;
+            const sent = await sendHelp(chosen, text);
+            ok.disabled = false;
+            if (sent) { dialog.close(); toast('Eilmeldung gesendet – die Einsatzleitung bekommt sie sofort.', 'success'); }
+            else status.textContent = 'Nicht gesendet. Bitte noch einmal versuchen – oder ruf im Büro an.';
+        });
+        dialog.showModal();
+        body.focus();
+    }
+    async function sendHelp(kind, text) {
+        const full = `${text}\n\n(${helpContext()})`.slice(0, 2000);
+        const row = { thread_id: profile.id, sender_id: profile.id, sender_name: profile.full_name || '', from_staff: false, body: full };
+        let result = await client.from('tt_chat').insert({ ...row, urgent: true, kind }).select('id').single();
+        // Ohne Update 49 kennt die Datenbank die Eilmeldung noch nicht: dann als normale Nachricht mit Kennzeichnung im Text.
+        if (result.error && /urgent|kind/i.test(result.error.message || '')) result = await client.from('tt_chat').insert({ ...row, body: `EILMELDUNG (${kind === 'korrektur' ? 'Korrektur anfragen' : 'Hilfe'}): ${full}`.slice(0, 2000) }).select('id').single();
+        if (result.error) { toast(`Nicht gesendet: ${TerminCloud.germanError(result.error)}`, 'error'); return false; }
+        TerminCloud.callFunction?.({ action: 'chat', chatId: result.data.id })?.catch?.(() => null);
+        return true;
+    }
+    $('helpOpen')?.addEventListener('click', () => openHelpSheet());
+    window.PortalHelp = { open: openHelpSheet };
 
     // ---------- Schäden (nur für das übernommene Fahrzeug) ----------
     const NO_POSITION = 'Noch keine Stelle gewählt.';

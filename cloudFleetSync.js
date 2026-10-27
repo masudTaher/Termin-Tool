@@ -5,6 +5,7 @@
     let syncing = false;
     let timer = null;
     let lastProblem = '';
+    let lastNote = '';
 
     async function syncFleetNow() {
         if (syncing) return;
@@ -16,6 +17,10 @@
             const problem = result.ok && result.problems?.length ? result.problems.join(' · ') : '';
             if (problem && problem !== lastProblem && typeof showToast === 'function') showToast(`Fahrzeug nicht online gespeichert – ${problem}`, 'error');
             lastProblem = problem;
+            // Hinweis (Update 48): Eine Zuweisung aus dem Live-Tracking wurde nicht als Übernahme übertragen, weil die Person laut App ein anderes Auto hat.
+            const note = result.ok && result.notes?.length ? result.notes.join(' · ') : '';
+            if (note && note !== lastNote && typeof showToast === 'function') showToast(note, 'info', { duration: 12000 });
+            lastNote = note;
         } catch (error) {
             console.warn('Fuhrpark-Abgleich nicht möglich:', error);
         } finally {

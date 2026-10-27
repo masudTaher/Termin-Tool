@@ -56,7 +56,7 @@
             undo.addEventListener('click', () => setAway(away, '', '', undo));
             box.append(text, undo);
         } else if (row) {
-            const stops = Array.isArray(row.stops) ? row.stops : [];
+            const stops = (Array.isArray(row.stops) ? row.stops : []).filter(stop => !stop?.cancelled);   // zurückgenommene (Update 48) zählen nicht
             const facts = el('span', '', [row.plate || 'ohne Dienstfahrzeug', stops.length ? `${stops.length} ${stops.length === 1 ? 'Auftrag' : 'Aufträge'}` : row.note].filter(Boolean).join(' · '));
             if (confirmed) {
                 // Die Pforte hat die Ausfahrt bestätigt: Jetzt gilt die Person als draußen – zurücknehmen kann das nur noch die Pforte.
@@ -222,7 +222,10 @@
         const stops = stopsNow(row.out_at);
         const car = carNow();
         const changes = {};
-        if (stops.length && JSON.stringify(stops) !== JSON.stringify(row.stops || [])) changes.stops = stops;
+        // Seit Update 48 hält die Datenbank die Termine selbst aktuell (Änderungen und Rücknahmen des Büros, Auslöser auf den Aufträgen) –
+        // die App würde sonst mit einem alten Stand darüberschreiben. Davor: die App zieht nach.
+        const dbKeepsStops = 'stops_changed_at' in row;
+        if (!dbKeepsStops && stops.length && JSON.stringify(stops) !== JSON.stringify(row.stops || [])) changes.stops = stops;
         if (car.plate && car.plate !== row.plate) { changes.plate = car.plate; changes.vehicle = car.vehicle; }
         if (!Object.keys(changes).length) return;
         const { error } = await client.from('tt_gate').update(changes).eq('id', row.id);

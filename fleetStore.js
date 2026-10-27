@@ -118,9 +118,9 @@ function assignFleetVehicleToDriver(vehicleId, driver, note = 'Im Live-Tracking 
         if (!isOpenToday(item)) return;
         if (item.vehicleId === vehicleId) {
             previousDriver = item.driver;
-            item.endTime = now;
+            item.endTime = now; item.endedBy = 'tracking';
         } else if (sameFleetDriver(item.driver, name)) {
-            item.endTime = now;
+            item.endTime = now; item.endedBy = 'tracking';   // Beendet durch die Zuweisung – eine echte Übernahme aus der App bleibt online offen (Update 48)
         }
     });
     entries.push({

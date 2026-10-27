@@ -115,13 +115,16 @@
     const stopPlace = stop => [stop.doctor, stop.city].filter(Boolean).join(' · ') || 'Ziel nicht angegeben';
     const stopPatient = stop => [stop.patient_name, stop.patient_nr ? `Nr. ${stop.patient_nr}` : ''].filter(Boolean).join(' · ');
     const stopTime = stop => stop.time ? `${String(stop.time).slice(0, 5)} Uhr` : '';
+    // Zurückgenommene Termine (Update 48: das Büro hat den Auftrag zurückgezogen oder verlegt) bleiben sichtbar, zählen aber nicht.
+    const isCancelled = stop => Boolean(stop?.cancelled);
+    const activeStops = row => stopsOf(row).filter(stop => !isCancelled(stop));
     // Erledigt ist ein Termin, wenn die App ihn als fertig mitschickt (done) oder die Datenbank es weiß (tt_gate_jobs, Update 38).
     // So erkennt die Pforte, dass jemand mit zwei Terminen nur zwischendurch zurückkommt.
     const jobOf = (row, stop) => stop.assignment_id ? jobs.find(job => job.assignment_id === stop.assignment_id) : jobs.find(job => job.profile_id === row.profile_id && job.appointment_time && String(job.appointment_time).slice(0, 5) === String(stop.time || '').slice(0, 5));
     const stopDoneAt = (row, stop) => { if (stop.done) return stop.done; const job = jobOf(row, stop); return job ? (job.finished_at || job.storno_at || (['beendet', 'alleine', 'storniert'].includes(job.work_status) ? row.out_at : null)) : null; };
-    const openStops = row => stopsOf(row).filter(stop => !stopDoneAt(row, stop));
-    const doneStops = row => stopsOf(row).filter(stop => Boolean(stopDoneAt(row, stop)));
-    const destination = row => stopsOf(row).map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ') || row.note || 'Ziel nicht angegeben';
+    const openStops = row => activeStops(row).filter(stop => !stopDoneAt(row, stop));
+    const doneStops = row => activeStops(row).filter(stop => Boolean(stopDoneAt(row, stop)));
+    const destination = row => activeStops(row).map(stop => [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' ')).join('  →  ') || row.note || 'Ziel nicht angegeben';
 
     // Bestätigt die Pforte die Ausfahrt, gilt die Person als draußen. Vorher ist sie nur „angemeldet“.
     // (Meldungen aus der Zeit vor Update 31 kennen das Feld nicht – sie gelten als bestätigt.)
@@ -149,8 +152,8 @@
             list.sort((left, right) => String(left.out_at).localeCompare(String(right.out_at)));
             const current = list[list.length - 1];
             const stops = mergedStops(list);
-            const open = stops.filter(stop => !stop.doneAt);
-            const done = stops.filter(stop => Boolean(stop.doneAt));
+            const open = stops.filter(stop => !stop.doneAt && !isCancelled(stop));
+            const done = stops.filter(stop => Boolean(stop.doneAt) && !isCancelled(stop));
             let state;
             // „Kommt heute nicht mehr ins Büro“ (Update 46): abgeschlossen, auch ohne Rückkehr.
             if (!current.in_at) state = current.away_reason ? 'weg' : confirmedAt(current) ? 'draussen' : 'angemeldet';
@@ -252,19 +255,29 @@
             if (group.trips.length > 1) car.append(el('span', 'gate-trip-count', `${group.trips.length}. Fahrt heute`));
             const info = el('div', 'gate-info');
             const stops = group.stops;
-            if (stops.length > 1) info.append(el('span', 'gate-stops-count', `${stops.length} Aufträge`));
+            const counted = stops.filter(stop => !isCancelled(stop));
+            if (counted.length > 1) info.append(el('span', 'gate-stops-count', `${counted.length} Aufträge`));
+            // Das Büro hat Termine geändert oder zurückgenommen, während die Person draußen ist (Update 48).
+            const changedAt = group.list.map(trip => trip.stops_changed_at).filter(Boolean).sort().pop();
+            if (changedAt && !row.in_at) info.append(el('span', 'gate-stops-changed', `Termine vom Büro geändert um ${clock(changedAt)} Uhr`));
             const list = el('ol', 'gate-stops');
             let nextMarked = false;
-            stops.forEach((stop, index) => {
+            let number = 0;
+            stops.forEach(stop => {
                 const item = el('li', 'gate-stop');
-                if (stop.doneAt) item.classList.add('is-done');
+                const gone = isCancelled(stop);
+                if (gone) item.classList.add('is-cancelled');
+                else if (stop.doneAt) item.classList.add('is-done');
                 else if ((group.done.length || group.state === 'imhaus') && !nextMarked) { item.classList.add('is-next'); nextMarked = true; }
-                if (stops.length > 1) item.append(el('b', 'gate-stop-no', stop.doneAt ? '✓' : String(index + 1)));
+                if (!gone) number += 1;
+                if (counted.length > 1 || gone) item.append(el('b', 'gate-stop-no', gone ? '–' : stop.doneAt ? '✓' : String(number)));
                 const text = el('div', 'gate-stop-text');
-                text.append(el('strong', '', [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' · ')));
+                text.append(el(gone ? 's' : 'strong', '', [stopTime(stop), stopPlace(stop)].filter(Boolean).join(' · ')));
                 if (stopPatient(stop)) text.append(el('span', '', `Patient/in: ${stopPatient(stop)}`));
-                if (stop.doneAt) text.append(el('span', 'gate-stop-done', `erledigt${typeof stop.doneAt === 'string' && /T/.test(stop.doneAt) ? ` um ${clock(stop.doneAt)} Uhr` : ''}`));
+                if (gone) text.append(el('span', 'gate-stop-gone', 'vom Büro zurückgenommen'));
+                else if (stop.doneAt) text.append(el('span', 'gate-stop-done', `erledigt${typeof stop.doneAt === 'string' && /T/.test(stop.doneAt) ? ` um ${clock(stop.doneAt)} Uhr` : ''}`));
                 else if (group.done.length) text.append(el('span', 'gate-stop-open', 'noch offen'));
+                if (!gone && stop.added) text.append(el('span', 'gate-stop-new', 'neu dazu'));
                 item.append(text);
                 list.append(item);
             });
@@ -274,8 +287,8 @@
             if (row.note && stops.length && !/^Weiterfahrt/.test(row.note)) info.append(el('span', 'gate-fact', row.note));
             // Erster Termin fertig, der nächste erst später: Die Person kommt vermutlich zwischendurch zurück.
             if (group.state === 'imhaus') info.append(el('span', 'gate-between', `Zwischendurch zurück – ${group.open.length === 1 ? 'noch ein Termin' : `noch ${group.open.length} Termine`}: fährt um ${stopTime(group.open[0]) || 'später'} wieder hinaus`));
-            else if (group.done.length && group.open.length) info.append(el('span', 'gate-between', `${group.done.length} von ${stops.length} erledigt – kommt vermutlich zwischendurch zurück und fährt um ${stopTime(group.open[0]) || 'später'} wieder hinaus`));
-            else if (stops.length && group.done.length === stops.length) info.append(el('span', 'gate-between is-all', stops.length > 1 ? 'Alle Termine erledigt – auf dem Rückweg' : 'Termin erledigt – auf dem Rückweg'));
+            else if (group.done.length && group.open.length) info.append(el('span', 'gate-between', `${group.done.length} von ${counted.length} erledigt – kommt vermutlich zwischendurch zurück und fährt um ${stopTime(group.open[0]) || 'später'} wieder hinaus`));
+            else if (counted.length && group.done.length === counted.length) info.append(el('span', 'gate-between is-all', counted.length > 1 ? 'Alle Termine erledigt – auf dem Rückweg' : 'Termin erledigt – auf dem Rückweg'));
             // Alle Fahrten des Tages mit raus- und zurück-Zeiten.
             if (group.list.length > 1 || group.trips.length) {
                 const trips = el('ul', 'gate-trips');
@@ -307,6 +320,7 @@
                     unconfirm.addEventListener('click', () => setOut(row, false, unconfirm));
                     side.append(unconfirm);
                 }
+                if (has45) side.append(personButton(row));
             } else if (group.state === 'imhaus') {
                 // Zwischendurch zurück: Die Person bleibt stehen – die nächste Ausfahrt wird hier angemeldet (oder der Tag ist doch zu Ende).
                 side.append(el('span', 'gate-inside-label', 'Im Haus'));
@@ -320,6 +334,7 @@
                 undo.type = 'button';
                 undo.addEventListener('click', () => setBack(row, false, undo));
                 side.append(again, finish, undo);
+                if (has45) side.append(personButton(row));
             } else {
                 // Erst die Pforte macht aus der Meldung eine Ausfahrt.
                 side.append(el('span', 'gate-wait-label', 'Wartet auf dich'));
@@ -330,6 +345,7 @@
                 drop.type = 'button';
                 drop.addEventListener('click', () => dropRow(row, drop));
                 side.append(confirm, drop);
+                if (has45) side.append(personButton(row));
             }
             if (has45 && (confirmedAt(row) || row.in_at)) {
                 const fix = el('button', 'gate-button gate-button-quiet gate-fix', 'Zeiten korrigieren');
@@ -404,15 +420,15 @@
             const key = personKey(row);
             tripNo.set(key, (tripNo.get(key) || 0) + 1);
             const count = all.filter(other => personKey(other) === key).length;
-            [String(index + 1), `${row.driver_name}${count > 1 ? ` (${tripNo.get(key)}. Fahrt)` : ''}`, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
+            [String(index + 1), `${row.driver_name}${count > 1 ? ` (${tripNo.get(key)}. Fahrt)` : ''}`, [row.plate, row.vehicle].filter(Boolean).join(' · '), [...stops.map(stop => `${stopPlace(stop)}${isCancelled(stop) ? ' (zurückgenommen)' : stopDoneAt(row, stop) ? ' ✓' : ''}`), ...(row.note ? [stops.length ? `Bemerkung: ${row.note}` : row.note] : [])].join('\n'), stops.map(stopTime).join('\n'),
                 stops.map(stopPatient).join('\n'), clock(row.out_at), confirmedAt(row) ? clock(confirmedAt(row)) : 'nicht bestätigt', row.in_at ? clock(row.in_at) : row.away_reason ? `kommt nicht zurück (${AWAY[row.away_reason] || row.away_reason})` : confirmedAt(row) ? 'noch draußen' : '', row.in_at ? span(leftAt(row), row.in_at) : '',
                 [[...new Set([row.out_by, row.in_by].filter(Boolean))].join(' / '), row.by_gate ? `nachgetragen (${row.entered_by || 'Pforte'})` : '', row.fixed_at ? `korrigiert (${row.fixed_by || 'Pforte'})` : ''].filter(Boolean).join('\n')]
                 .forEach(value => line.append(el('td', '', value || '')));
             return line;
         }));
         // Nachträge und Korrekturen des Tages (Protokoll, Update 45)
-        const ACTION = { bestaetigt: 'Ausfahrt bestätigt', zurueck: 'Rückkehr eingetragen', nachtrag: 'Nachtrag', korrektur: 'Korrektur', wieder_raus: 'Fährt wieder raus', fertig: 'Heute fertig', nicht_gefahren: 'Nicht gefahren', zurueckgenommen: 'Zurückgenommen', nicht_zurueck: 'Kommt nicht zurück', doch_zurueck: 'Vermerk aufgehoben' };
-        const important = log.filter(item => ['nachtrag', 'korrektur', 'nicht_gefahren', 'zurueckgenommen', 'nicht_zurueck', 'doch_zurueck'].includes(item.action));
+        const ACTION = { bestaetigt: 'Ausfahrt bestätigt', zurueck: 'Rückkehr eingetragen', nachtrag: 'Nachtrag', korrektur: 'Korrektur', wieder_raus: 'Fährt wieder raus', fertig: 'Heute fertig', nicht_gefahren: 'Nicht gefahren', zurueckgenommen: 'Zurückgenommen', nicht_zurueck: 'Kommt nicht zurück', doch_zurueck: 'Vermerk aufgehoben', person: 'Person korrigiert' };
+        const important = log.filter(item => ['nachtrag', 'korrektur', 'person', 'nicht_gefahren', 'zurueckgenommen', 'nicht_zurueck', 'doch_zurueck'].includes(item.action));
         $('gateReportLogBox').hidden = !important.length;
         $('gateReportLog').replaceChildren(...important.map(item => {
             const line = el('tr');
@@ -580,6 +596,43 @@
         banner(`${person.full_name}: Ausfahrt ${dayShort(out)} ${clock(out)} Uhr eingetragen${back ? `, zurück ${clock(back)} Uhr` : ''} – von ${who()}.`, 'success');
         await load();
     });
+    // Falsche Person an einer Meldung (Update 49): Die Pforte wählt die richtige – mit Grund, steht im Protokoll.
+    let personRow = null;
+    function personButton(row) {
+        const button = el('button', 'gate-button gate-button-quiet gate-person', 'Person ändern');
+        button.type = 'button';
+        button.addEventListener('click', () => openPerson(row));
+        return button;
+    }
+    async function openPerson(row) {
+        if (needName()) return;
+        if (!people.length && !(await loadChoices())) { banner('Dafür fehlt noch ein Datenbank-Update (Update 45). Bitte der Einsatzleitung Bescheid sagen.', 'error'); return; }
+        personRow = row;
+        $('gatePersonInfo').textContent = `${row.driver_name || 'Unbekannt'} · ${row.plate || 'ohne Fahrzeug'} · ${destination(row)} · raus ${stampText(leftAt(row))}`;
+        $('gatePersonWho').replaceChildren(el('option', '', 'Bitte wählen …'), ...people.filter(person => person.id !== row.profile_id).map(person => { const option = el('option', '', `${person.full_name}${person.role !== 'dolmetscher' ? ' (Büro)' : ''}`); option.value = person.id; return option; }));
+        $('gatePersonWho').firstChild.value = '';
+        $('gatePersonWho').value = '';
+        $('gatePersonReason').value = '';
+        formStatus('gatePersonStatus', '');
+        $('gatePerson').showModal();
+        $('gatePersonWho').focus();
+    }
+    $('gatePersonCancel').addEventListener('click', () => $('gatePerson').close());
+    $('gatePersonForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const row = personRow;
+        if (!row) return;
+        if (!$('gatePersonWho').value) { formStatus('gatePersonStatus', 'Bitte die richtige Person wählen.'); $('gatePersonWho').focus(); return; }
+        if (!$('gatePersonReason').value.trim()) { formStatus('gatePersonStatus', 'Bitte einen Grund angeben – er steht im Protokoll.'); $('gatePersonReason').focus(); return; }
+        $('gatePersonSave').disabled = true;
+        const { error } = await client.rpc('tt_gate_person', { p_id: row.id, p_profile: $('gatePersonWho').value, p_reason: $('gatePersonReason').value.trim(), p_by: who() });
+        $('gatePersonSave').disabled = false;
+        if (error) { formStatus('gatePersonStatus', /could not find the function|schema cache/i.test(error.message || '') ? 'Dafür fehlt noch ein Datenbank-Update (Update 49). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error)); return; }
+        $('gatePerson').close();
+        banner(`Person korrigiert: jetzt ${people.find(person => person.id === $('gatePersonWho').value)?.full_name || ''}`, 'success');
+        await load();
+    });
+
     function openFix(row, backNow) {
         if (needName()) return;
         fixRow = row;

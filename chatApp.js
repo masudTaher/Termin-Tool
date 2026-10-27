@@ -36,7 +36,7 @@
     function timeline(threadId) {
         const chat = rows.filter(row => row.thread_id === threadId).map(row => ({
             id: row.id, table: 'tt_chat', at: row.created_at, staff: row.from_staff, name: row.sender_name, mine: row.sender_id === profile.id,
-            body: row.body, read: row.read_at, edited: Boolean(row.edited_at)
+            body: row.body, read: row.read_at, edited: Boolean(row.edited_at), urgent: Boolean(row.urgent), kind: row.kind || ''
         }));
         const old = letters.filter(item => (item.recipient_ids || []).includes(threadId)).map(item => ({
             id: item.id, table: 'tt_messages', at: item.created_at, staff: true, name: item.sender_name, mine: item.sender_id === profile.id,
@@ -82,6 +82,7 @@
             const line = el('span', 'chat-person-line');
             line.append(el('span', '', item.last ? `${item.last.staff ? 'Du: ' : ''}${String(item.last.body).replace(/\s+/g, ' ').slice(0, 70)}` : (item.person.employment === 'fest' ? 'fest angestellt' : item.person.employment || 'noch keine Nachricht')));
             if (item.unread) { const badge = el('b', 'chat-unread', String(item.unread)); badge.title = `${item.unread} ungelesen`; line.append(badge); }
+            if (rows.some(row => row.thread_id === item.person.id && !row.from_staff && !row.read_at && row.urgent)) { head.append(el('b', 'chat-urgent-dot', 'EIL')); button.classList.add('has-urgent'); }
             button.append(head, line);
             button.addEventListener('click', () => open(item.person.id));
             entry.append(button);
@@ -112,10 +113,12 @@
         items.forEach(item => {
             const day = dayLabel(item.at);
             if (day !== lastDay) { nodes.push(el('li', 'chat-day', day)); lastDay = day; }
-            const row = el('li', `chat-row ${item.staff ? 'is-me' : 'is-them'}${!item.staff && !item.read ? ' is-new' : ''}`);
+            const row = el('li', `chat-row ${item.staff ? 'is-me' : 'is-them'}${!item.staff && !item.read ? ' is-new' : ''}${item.urgent ? ' is-urgent' : ''}`);
             row.dataset.id = item.id;
             const bubble = el('div', 'chat-bubble');
             if (!item.staff) bubble.append(el('span', 'chat-name', item.name || person?.full_name || 'Dolmetscher'));
+            // Eilmeldung (Update 49): Hilfe bei einem technischen Problem oder Korrektur anfragen – rot markiert.
+            if (item.urgent) bubble.append(el('span', 'chat-urgent', `EILMELDUNG${item.kind === 'korrektur' ? ' · Korrektur anfragen' : item.kind === 'hilfe' ? ' · Hilfe' : ''}`));
             else if (!item.mine && item.name) bubble.append(el('span', 'chat-name', item.name));
             const text = el('p', '', item.body);
             bubble.append(text);

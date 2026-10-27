@@ -123,6 +123,21 @@
          </form>
       </dialog>
 
+      <!-- Falsche Person an einer Meldung (Update 49) -->
+      <dialog id="gatePerson" class="gate-confirm gate-form-dialog" aria-labelledby="gatePersonTitle">
+         <form id="gatePersonForm" novalidate>
+            <h2 id="gatePersonTitle">Person korrigieren</h2>
+            <p class="gate-form-hint" id="gatePersonInfo"></p>
+            <label for="gatePersonWho">Richtige Person</label>
+            <select id="gatePersonWho"></select>
+            <label for="gatePersonReason">Grund der Korrektur</label>
+            <input id="gatePersonReason" type="text" maxlength="200" autocomplete="off" placeholder="z. B. falsche Person angetippt – es war …">
+            <p class="gate-form-hint">Die Termine der Meldung werden aus den Aufträgen der richtigen Person neu geholt. Alte und neue Person stehen mit deinem Namen im Protokoll.</p>
+            <p id="gatePersonStatus" class="gate-form-status" role="status" aria-live="polite" hidden></p>
+            <div class="gate-confirm-buttons"><button type="button" id="gatePersonCancel" class="gate-button gate-button-quiet">Abbrechen</button><button type="submit" id="gatePersonSave" class="gate-button gate-button-main">Person speichern</button></div>
+         </form>
+      </dialog>
+
       <!-- Kommt heute nicht mehr ins Büro (Update 46) -->
       <dialog id="gateAway" class="gate-confirm gate-form-dialog" aria-labelledby="gateAwayTitle">
          <form id="gateAwayForm" novalidate>

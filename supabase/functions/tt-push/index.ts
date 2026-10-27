@@ -369,9 +369,12 @@ Deno.serve(async (req) => {
         return json(result);
       }
       const { data: staff } = await admin.from('tt_profiles').select('id').eq('active', true).in('role', ['admin', 'sekretariat']);
+      // Eilmeldung (Update 49): Hilfe bei einem technischen Problem oder Korrektur anfragen – eigener Titel, eigene Kennung.
+      const urgent = Boolean(row.urgent);
+      const kindText = row.kind === 'korrektur' ? 'Korrektur anfragen' : row.kind === 'hilfe' ? 'Hilfe' : '';
       const result = await sendTo((staff ?? []).map((item) => item.id), {
-        title: `NACHRICHT · ${row.sender_name || 'Dolmetscher'}`, body: text,
-        url: `nachrichten.html?an=${row.thread_id}`, tag: `chat-${row.thread_id}`,
+        title: urgent ? `EILMELDUNG · ${row.sender_name || 'Dolmetscher'}${kindText ? ` · ${kindText}` : ''}` : `NACHRICHT · ${row.sender_name || 'Dolmetscher'}`, body: text,
+        url: `nachrichten.html?an=${row.thread_id}`, tag: urgent ? `eil-${row.id}` : `chat-${row.thread_id}`,
       });
       return json(result);
     }

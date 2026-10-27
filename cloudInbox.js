@@ -21,6 +21,46 @@
         });
     }
 
+    // ---------- Eilmeldungen (Update 49): rotes Band oben auf jeder Büro-Seite, bis die Nachricht gelesen ist ----------
+    const KIND_TEXT = { hilfe: 'Hilfe', korrektur: 'Korrektur anfragen' };
+    let lastUrgentIds = '';
+    function renderUrgent(list) {
+        let band = document.getElementById('urgentBand');
+        if (!list.length) { band?.remove(); lastUrgentIds = ''; return; }
+        if (!band) {
+            band = document.createElement('div');
+            band.id = 'urgentBand';
+            band.className = 'urgent-band';
+            band.setAttribute('role', 'alert');
+            document.body.prepend(band);
+        }
+        band.replaceChildren(...list.map(item => {
+            const link = document.createElement('a');
+            link.className = 'urgent-band-item';
+            link.href = `nachrichten.html?an=${encodeURIComponent(item.threadId)}`;
+            const when = item.at ? new Date(item.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+            const label = document.createElement('strong');
+            label.textContent = `EILMELDUNG · ${item.name}${KIND_TEXT[item.kind] ? ` · ${KIND_TEXT[item.kind]}` : ''}${when ? ` · ${when} Uhr` : ''}`;
+            const text = document.createElement('span');
+            text.textContent = item.text;
+            const open = document.createElement('em');
+            open.textContent = 'Öffnen ›';
+            link.append(label, text, open);
+            return link;
+        }));
+        const ids = list.map(item => item.id).join(',');
+        // Neue Eilmeldung: zusätzlich eine Meldung wie auf dem Handy (nur einmal je Nachricht).
+        if (ids !== lastUrgentIds && lastUrgentIds !== null) {
+            list.filter(item => !lastUrgentIds.includes(item.id)).forEach(item => {
+                if (typeof showToast === 'function') showToast(`EILMELDUNG von ${item.name}: ${item.text}`, 'error', { duration: 20000, keep: true, href: `nachrichten.html?an=${encodeURIComponent(item.threadId)}` });
+                if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+                    try { new Notification(`EILMELDUNG · ${item.name}`, { body: item.text, requireInteraction: true }); } catch (error) { /* nicht überall erlaubt */ }
+                }
+            });
+        }
+        lastUrgentIds = ids;
+    }
+
     // ---------- Anmeldestatus ----------
     function renderState(profile) {
         // Wechsel zur App der Dolmetscher: nur für Admins (sie testen und betreuen beide Seiten).
@@ -101,7 +141,7 @@
         renderState(profile);
         let counts;
         try { counts = await TerminCloud.inboxCounts(); } catch (error) { return; }
-        if (!counts) { BADGES.forEach(page => setBadge(page, 0)); const box = document.getElementById('navStorage'); if (box) box.hidden = true; return; }
+        if (!counts) { renderUrgent([]); BADGES.forEach(page => setBadge(page, 0)); const box = document.getElementById('navStorage'); if (box) box.hidden = true; return; }
         setBadge('abrechnung', counts.payroll);
         setBadge('fahrzeugakte', counts.damages + counts.alerts + (counts.requests || 0));
         setBadge('team', counts.accounts);
@@ -111,6 +151,7 @@
         setBadge('rezepte', counts.prescriptions || 0);
         setBadge('termine', counts.appointments || 0);
         setBadge('nachrichten', counts.chat || 0);
+        renderUrgent(Array.isArray(counts.urgent) ? counts.urgent : []);
         refreshUsage(false);
         if (TerminCloud.isStaff(profile)) autoDoctors();
 
