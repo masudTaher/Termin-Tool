@@ -79,6 +79,12 @@
                <div id="driverFileCards" class="driver-file-grid"></div>
             </section>
 
+            <!-- Schadenakte ohne Zuordnung (Update 50): archivierte Meldungen, die keinem Fahrer mehr angelastet werden -->
+            <details class="directory-card fold-card unassigned-file" id="unassignedSection" hidden>
+               <summary><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="M8 7V4h8v3M4 12h16"/></svg></span><span><strong id="unassignedTitle">Schadenakte – ohne Zuordnung</strong><small id="unassignedSummary"></small></span></summary>
+               <p class="field-hint">Meldungen, die du aus der Fahrerakte herausgenommen hast – weil der Schaden alt war oder der Fahrer nachgewiesen hat, dass er es nicht war. Sie bleiben hier beim Fahrzeug mit Fotos stehen und zählen für niemanden. Mit „Zurück in die Fahrerakte“ lässt sich das jederzeit umkehren.</p>
+               <ul id="unassignedList" class="driver-file-entries"></ul>
+            </details>
             <details class="directory-card fold-card" id="retiredSection" hidden>
                <summary><span>Nicht mehr im Fuhrpark</span><b id="retiredCount">0</b></summary>
                <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen – getauscht, zurückgegeben oder abgegeben. Ihre Fahrten, Schäden und der Verlauf bleiben gespeichert.</p>
@@ -175,6 +181,22 @@
             <textarea id="admonishNote" rows="3" maxlength="400"></textarea>
             <p class="field-hint">Der Vermerk steht nur in der Fahrerakte der Einsatzleitung. Der Fahrer sieht ihn nicht.</p>
             <div class="modal-buttons"><button type="button" class="button-secondary" id="admonishCancel">Abbrechen</button><button type="submit" class="button-primary" id="admonishSave">Ermahnung vermerken</button></div>
+         </form>
+      </dialog>
+      <dialog id="archiveNoteDialog" class="confirm-dialog office-return" aria-labelledby="archiveNoteTitle">
+         <form id="archiveNoteForm" class="fleet-form" novalidate>
+            <h2 id="archiveNoteTitle">Ohne Zuordnung archivieren</h2>
+            <p class="field-hint" id="archiveNoteInfo"></p>
+            <fieldset class="fleet-fieldset">
+               <legend>Warum wird die Meldung dem Fahrer nicht angelastet?</legend>
+               <label class="fleet-radio"><input type="radio" name="archiveReason" value="alt" checked> <span>Alter Schaden – war schon vorher da</span></label>
+               <label class="fleet-radio"><input type="radio" name="archiveReason" value="entlastet"> <span>Entlastet – der Fahrer hat nachgewiesen, dass er es nicht war</span></label>
+               <label class="fleet-radio"><input type="radio" name="archiveReason" value="sonstiges"> <span>Sonstiges</span></label>
+            </fieldset>
+            <label for="archiveNoteText">Vermerk (optional, z. B. „Fotos vom Vortag vorgelegt“)</label>
+            <textarea id="archiveNoteText" rows="3" maxlength="400"></textarea>
+            <p class="field-hint">Die Meldung verschwindet aus der Fahrerakte und zählt nicht mehr für den Fahrer. Er sieht in seiner App „geprüft – nicht dir zugeordnet“. Fotos und Text bleiben in der Schadenakte des Fahrzeugs.</p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="archiveNoteCancel">Abbrechen</button><button type="submit" class="button-primary" id="archiveNoteSave">Archivieren – ohne Zuordnung</button></div>
          </form>
       </dialog>
       <dialog id="photoDialog" class="confirm-dialog photo-dialog"><img id="photoDialogImage" alt="Foto zur Meldung"><div class="modal-buttons"><button type="button" class="button-secondary" id="photoDialogClose">Schließen</button></div></dialog>

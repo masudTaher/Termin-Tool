@@ -2483,7 +2483,7 @@ if (!window.TerminContact) {
     }
     const DRIVER_NOTE_KIND = { unsauber: 'Nicht sauber', tank: 'Tank fast leer', schaden: 'Neuer Schaden', hinweis: 'Hinweis' };
     let driverNoteData = [];
-    const unseenDriverNotes = () => driverNoteData.filter(item => !item.seen_at);
+    const unseenDriverNotes = () => driverNoteData.filter(item => !item.seen_at && !item.archived_at);
     async function loadDriverNotes() {
         const box = $('driverNotesBox');
         if (!box) return;
@@ -2511,7 +2511,12 @@ if (!window.TerminContact) {
                 main.append(row);
             }
             entry.append(main);
-            if (!item.seen_at) {
+            if (item.archived_at) {
+                // Update 50: Das Büro hat die Meldung geprüft und dir nicht zugeordnet – sie zählt nicht für dich.
+                entry.dataset.seen = 'ja';
+                entry.dataset.cleared = 'ja';
+                entry.append(el('span', 'status-pill driver-note-cleared', 'geprüft – nicht dir zugeordnet'));
+            } else if (!item.seen_at) {
                 const seen = el('button', 'button-primary driver-note-seen', 'Gesehen');
                 seen.type = 'button';
                 seen.addEventListener('click', async () => {

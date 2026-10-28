@@ -3100,3 +3100,14 @@ html[data-text="big"] { font-size: 112.5%; }
 .text-size-buttons .button-secondary[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
 /* R76: Tankkarte ausgeben – ein Namensfeld mit Vorschlägen statt Auswahlliste */
 .fuel-entry .fuel-name-input { min-width: 240px; flex: 1 1 240px; min-height: 40px; }
+/* ===== §97 (R77 / Update 50): Schadenakte ohne Zuordnung ===== */
+.unassigned-file summary strong { display: block; }
+.unassigned-file summary small { color: var(--muted); }
+.unassigned-entry { border-left-color: #64748b !important; background: var(--surface-soft); }
+.unassigned-reason { color: #1b4f8a; }
+.driver-note[data-cleared="ja"] { opacity: .75; }
+.driver-note-cleared { background: #e6f1fb; color: #1b4f8a; }
+.fleet-radio { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; font-weight: 500; }
+.fleet-radio input { margin-top: 4px; }
+.fleet-fieldset { margin: 10px 0 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.fleet-fieldset legend { padding: 0 6px; color: var(--muted); font-size: .82rem; font-weight: 700; }

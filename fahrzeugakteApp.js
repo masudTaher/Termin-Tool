@@ -327,7 +327,7 @@
         const newDamages = damages.filter(item => item.status === 'offen');
         const now = new Date();
         const overdue = openHandovers.filter(item => !item.emergency && !TerminCloud.keepsOvernight(item) && item.driver_id && (item.date < TerminCloud.todayIso() || now.getHours() >= 16));
-        const newDriverNotes = driverNotes.filter(item => !item.office_seen_at);
+        const newDriverNotes = driverNotes.filter(item => !item.office_seen_at && !item.archived_at);
         $('inboxSummary').textContent = openAlerts.length || newDamages.length || takeoverNotes.length || overdue.length || newDriverNotes.length
             ? [
                 `${openAlerts.length} ${openAlerts.length === 1 ? 'offene Meldung' : 'offene Meldungen'}`,
@@ -1562,11 +1562,6 @@
                     document.body.append(list);
                 }
                 $('fuelPeopleList').replaceChildren(el('option', null, 'Heidelberg (Kollegen)'), ...people.map(person => el('option', null, person.full_name)));
-                const select = el('select');
-                select.hidden = true;      // bleibt nur für ältere Hilfen; die Eingabe läuft über das Namensfeld
-                select.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
-                select.append(...[{ id: '', full_name: 'Ausgeben an …' }, { id: '__heidelberg', full_name: 'Heidelberg (Kollegen)' }, { id: OTHER_NAME, full_name: 'Anderer Name (ohne Konto) …' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
-                // „Anderer Name“: Feld für den Namen erscheint neben der Auswahl (Update 47).
                 const nameInput = el('input', 'fuel-name-input');
                 nameInput.type = 'text'; nameInput.maxLength = 80; nameInput.placeholder = 'Ausgeben an: Name tippen oder wählen …'; nameInput.autocomplete = 'off'; nameInput.setAttribute('list', 'fuelPeopleList');
                 nameInput.title = 'Jeder Name ist möglich – auch ohne Konto. Namen mit Konto und „Heidelberg (Kollegen)“ stehen zur Auswahl.';
@@ -1593,7 +1588,7 @@
                     showToast(`Tankkarte ${card.number} entfernt`, 'success');
                     await refresh();
                 });
-                actions.append(select, nameInput, give, remove);
+                actions.append(nameInput, give, remove);
             }
             row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id || card.holder_name !== 'Heidelberg' ? 'ausgegeben' : 'Heidelberg') : 'im Büro'), meta, actions);
             return row;
@@ -1754,6 +1749,79 @@
         $('admonishDialog').close();
         showToast(`Ermahnung für ${admonishItem.driver_name || 'den Fahrer'} vermerkt.`, 'success');
     });
+    // ---------- Ohne Zuordnung archivieren (Update 50) ----------
+    const ARCHIVE_REASON = { alt: 'alter Schaden – war schon vorher da', entlastet: 'entlastet – nachweislich nicht verursacht', sonstiges: 'sonstiges' };
+    let archiveItem = null;
+    function openArchiveNote(item) {
+        archiveItem = item;
+        $('archiveNoteInfo').textContent = `${item.driver_name || 'Fahrer'} · ${item.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} vom ${formatDateTime(item.created_at)}${item.text ? ` – „${item.text}“` : ''}`;
+        document.querySelector('input[name="archiveReason"][value="alt"]').checked = true;
+        $('archiveNoteText').value = '';
+        $('archiveNoteDialog').showModal();
+    }
+    $('archiveNoteCancel').addEventListener('click', () => $('archiveNoteDialog').close());
+    $('archiveNoteForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!archiveItem) return;
+        const now = new Date().toISOString();
+        const reason = document.querySelector('input[name="archiveReason"]:checked')?.value || 'sonstiges';
+        $('archiveNoteSave').disabled = true;
+        const { error } = await client.from('tt_driver_notes').update({ archived_at: now, archived_by: officeName(), archive_reason: reason, archive_note: $('archiveNoteText').value.trim(), office_seen_at: archiveItem.office_seen_at || now, office_seen_by: archiveItem.office_seen_by || officeName() }).eq('id', archiveItem.id);
+        $('archiveNoteSave').disabled = false;
+        if (error) {
+            showToast(/archived_at|archive_reason/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 50 (supabase/update-50.sql).' : TerminCloud.germanError(error), 'error');
+            return;
+        }
+        Object.assign(archiveItem, { archived_at: now, archived_by: officeName(), archive_reason: reason, archive_note: $('archiveNoteText').value.trim(), office_seen_at: archiveItem.office_seen_at || now, office_seen_by: archiveItem.office_seen_by || officeName() });
+        $('archiveNoteDialog').close();
+        renderInbox(); renderDriverFile(); renderUnassigned();
+        window.refreshCloudInbox?.();
+        showToast(`In die Schadenakte ohne Zuordnung verschoben – zählt nicht mehr für ${archiveItem.driver_name || 'den Fahrer'}.`, 'success');
+    });
+    async function unarchiveNote(item, button) {
+        if (!await confirmDialog(`Diese Meldung wieder in die Fahrerakte von ${item.driver_name || 'dem Fahrer'} aufnehmen?`, 'Zurück in die Fahrerakte')) return;
+        const ok = await saveDriverNote(item, { archived_at: null, archived_by: '', archive_reason: '', archive_note: '' }, button);
+        if (ok) { renderUnassigned(); showToast(`Wieder in der Fahrerakte von ${item.driver_name || 'dem Fahrer'}.`, 'success'); }
+    }
+    function renderUnassigned() {
+        const section = $('unassignedSection');
+        if (!section) return;
+        const archived = driverNotes.filter(item => item.archived_at).sort((a, b) => String(b.archived_at).localeCompare(String(a.archived_at)));
+        section.hidden = !archived.length;
+        if (!archived.length) return;
+        const plates = new Set(archived.map(item => item.plate || '?'));
+        $('unassignedSummary').textContent = `${archived.length} ${archived.length === 1 ? 'Meldung' : 'Meldungen'} · ${plates.size} ${plates.size === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · niemandem zugeordnet`;
+        $('unassignedList').replaceChildren(...archived.map(item => {
+            const entry = el('li', 'driver-file-entry unassigned-entry');
+            entry.dataset.kind = item.kind;
+            entry.append(el('strong', null, `${item.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'}`),
+                el('span', 'driver-file-meta', [`gemeldet ${formatDateTime(item.created_at)} Uhr von ${item.reporter_name || 'unbekannt'}`, `ursprünglich an ${item.driver_name || 'unbekannt'}`].join(' · ')));
+            if (item.text) entry.append(el('p', 'driver-file-text', `„${item.text}“`));
+            const photos = Array.isArray(item.photo_paths) ? item.photo_paths : [];
+            if (photos.length) entry.append(photoButtons(photos));
+            entry.append(el('span', 'driver-file-note unassigned-reason', `Ohne Zuordnung seit ${formatDateTime(item.archived_at)} (${item.archived_by || 'Einsatzleitung'}) · ${ARCHIVE_REASON[item.archive_reason] || 'sonstiges'}${item.archive_note ? ` – „${item.archive_note}“` : ''}`));
+            const actions = el('div', 'driver-file-actions');
+            const back = el('button', 'button-secondary', 'Zurück in die Fahrerakte');
+            back.type = 'button';
+            back.addEventListener('click', () => unarchiveNote(item, back));
+            actions.append(back);
+            if (isAdmin()) {
+                const remove = el('button', 'button-quiet', 'Löschen');
+                remove.type = 'button';
+                remove.addEventListener('click', async () => {
+                    if (!await confirmDialog('Diese archivierte Meldung endgültig löschen?\n\nDas lässt sich nicht rückgängig machen.', 'Endgültig löschen')) return;
+                    const { error } = await client.from('tt_driver_notes').delete().eq('id', item.id);
+                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                    driverNotes = driverNotes.filter(note => note.id !== item.id);
+                    renderUnassigned();
+                });
+                actions.append(remove);
+            }
+            entry.append(actions);
+            return entry;
+        }));
+    }
+
     function openDriverFile(driverId) {
         const section = $('driverFileSection');
         section.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -1767,16 +1835,18 @@
         const wasOpen = new Set([...cards.querySelectorAll('.driver-file-card')].filter(card => card.querySelector('details')?.open).map(card => card.dataset.driver));
         cards.replaceChildren();
         if (!driverNotesReady) { $('driverFileSummary').textContent = 'Noch nicht eingerichtet – dafür fehlt Update 42 in der Datenbank.'; return; }
-        if (!driverNotes.length) { $('driverFileSummary').textContent = 'Keine Meldungen – bisher hat niemand ein Auto schmutzig, leer oder beschädigt vorgefunden.'; return; }
+        renderUnassigned();
+        const activeNotes = driverNotes.filter(item => !item.archived_at);
+        if (!activeNotes.length) { $('driverFileSummary').textContent = driverNotes.length ? 'Keine Meldungen in einer Fahrerakte – alle bisherigen stehen ohne Zuordnung in der Schadenakte (unten).' : 'Keine Meldungen – bisher hat niemand ein Auto schmutzig, leer oder beschädigt vorgefunden.'; return; }
         const byDriver = new Map();
-        driverNotes.forEach(item => {
+        activeNotes.forEach(item => {
             const key = item.driver_id || item.driver_name || '?';
             if (!byDriver.has(key)) byDriver.set(key, { id: item.driver_id, name: item.driver_name || profiles.find(person => person.id === item.driver_id)?.full_name || 'Unbekannt', items: [] });
             byDriver.get(key).items.push(item);
         });
         const groups = [...byDriver.values()].sort((a, b) => (b.items.filter(item => !item.office_seen_at).length - a.items.filter(item => !item.office_seen_at).length) || (b.items.length - a.items.length) || a.name.localeCompare(b.name, 'de'));
-        const unseenTotal = driverNotes.filter(item => !item.office_seen_at).length;
-        $('driverFileSummary').textContent = `${driverNotes.length} ${driverNotes.length === 1 ? 'Meldung' : 'Meldungen'} bei ${groups.length} ${groups.length === 1 ? 'Fahrer' : 'Fahrern'}${unseenTotal ? ` · ${unseenTotal} noch nicht gesehen` : ' · alles gesehen'}`;
+        const unseenTotal = activeNotes.filter(item => !item.office_seen_at).length;
+        $('driverFileSummary').textContent = `${activeNotes.length} ${activeNotes.length === 1 ? 'Meldung' : 'Meldungen'} bei ${groups.length} ${groups.length === 1 ? 'Fahrer' : 'Fahrern'}${unseenTotal ? ` · ${unseenTotal} noch nicht gesehen` : ' · alles gesehen'}`;
         groups.forEach(group => {
             const unseen = group.items.filter(item => !item.office_seen_at).length;
             const admonished = group.items.filter(item => item.admonished_at).length;
@@ -1815,6 +1885,12 @@
                 warn.type = 'button';
                 warn.addEventListener('click', () => openAdmonish(item));
                 actions.append(warn);
+                // Update 50: aus der Fahrerakte herausnehmen – alter Schaden oder Fahrer entlastet
+                const archive = el('button', 'button-quiet driver-note-archive', 'Ohne Zuordnung archivieren');
+                archive.type = 'button';
+                archive.title = 'Der Schaden war alt oder der Fahrer hat nachgewiesen, dass er es nicht war: Meldung aus seiner Akte nehmen, beim Fahrzeug behalten';
+                archive.addEventListener('click', () => openArchiveNote(item));
+                actions.append(archive);
                 if (item.admonished_at) {
                     const undo = el('button', 'button-quiet', 'Ermahnung zurücknehmen');
                     undo.type = 'button';
