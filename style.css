@@ -3125,3 +3125,5 @@ html[data-text="big"] { font-size: 112.5%; }
 .my-extra-picked { margin: 2px 0 0; color: var(--ink); font-size: .9rem; font-weight: 600; }
 :root[data-theme="dark"] .my-extra-day-pick.is-counted { background: rgba(15, 138, 77, .25); color: #9fe3bf; }
 :root[data-theme="dark"] .my-extra-day-pick.is-gemeldet { background: rgba(217, 138, 0, .22); color: #ffd58a; }
+/* ===== §99 (R79): „bearbeitet von“ je Termin im Live-Tracking ===== */
+.row-editor { display: block; margin-top: 3px; color: var(--row-ink, var(--muted)); font-size: .68rem; font-weight: 600; opacity: .75; white-space: nowrap; }

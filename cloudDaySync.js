@@ -53,7 +53,8 @@
             const key = contentKey(record);
             if (deleted[record._id]) { delete deleted[record._id]; record._updatedAt = now; }
             if (known.get(record._id) !== key) {
-                if (known.has(record._id) || !record._updatedAt) record._updatedAt = now;
+                // Geändert auf diesem Gerät (oder ganz neu): Zeit und Name merken – die Tabelle zeigt „bearbeitet von …“ (R79).
+                if (known.has(record._id) || !record._updatedAt) { record._updatedAt = now; record._updatedBy = profile?.full_name || ''; }
                 known.set(record._id, key);
             }
         });
@@ -214,9 +215,9 @@
             }
             return;
         }
-        // Das Sekretariat folgt der Einsatzleitung: Lädt sie eine neue Datei oder einen neuen Tag, erscheint er hier von selbst.
-        const follows = profile?.role === 'sekretariat' && !sameName(newest.updated_by, profile.full_name);
-        if ((date < today && !mine?.archived) || closedNow || follows) {
+        // R79: Jeder öffnet seinen Tag selbst – kein automatisches Umschalten mehr, wenn jemand anders an einem neueren Tag arbeitet
+        // (weder für das Sekretariat noch bei einem älteren Tag). Nur ein inzwischen abgeschlossener Tag wird verlassen.
+        if (closedNow) {
             if (document.activeElement?.matches?.('#tableBody input') && Date.now() - lastTyped < 15000) { newerChecked = 0; return; }   // erst zu Ende tippen lassen
             // Alter oder schon abgeschlossener Tag auf diesem Gerät: Der ist schon online gesichert – den aktuellen Tag direkt zeigen.
             if (await switchDay(newest.date)) newerBanner(null);
@@ -423,6 +424,10 @@
         ]);
         if (error) return;
         profiles = profileResult.data || [];
+        // R79: Was hier durch die App der Dolmetscher geändert wird (Zusage, losgefahren, fertig …), steht nachher mit
+        // „Name (App)“ am Termin – nicht mit dem Namen der Person im Büro, auf deren Bildschirm der Abgleich lief.
+        const beforeSync = new Map(records().map(record => [record._id, contentKey(record)]));
+        const byAppointmentName = new Map((assignments || []).map(assignment => [assignment.appointment_id, assignment.interpreter_name]));
         // Vorschläge beim Eintragen eines Dolmetschers: nur registrierte, freigeschaltete Dolmetscher-Konten.
         window.setRegisteredInterpreters?.(profiles.filter(person => person.active && person.role === 'dolmetscher').map(person => person.full_name));
         publishPeople(workdayResult.error ? [] : workdayResult.data, absenceResult.error ? [] : absenceResult.data, date);
@@ -538,7 +543,17 @@
         });
         lastResponses = responses;
         lastNotes = notes;
-        if (changed) window.refreshTrackingRows?.();
+        if (changed) {
+            const now = new Date().toISOString();
+            records().forEach(record => {
+                if (!record._id || beforeSync.get(record._id) === contentKey(record)) return;
+                const who = byAppointmentName.get(record._id) || byAppointmentName.get(record._id2) || record.Übersetzer || '';
+                record._updatedAt = now;
+                record._updatedBy = who ? `${who} (App)` : 'App';
+                known.set(record._id, contentKey(record));
+            });
+            window.refreshTrackingRows?.();
+        }
     }
 
     // ---------- Bemerkung und Anhang (PDF) zu einem Auftrag ----------
