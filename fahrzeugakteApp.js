@@ -1555,26 +1555,32 @@
                 back.addEventListener('click', () => setFuelCard(card, null, back));
                 actions.append(back);
             } else if (admin) {
+                // R76: ein Feld für alles – Name tippen (auch ohne Konto) oder aus der Liste wählen (Konten, Heidelberg).
+                if (!document.getElementById('fuelPeopleList')) {
+                    const list = el('datalist');
+                    list.id = 'fuelPeopleList';
+                    document.body.append(list);
+                }
+                $('fuelPeopleList').replaceChildren(el('option', null, 'Heidelberg (Kollegen)'), ...people.map(person => el('option', null, person.full_name)));
                 const select = el('select');
+                select.hidden = true;      // bleibt nur für ältere Hilfen; die Eingabe läuft über das Namensfeld
                 select.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
                 select.append(...[{ id: '', full_name: 'Ausgeben an …' }, { id: '__heidelberg', full_name: 'Heidelberg (Kollegen)' }, { id: OTHER_NAME, full_name: 'Anderer Name (ohne Konto) …' }, ...people].map(person => { const option = el('option', null, person.full_name); option.value = person.id; return option; }));
                 // „Anderer Name“: Feld für den Namen erscheint neben der Auswahl (Update 47).
                 const nameInput = el('input', 'fuel-name-input');
-                nameInput.type = 'text'; nameInput.maxLength = 80; nameInput.placeholder = 'Name, z. B. Herr Vizechef'; nameInput.autocomplete = 'off'; nameInput.hidden = true;
-                nameInput.setAttribute('aria-label', `Tankkarte ${card.number}: Name ohne Konto`);
-                select.addEventListener('change', () => { nameInput.hidden = select.value !== OTHER_NAME; if (!nameInput.hidden) nameInput.focus(); });
+                nameInput.type = 'text'; nameInput.maxLength = 80; nameInput.placeholder = 'Ausgeben an: Name tippen oder wählen …'; nameInput.autocomplete = 'off'; nameInput.setAttribute('list', 'fuelPeopleList');
+                nameInput.title = 'Jeder Name ist möglich – auch ohne Konto. Namen mit Konto und „Heidelberg (Kollegen)“ stehen zur Auswahl.';
+                nameInput.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
                 const give = el('button', 'button-secondary fleet-end-button', 'Ausgeben');
                 give.type = 'button';
                 const giveNow = () => {
-                    if (!select.value) { showToast('Bitte wähle zuerst, wer die Karte bekommt.', 'error', { target: select }); return; }
-                    if (select.value === '__heidelberg') { setFuelCard(card, null, give, 'Heidelberg'); return; }
-                    if (select.value === OTHER_NAME) {
-                        const name = nameInput.value.trim().replace(/\s+/g, ' ');
-                        if (!name) { showToast('Bitte trag den Namen ein.', 'error', { target: nameInput }); return; }
-                        setFuelCard(card, null, give, name);
-                        return;
-                    }
-                    setFuelCard(card, select.value, give);
+                    const name = nameInput.value.trim().replace(/\s+/g, ' ');
+                    if (!name) { showToast('Bitte trag ein, wer die Karte bekommt – Name tippen oder aus der Liste wählen.', 'error', { target: nameInput }); return; }
+                    if (/^heidelberg\b/i.test(name)) { setFuelCard(card, null, give, 'Heidelberg'); return; }
+                    // Steht der Name genau so in der Liste der Konten, wird die Karte dem Konto zugeordnet – sonst dem freien Namen.
+                    const known = people.find(person => person.full_name.trim().toLocaleLowerCase('de-DE') === name.toLocaleLowerCase('de-DE'));
+                    if (known) { setFuelCard(card, known.id, give); return; }
+                    setFuelCard(card, null, give, name);
                 };
                 give.addEventListener('click', giveNow);
                 nameInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); giveNow(); } });

@@ -168,6 +168,7 @@
         return `${label}raus ${clock(leftAt(row))}${row.in_at ? ` → zurück ${clock(row.in_at)} (${span(leftAt(row), row.in_at)})` : row.away_reason ? ' → kommt nicht zurück' : ' → noch draußen'}`;
     };
 
+    let oldOpen = sessionStorage.getItem('gate.oldOpen') === 'ja';
     function render() {
         const everyone = groups();
         const order = { angemeldet: 0, imhaus: 1, draussen: 2 };
@@ -176,6 +177,11 @@
         const main = everyone.filter(group => group.state !== 'fertig' && group.state !== 'weg' && group.current.date === day).sort((left, right) => (order[left.state] - order[right.state]) || String(left.current.out_at).localeCompare(String(right.current.out_at)));
         const back = everyone.filter(group => group.state === 'fertig' || group.state === 'weg').sort((left, right) => String(right.current.in_at || right.current.away_at || '').localeCompare(String(left.current.in_at || left.current.away_at || '')));
         $('gateOldSection').hidden = !old.length;
+        // Der Block ist eingeklappt, bis die Pforte ihn öffnet – so bleiben die heutigen Fahrten oben im Blick (R76).
+        $('gateOldTitle').textContent = `Von früheren Tagen noch offen · ${old.length}`;
+        $('gateOldToggle').textContent = oldOpen ? 'Ausblenden' : `Anzeigen (${old.length})`;
+        $('gateOldToggle').setAttribute('aria-expanded', String(oldOpen));
+        $('gateOldSection').dataset.open = oldOpen ? 'ja' : '';
         $('gateOldList').replaceChildren(...old.map(group => {
             const row = group.current;
             const card = el('li', 'gate-card');
@@ -239,8 +245,10 @@
         $('gateCountBack').textContent = String(inside.length + back.length);
         const live = day === today();
         $('gateOutTitle').textContent = live ? [waiting.length ? 'Angemeldet' : '', inside.length ? 'im Haus (fährt noch einmal)' : '', 'draußen'].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase()) : `Noch offen am ${dayLong(day)}`;
-        $('gateOutEmpty').hidden = main.length > 0 || old.length > 0;
-        $('gateOutEmpty').textContent = live ? 'Im Moment ist niemand angemeldet und niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.';
+        $('gateOutEmpty').hidden = main.length > 0;
+        $('gateOutEmpty').textContent = old.length
+            ? `${live ? 'Heute ist niemand angemeldet und niemand draußen' : 'An diesem Tag ist niemand mehr draußen'} – aber ${old.length === 1 ? 'eine Fahrt von einem früheren Tag ist' : `${old.length} Fahrten von früheren Tagen sind`} noch offen (oben nachtragen).`
+            : (live ? 'Im Moment ist niemand angemeldet und niemand draußen.' : 'An diesem Tag ist niemand mehr draußen.');
         $('gateBackTitle').textContent = live ? 'Heute fertig' : 'Zurück';
         $('gateBackEmpty').hidden = back.length > 0;
         $('gateOutList').replaceChildren(...main.map(group => {
@@ -443,9 +451,11 @@
     }
 
     // Fernseher (Update 50): Sind nur ein oder zwei Felder da, wächst die Schrift, bis die Fläche gefüllt ist – aber nur so weit, dass nichts abgeschnitten wird.
+    // Die ganze linke Spalte (.gate-out) ist der Scrollbereich (R76) – gemessen wird deshalb dort.
     let fitTimer = 0;
     function fit() {
         const list = $('gateOutList');
+        const column = list?.closest('.gate-out') || list;
         if (!list || window.innerWidth < 1100) { if (list) list.style.removeProperty('--k'); return; }
         const count = list.children.length;
         const steps = count === 1 ? [1.32, 1.2, 1.1, 1] : count === 2 ? [1.14, 1.07, 1] : [1];
@@ -453,9 +463,15 @@
             list.style.setProperty('--k', String(k));
             const tooWide = [...list.querySelectorAll('.gate-side, .gate-car, .gate-time')].some(part => part.scrollWidth > part.clientWidth + 2);
             const tooTight = [...list.querySelectorAll('.gate-card')].some(card => { const info = card.querySelector('.gate-info'); return info && info.clientWidth < card.clientWidth * 0.3; });
-            if (!tooWide && !tooTight && list.scrollHeight <= list.clientHeight + 2) return;
+            if (!tooWide && !tooTight && column.scrollHeight <= column.clientHeight + 2) return;
         }
     }
+    $('gateOldToggle')?.addEventListener('click', () => {
+        oldOpen = !oldOpen;
+        sessionStorage.setItem('gate.oldOpen', oldOpen ? 'ja' : '');
+        render();
+        if (oldOpen) $('gateOldSection').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
     window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fit, 150); });
 
     async function load() {

@@ -327,3 +327,17 @@ a.gate-button { display: inline-flex; align-items: center; text-decoration: none
   .gate-back-text strong { font-size: 1.18rem; }
   .gate-back-text span { font-size: 1rem; }
 }
+
+/* ===== R76: Die linke Spalte scrollt als Ganzes; „Von früheren Tagen noch offen“ ist eingeklappt, bis die Pforte es öffnet ===== */
+.gate-old-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.gate-old-head h2 { margin-bottom: 0 !important; }
+.gate-old-toggle { min-height: 44px; border-color: var(--warn); color: #7a4a00; background: #fff; font-weight: 800; }
+.gate-old-toggle:hover { background: #fff3d1; }
+.gate-old[data-open="ja"] .gate-old-head { margin-bottom: 10px; }
+.gate-old:not([data-open="ja"]) .gate-old-hint, .gate-old:not([data-open="ja"]) .gate-list { display: none; }
+.gate-old:not([data-open="ja"]) { padding: 10px 16px; margin-bottom: 14px; }
+@media (min-width: 1100px) {
+  .gate-out { overflow-y: auto; padding-right: 4px; }
+  #gateOutList { overflow: visible; padding-right: 2px; }
+}
+.gate-old .gate-list { --k: 1; }

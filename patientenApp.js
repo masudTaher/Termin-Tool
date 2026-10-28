@@ -1189,8 +1189,13 @@
 
     // Ergebnis: { blob, replaced } – replaced zählt Zeichen, die die PDF-Schrift nicht kennt (z. B. Arabisch).
     function reportPdf(doc) {
+        return DocPdf.report(reportSheet(doc));
+    }
+
+    // Das Blatt – gleich für PDF und Word (R75).
+    function reportSheet(doc) {
         const title = forAppointment(doc) ? 'Bericht über Termin' : 'Bericht des Dolmetschers';
-        return DocPdf.report({
+        return ({
             organisation: ORGANISATION,
             title,
             meta: reportRows(doc),
@@ -1210,6 +1215,7 @@
         $('reportBody').textContent = reportText(doc) || 'Dieser Bericht enthält keinen Text.';
         $('reportFile').hidden = !doc.file_path;
         $('reportPdf').hidden = !clean(doc.body);
+        if ($('reportWord')) $('reportWord').hidden = !clean(doc.body);
         dialogStatus('reportStatus', '');
         $('reportDialog').showModal();
     }
@@ -1578,12 +1584,22 @@
             const { blob, replaced } = await reportPdf(reportDoc);
             saveBlob(blob, fileName({ ...reportDoc, file_path: '' }));
             dialogStatus('reportStatus', replaced
-                ? `PDF gespeichert. ${replaced === 1 ? 'Ein Zeichen' : `${replaced} Zeichen`} (z. B. arabische Schrift) kann die PDF-Schrift nicht setzen – dort steht ein „?“.`
+                ? `PDF gespeichert. ${replaced === 1 ? 'Ein Zeichen' : `${replaced} Zeichen`} (z. B. ein Emoji) kennt die Schrift nicht – dort steht ein „?“.`
                 : 'PDF gespeichert.', replaced ? 'info' : 'success');
         } catch (error) {
             dialogStatus('reportStatus', error.message, 'error');
         } finally {
             $('reportPdf').disabled = false;
+        }
+    });
+    // Word-Datei: zum Ausdrucken, zeigt Arabisch richtig (R75).
+    $('reportWord')?.addEventListener('click', () => {
+        if (!reportDoc) return;
+        try {
+            saveBlob(DocWord.report(reportSheet(reportDoc)), fileName({ ...reportDoc, file_path: '' }).replace(/\.pdf$/i, '') + '.docx');
+            dialogStatus('reportStatus', 'Word-Datei gespeichert.', 'success');
+        } catch (error) {
+            dialogStatus('reportStatus', error.message, 'error');
         }
     });
 

@@ -3098,3 +3098,5 @@ body[data-page="tracking"] #dataTable .vehicle-suggest:hover { background: #dbe8
 :root[data-theme="dark"] .offline-band { color: #0b1622; }
 html[data-text="big"] { font-size: 112.5%; }
 .text-size-buttons .button-secondary[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+/* R76: Tankkarte ausgeben – ein Namensfeld mit Vorschlägen statt Auswahlliste */
+.fuel-entry .fuel-name-input { min-width: 240px; flex: 1 1 240px; min-height: 40px; }

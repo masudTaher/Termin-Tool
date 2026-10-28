@@ -103,6 +103,11 @@ window.PortalDocs = (function () {
                 pdf.type = 'button';
                 pdf.addEventListener('click', () => openReportPdf(item, pdf));
                 side.append(pdf);
+                const word = el('button', 'button-quiet doc-report-word', 'Word');
+                word.title = 'Als Word-Datei speichern – zum Ausdrucken (zeigt Arabisch richtig)';
+                word.type = 'button';
+                word.addEventListener('click', () => saveReportWord(item, word));
+                side.append(word);
                 if (item.assignment_id) {
                     const edit = el('button', 'button-quiet doc-report-edit', 'Bearbeiten');
                     edit.type = 'button';
@@ -123,23 +128,49 @@ window.PortalDocs = (function () {
 
     // Bericht als PDF (gleiches Blatt wie im Büro): öffnet in einem neuen Fenster – dort drucken oder speichern.
     // Kann der Browser das Fenster nicht öffnen, wird die Datei gespeichert.
+    // Das Blatt (Kopf, Tabelle, Bericht, Unterschrift) – gleich für PDF und Word.
+    function reportSheet(item) {
+        const next = String(item.note || '').startsWith('Nächster Termin: ') ? String(item.note).slice('Nächster Termin: '.length) : '';
+        const written = String(item.created_at || '').slice(0, 10);
+        return {
+            organisation: 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher',
+            title: 'Bericht über Termin',
+            meta: [['Patient/in', item.patient_name || ''], ['Patientennummer', item.patient_nr || ''], ['Geburtsdatum', item.patient_birth || ''], ['Arzt / Praxis', item.doctor || ''],
+                ['Termin am', dayText(item.date)], ['Bericht vom', dayText(written)], ['Dolmetscher/in', core.profile()?.full_name || ''], ['Nächster Termin', next || 'keiner angegeben']],
+            sections: [{ heading: 'Bericht', text: [String(item.body || '').trim(), next ? `Nächster Termin: ${next}` : ''].filter(Boolean).join('\n\n') }, { heading: 'Hinweis', text: next ? '' : (item.note || '') },
+                { heading: 'Unterschrift', text: `${core.profile()?.full_name || ''}\n${dayText(written)}` }],
+            footer: 'Medical Office Bonn · Transport und Dolmetscher', author: core.profile()?.full_name || '', subject: 'Bericht über Termin',
+            name: DocPdf.fileName({ patientNr: item.patient_nr || '', patientName: item.patient_name || '', kind: REPORT_KIND, date: item.date || written })
+        };
+    }
+
+    // Bericht als Word-Datei (.docx): Word zeigt Arabisch und jede andere Schrift richtig – zum Ausdrucken oder Weitergeben (R75).
+    function saveReportWord(item, button) {
+        if (button) button.disabled = true;
+        try {
+            const sheet = reportSheet(item);
+            const blob = DocWord.report(sheet);
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = sheet.name.replace(/\.pdf$/i, '') + '.docx';
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+            toast('Der Bericht wurde als Word-Datei gespeichert.', 'success');
+        } catch (error) {
+            toast(`Die Word-Datei konnte nicht erstellt werden: ${error?.message || error}`, 'error');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
     async function openReportPdf(item, button) {
         const tab = window.open('', '_blank');
         if (button) button.disabled = true;
         try {
-            const next = String(item.note || '').startsWith('Nächster Termin: ') ? String(item.note).slice('Nächster Termin: '.length) : '';
-            const written = String(item.created_at || '').slice(0, 10);
-            const { blob } = await DocPdf.report({
-                organisation: 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher',
-                title: 'Bericht über Termin',
-                meta: [['Patient/in', item.patient_name || ''], ['Patientennummer', item.patient_nr || ''], ['Geburtsdatum', item.patient_birth || ''], ['Arzt / Praxis', item.doctor || ''],
-                    ['Termin am', dayText(item.date)], ['Bericht vom', dayText(written)], ['Dolmetscher/in', core.profile()?.full_name || ''], ['Nächster Termin', next || 'keiner angegeben']],
-                sections: [{ heading: 'Bericht', text: [String(item.body || '').trim(), next ? `Nächster Termin: ${next}` : ''].filter(Boolean).join('\n\n') }, { heading: 'Hinweis', text: next ? '' : (item.note || '') },
-                    { heading: 'Unterschrift', text: `${core.profile()?.full_name || ''}\n${dayText(written)}` }],
-                footer: 'Medical Office Bonn · Transport und Dolmetscher', author: core.profile()?.full_name || '', subject: 'Bericht über Termin'
-            });
+            const sheet = reportSheet(item);
+            const { blob } = await DocPdf.report(sheet);
             const url = URL.createObjectURL(blob);
-            const name = DocPdf.fileName({ patientNr: item.patient_nr || '', patientName: item.patient_name || '', kind: REPORT_KIND, date: item.date || written });
+            const name = sheet.name;
             if (tab && !tab.closed) { tab.location.replace(url); toast('Der Bericht ist als PDF geöffnet – dort kannst du drucken oder speichern.', 'success'); }
             else { const link = document.createElement('a'); link.href = url; link.download = name; link.click(); toast('Der Bericht wurde als PDF gespeichert.', 'success'); }
             window.setTimeout(() => URL.revokeObjectURL(url), 300000);
@@ -796,6 +827,7 @@ window.PortalDocs = (function () {
         $('reportSubmit').textContent = reportExisting ? 'Bericht aktualisieren' : 'Bericht senden';
         $('reportSign').replaceChildren(el('span', '', 'Unterschrift'), el('strong', '', profile.full_name || profile.email || ''), el('small', '', dayText(today())));
         if ($('reportPrint')) $('reportPrint').hidden = !reportExisting;
+        if ($('reportWord')) $('reportWord').hidden = !reportExisting;
         $('reportState').textContent = checked ? 'Das Büro hat diesen Bericht schon geprüft. Du kannst ihn trotzdem ändern – das Büro bekommt ihn dann noch einmal als „neu“.'
             : reportExisting ? 'Zu diesem Termin hast du schon einen Bericht gesendet – du kannst ihn hier ändern.'
             : jobDone(job) ? '' : 'Dieser Termin läuft noch. Du kannst den Bericht schon schreiben und nach dem Termin senden.';
@@ -814,6 +846,7 @@ window.PortalDocs = (function () {
     }
     $('reportOther').addEventListener('click', renderReportPick);
     $('reportPrint')?.addEventListener('click', () => { if (reportExisting) openReportPdf({ ...reportExisting, body: $('reportBody').value.trim() || reportExisting.body }, $('reportPrint')); });
+    $('reportWord')?.addEventListener('click', () => { if (reportExisting) saveReportWord({ ...reportExisting, body: $('reportBody').value.trim() || reportExisting.body }, $('reportWord')); });
     ['reportBody', 'reportNextDate', 'reportNextTime'].forEach(id => $(id).addEventListener('input', writeDraft));
 
     $('reportForm').addEventListener('submit', async event => {

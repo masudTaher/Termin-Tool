@@ -54,7 +54,10 @@
                </section>
                <!-- Ausfahrten früherer Tage, die nie als zurück eingetragen wurden -->
                <section class="gate-old" id="gateOldSection" aria-labelledby="gateOldTitle" hidden>
-                  <h2 id="gateOldTitle">Von früheren Tagen noch offen</h2>
+                  <div class="gate-old-head">
+                     <h2 id="gateOldTitle">Von früheren Tagen noch offen</h2>
+                     <button type="button" class="gate-button gate-button-quiet gate-old-toggle" id="gateOldToggle" aria-expanded="false" aria-controls="gateOldList">Anzeigen</button>
+                  </div>
                   <p class="gate-old-hint">Diese Fahrten wurden nie als „zurück“ eingetragen. Bitte die Rückkehr nachtragen (Datum und Uhrzeit) – oder korrigieren, falls die Person gar nicht gefahren ist.</p>
                   <ul id="gateOldList" class="gate-list"></ul>
                </section>

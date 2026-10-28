@@ -5,7 +5,8 @@
 //   DocPdf.canShow()   lässt sich ein Text vollständig setzen? (sonst besser die Druckansicht des Browsers anbieten)
 //   DocPdf.ready()     lädt pdf-lib vorab – nötig ist das nicht, build() und report() tun es selbst
 // pdf-lib (pdf-lib.min.js im selben Ordner) wird erst geladen, wenn wirklich ein PDF entsteht.
-// Die Schrift ist Helvetica: Sie zeigt lateinische Zeichen (Umlaute, ß, €), aber z. B. kein Arabisch.
+// Die Schrift ist Helvetica (lateinische Zeichen). Für Arabisch und andere Schriften wird bei Bedarf „IBM Plex Sans Arabic“
+// eingebettet – dafür lädt report() fontkit.umd.min.js und fonts/PlexArabic-*.ttf nach (R75).
 window.DocPdf = (function () {
     const LIBRARY = 'pdf-lib.min.js';
     const APP = 'Medical Office Bonn – Transport und Dolmetscher';
@@ -31,6 +32,87 @@ window.DocPdf = (function () {
             });
         }
         return libraryPromise;
+    }
+
+    // ---------- Arabisch und andere Schriften (R75) ----------
+    // Enthält ein Bericht Zeichen, die Helvetica nicht kennt (Arabisch, Persisch, Kyrillisch …), wird die Schrift
+    // „IBM Plex Sans Arabic“ eingebettet (fonts/…ttf) und dafür fontkit nachgeladen (fontkit.umd.min.js, nur dann).
+    const FONTKIT = 'fontkit.umd.min.js';
+    const UNICODE_FONTS = { regular: 'fonts/PlexArabic-Regular.ttf', bold: 'fonts/PlexArabic-SemiBold.ttf' };
+    let fontkitPromise = null;
+    const fontBytes = {};
+
+    function fontkitReady() {
+        if (window.fontkit) return Promise.resolve();
+        if (!fontkitPromise) {
+            fontkitPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                const fail = () => { fontkitPromise = null; script.remove(); reject(new Error('Die Schrift für arabischen Text konnte nicht geladen werden (fontkit.umd.min.js). Bitte die Verbindung prüfen und noch einmal versuchen.')); };
+                script.src = FONTKIT;
+                script.onload = () => window.fontkit ? resolve() : fail();
+                script.onerror = fail;
+                document.head.append(script);
+            });
+        }
+        return fontkitPromise;
+    }
+
+    async function loadFontBytes(key) {
+        if (!fontBytes[key]) {
+            const response = await fetch(UNICODE_FONTS[key]);
+            if (!response.ok) throw new Error(`Die Schrift für arabischen Text konnte nicht geladen werden (${UNICODE_FONTS[key]}).`);
+            fontBytes[key] = new Uint8Array(await response.arrayBuffer());
+        }
+        return fontBytes[key];
+    }
+
+    // Lädt fontkit und beide Schnitte und bettet sie ins PDF ein. Liefert { regular, bold, has(codePoint) }.
+    async function unicodeFonts(pdf) {
+        await fontkitReady();
+        const [regularBytes, boldBytes] = await Promise.all([loadFontBytes('regular'), loadFontBytes('bold')]);
+        pdf.registerFontkit(window.fontkit);
+        const probe = window.fontkit.create(regularBytes);
+        const regular = await pdf.embedFont(regularBytes, { subset: true });
+        const bold = await pdf.embedFont(boldBytes, { subset: true });
+        return { regular, bold, has: code => probe.hasGlyphForCodePoint(code) };
+    }
+
+    // Schreibrichtung: Arabisch, Persisch, Urdu, Hebräisch laufen von rechts nach links.
+    const RTL_CHAR = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/u;
+    const LTR_CHAR = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u052F]/u;
+    function directionOf(text) {
+        for (const char of String(text || '')) {
+            if (RTL_CHAR.test(char)) return 'rtl';
+            if (LTR_CHAR.test(char)) return 'ltr';
+        }
+        return 'ltr';
+    }
+    function hasRtl(text) { return RTL_CHAR.test(String(text || '')); }
+
+    // Teilt eine Zeile in Abschnitte gleicher Richtung (vereinfachter Bidi-Algorithmus): Satzzeichen, Leerzeichen und
+    // Ziffern schließen sich den Nachbarn an, sonst der Grundrichtung des Absatzes. Ergebnis in logischer Reihenfolge.
+    function bidiRuns(line, base) {
+        const chars = Array.from(line);
+        // Ziffern zählen als links-nach-rechts: Zahlen (120/80, 10:30) bleiben auch im arabischen Satz lesbar.
+        const types = chars.map(char => RTL_CHAR.test(char) ? 'R' : (LTR_CHAR.test(char) || /[0-9]/.test(char)) ? 'L' : 'N');
+        const baseType = base === 'rtl' ? 'R' : 'L';
+        for (let index = 0; index < types.length; index++) {
+            if (types[index] !== 'N') continue;
+            let end = index;
+            while (end < types.length && types[end] === 'N') end += 1;
+            const before = index > 0 ? types[index - 1] : baseType;
+            const after = end < types.length ? types[end] : baseType;
+            const type = before === after ? before : baseType;
+            for (let fill = index; fill < end; fill++) types[fill] = type;
+            index = end - 1;
+        }
+        const runs = [];
+        chars.forEach((char, index) => {
+            const last = runs[runs.length - 1];
+            if (last && last.type === types[index]) last.text += char;
+            else runs.push({ type: types[index], text: char });
+        });
+        return runs;
     }
 
     // ---------- Zeichen ----------
@@ -84,6 +166,22 @@ window.DocPdf = (function () {
     // true: Der Text lässt sich vollständig setzen. false: besser die Druckansicht des Browsers anbieten.
     function canShow(text) {
         return clean(text).replaced === 0;
+    }
+
+    // Für die Unicode-Schrift: Zeilenumbrüche vereinheitlichen, unsichtbare Zeichen entfernen; nur Zeichen ohne Glyphe
+    // (z. B. Emojis) werden zu „mark“ und gezählt.
+    function cleanUnicode(value, has, mark = '?') {
+        let source = String(value ?? '').normalize('NFC').replace(/\r\n?|[\v\f\x85\u{2028}\u{2029}]/gu, '\n').replace(/\t/g, ' ');
+        const parts = segmenter ? Array.from(segmenter.segment(source), part => part.segment) : Array.from(source);
+        let text = '';
+        let replaced = 0;
+        for (const part of parts) {
+            const visible = part === '\n' ? part : part.replace(HIDDEN, '');
+            if (!visible) continue;
+            if (visible === '\n' || Array.from(visible).every(char => has(char.codePointAt(0)))) text += visible;
+            else { text += mark; replaced += 1; }
+        }
+        return { text, replaced };
     }
 
     // ---------- Gemeinsames ----------
@@ -336,17 +434,49 @@ window.DocPdf = (function () {
             P.setTextMatrix(1, 0, 0, 1, round(x), round(y)), P.showText(font.encodeText(text)), P.endText());
     }
 
+    // Wie put(), aber für gemischte Schreibrichtung: Rechts-nach-links-Absätze stehen rechtsbündig an „right“,
+    // lateinische Wörter und Zahlen darin bleiben lesbar. fontkit setzt jeden Abschnitt in seiner Richtung.
+    const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<', '«': '»', '»': '«' };
+    function putBidi(page, font, text, x, right, y, size, color, base) {
+        // Klammern in Rechts-nach-links-Abschnitten werden gespiegelt (sonst stehen sie verkehrt herum).
+        // Leerzeichen am Rand eines Abschnitts werden selbst gesetzt (fontkit lässt sie am Zeilenende sonst weg).
+        const space = Math.max(font.widthOfTextAtSize('a a', size) - font.widthOfTextAtSize('aa', size), size * 0.2);
+        const runs = bidiRuns(text, base).map(run => {
+            const body = run.type === 'R' ? run.text.replace(/[()[\]{}<>«»]/g, char => MIRROR[char]) : run.text;
+            const lead = body.length - body.trimStart().length;
+            const trail = body.length - body.trimEnd().length;
+            const core = body.trim();
+            return { type: run.type, core, lead, trail, width: (core ? font.widthOfTextAtSize(core, size) : 0) + (lead + trail) * space };
+        });
+        // Vor dem Abschnitt (in Leserichtung) stehende Leerzeichen liegen bei Rechts-nach-links rechts, sonst links.
+        const offset = run => (run.type === 'R' ? run.trail : run.lead) * space;
+        if (base === 'rtl') {
+            // Der erste Abschnitt (in Leserichtung) steht ganz rechts, die weiteren folgen nach links.
+            let edge = right;
+            for (const run of runs) {
+                edge -= run.width;
+                if (run.core) put(page, font, run.core, edge + offset(run), y, size, color);
+            }
+        } else {
+            let edge = x;
+            for (const run of runs) {
+                if (run.core) put(page, font, run.core, edge + offset(run), y, size, color);
+                edge += run.width;
+            }
+        }
+    }
+
     // Feine Linie über die ganze Textbreite.
     function rule(page, y) {
         page.drawLine({ start: { x: MARGIN, y }, end: { x: A4[0] - MARGIN, y }, thickness: 0.6, color: window.PDFLib.rgb(...RULE) });
     }
 
     // Bricht einen Absatz in Zeilen um. Überlange Wörter (z. B. Internetadressen) werden geteilt, damit nichts über den Rand läuft.
-    function wrap(text, font, size, maxWidth) {
+    function wrap(text, font, size, maxWidth, measure = textWidth) {
         const lines = [];
         let line = '';
         for (let word of text.split(' ').filter(Boolean)) {
-            if (line && textWidth(font, `${line} ${word}`, size) <= maxWidth) {
+            if (line && measure(font, `${line} ${word}`, size) <= maxWidth) {
                 line += ` ${word}`;
                 continue;
             }
@@ -355,7 +485,7 @@ window.DocPdf = (function () {
             for (;;) {
                 let cut = 0;
                 let used = 0;
-                while (cut < word.length && (used += textWidth(font, word[cut], size)) <= maxWidth) cut += 1;
+                while (cut < word.length && (used += measure(font, word[cut], size)) <= maxWidth) cut += 1;
                 if (cut === word.length) break;
                 cut = Math.max(cut, 1);      // mindestens ein Zeichen je Zeile, damit es immer weitergeht
                 const soft = word.slice(0, cut).search(/[\/\\_.,;:?&=+@-][^\/\\_.,;:?&=+@-]*$/) + 1;      // lieber nach / . - ? & = trennen
@@ -370,11 +500,11 @@ window.DocPdf = (function () {
     }
 
     // Wie wrap(), aber höchstens „max“ Zeilen – der Rest wird mit „…“ abgeschnitten (Kopf- und Fußzeile).
-    function wrapShort(text, font, size, maxWidth, max) {
-        const lines = wrap(text.replace(/\n/g, ' '), font, size, maxWidth);
+    function wrapShort(text, font, size, maxWidth, max, measure = textWidth) {
+        const lines = wrap(text.replace(/\n/g, ' '), font, size, maxWidth, measure);
         if (lines.length <= max) return lines;
         let last = lines[max - 1];
-        while (last && textWidth(font, `${last}…`, size) > maxWidth) last = last.slice(0, -1);
+        while (last && measure(font, `${last}…`, size) > maxWidth) last = last.slice(0, -1);
         return [...lines.slice(0, max - 1), `${last.trimEnd()}…`];
     }
 
@@ -387,19 +517,33 @@ window.DocPdf = (function () {
         await ready();
         const P = window.PDFLib;
         const pdf = await P.PDFDocument.create();
-        const regular = pdf.embedStandardFont(P.StandardFonts.Helvetica);
-        const bold = pdf.embedStandardFont(P.StandardFonts.HelveticaBold);
+        // Alles, was auf dem Blatt steht: Kennt Helvetica jedes Zeichen? Sonst kommt die Unicode-Schrift zum Einsatz (R75).
+        const everything = [organisation, title, footer, ...(Array.isArray(meta) ? meta.flat() : []), ...(Array.isArray(sections) ? sections.flatMap(section => [section?.heading, section?.text]) : [])];
+        let unicode = everything.some(value => clean(value).replaced > 0);
+        let fonts = null;
+        // Lässt sich die Unicode-Schrift nicht laden (kein Netz), entsteht das PDF wie früher mit Helvetica – fremde Zeichen als „?“.
+        if (unicode) { try { fonts = await unicodeFonts(pdf); } catch (error) { console.warn(error?.message || error); unicode = false; } }
+        const regular = unicode ? fonts.regular : pdf.embedStandardFont(P.StandardFonts.Helvetica);
+        const bold = unicode ? fonts.bold : pdf.embedStandardFont(P.StandardFonts.HelveticaBold);
         describe(pdf, { ...details, title });
 
         let replaced = 0;
         const show = value => {
-            const result = clean(value);
+            const result = unicode ? cleanUnicode(value, fonts.has) : clean(value);
             replaced += result.replaced;
             return result.text.split('\n').map(line => line.replace(/ +/g, ' ').trim()).join('\n').trim();
         };
-        const empty = value => !clean(value).text.trim();
+        const empty = value => !(unicode ? cleanUnicode(value, fonts.has) : clean(value)).text.trim();
+        // Im Unicode-Modus misst die Schrift ganze Wörter (arabische Buchstaben verbinden sich und ändern ihre Breite);
+        // gesetzt wird mit Rücksicht auf die Schreibrichtung des Absatzes.
+        const measure = unicode ? (font, text, size) => font.widthOfTextAtSize(text, size) : textWidth;
+        const wrapText = (text, font, size, maxWidth) => wrap(text, font, size, maxWidth, measure);
+        const write = (page, font, text, x, y, size, color, right = A4[0] - MARGIN, base = 'ltr') => {
+            if (unicode && (base === 'rtl' || hasRtl(text))) putBidi(page, font, text, x, right, y, size, color, base);
+            else put(page, font, text, x, y, size, color);
+        };
         const width = A4[0] - 2 * MARGIN;
-        const head = wrapShort(show(organisation), regular, 8, width, 1)[0];
+        const head = wrapShort(show(organisation), regular, 8, width, 1, measure)[0];
 
         // Schreibmarke: y ist die Oberkante der nächsten Zeile, fresh = auf dieser Seite steht noch nichts.
         let page = null;
@@ -430,7 +574,7 @@ window.DocPdf = (function () {
         const headline = show(title).replace(/\n/g, ' ');
         if (headline) {
             y -= 14;
-            for (const line of wrap(headline, bold, 20, width)) put(page, bold, line, MARGIN, baseline(take(25), 25, 20), 20, INK);
+            for (const line of wrapText(headline, bold, 20, width)) write(page, bold, line, MARGIN, baseline(take(25), 25, 20), 20, INK, A4[0] - MARGIN, directionOf(headline));
         }
 
         // Tabelle: Beschriftung grau, Wert schwarz – lange Werte laufen in der rechten Spalte weiter.
@@ -438,13 +582,14 @@ window.DocPdf = (function () {
             .filter(row => Array.isArray(row) && !empty(row[1]))
             .map(row => ({ label: show(row[0]).replace(/\n/g, ' '), value: show(row[1]) }));
         if (rows.length) {
-            const labelWidth = Math.min(Math.max(...rows.map(row => textWidth(regular, row.label, 9.5))), width * 0.3);
+            const labelWidth = Math.min(Math.max(...rows.map(row => measure(regular, row.label, 9.5))) + 1, width * 0.3);
             const valueLeft = MARGIN + labelWidth + 18;
             const valueWidth = A4[0] - MARGIN - valueLeft;
             let first = true;
             for (const row of rows) {
-                const labels = wrap(row.label, regular, 9.5, labelWidth);
-                const values = row.value.split('\n').flatMap(part => wrap(part, regular, 10.5, valueWidth));
+                const labels = wrapText(row.label, regular, 9.5, labelWidth);
+                const values = row.value.split('\n').flatMap(part => wrapText(part, regular, 10.5, valueWidth));
+                const valueBase = directionOf(row.value);
                 const count = Math.max(labels.length, values.length);
                 for (let index = 0; index < count; index++) {
                     const above = index === 0 ? 5 : 0;
@@ -456,8 +601,8 @@ window.DocPdf = (function () {
                     if (index === 0 && (first || page !== before)) rule(page, top);
                     first = false;
                     const line = baseline(top - above, 14, 10.5);
-                    if (labels[index]) put(page, regular, labels[index], MARGIN, line, 9.5, GREY);
-                    if (values[index]) put(page, regular, values[index], valueLeft, line, 10.5, BLACK);
+                    if (labels[index]) write(page, regular, labels[index], MARGIN, line, 9.5, GREY, MARGIN + labelWidth, directionOf(labels[index]));
+                    if (values[index]) write(page, regular, values[index], valueLeft, line, 10.5, BLACK, A4[0] - MARGIN, valueBase);
                 }
                 rule(page, y);
             }
@@ -470,11 +615,12 @@ window.DocPdf = (function () {
             const paragraphs = show(section.text).split('\n');
             let gap = heading ? 24 : 14;
             if (heading) {
-                const lines = wrap(heading, bold, 13, width);
+                const lines = wrapText(heading, bold, 13, width);
+                const headingBase = directionOf(heading);
                 lines.forEach((line, index) => {
                     // Die Überschrift bleibt nie allein am Seitenende: Der Anfang des Textes muss noch darunter passen.
                     const top = index ? take(17) : take(17, gap, (lines.length - 1) * 17 + 6 + 3 * 15.5);
-                    put(page, bold, line, MARGIN, baseline(top, 17, 13), 13, INK);
+                    write(page, bold, line, MARGIN, baseline(top, 17, 13), 13, INK, A4[0] - MARGIN, headingBase);
                 });
                 gap = 6;
             }
@@ -484,15 +630,17 @@ window.DocPdf = (function () {
                     continue;
                 }
                 // Aufzählung („- …“, „• …“): Folgezeilen stehen eingerückt unter dem Text.
-                const bullet = (paragraph.match(/^[-–•*·] /) || [''])[0];
-                const indent = textWidth(regular, bullet, 11);
-                const lines = wrap(paragraph.slice(bullet.length), regular, 11, width - indent);
+                const base = directionOf(paragraph);
+                // Rechts-nach-links-Absätze: Aufzählungszeichen bleiben Teil des Textes (sie stehen dann rechts).
+                const bullet = base === 'rtl' ? '' : (paragraph.match(/^[-–•*·] /) || [''])[0];
+                const indent = bullet ? measure(regular, bullet, 11) : 0;
+                const lines = wrapText(paragraph.slice(bullet.length), regular, 11, width - indent);
                 lines.forEach((line, index) => {
                     // Keine einzelne Zeile eines Absatzes allein am Seitenende oder Seitenanfang:
                     // Zur ersten und zur vorletzten Zeile muss die nächste noch dazupassen (bis drei Zeilen bleibt der Absatz ganz zusammen).
                     const keep = index === 0 ? Math.min(lines.length - 1, lines.length > 3 ? 1 : 2) : index === lines.length - 2 ? 1 : 0;
                     const row = baseline(take(15.5, index ? 0 : gap, keep * 15.5), 15.5, 11);
-                    put(page, regular, index ? line : bullet + line, MARGIN + (index ? indent : 0), row, 11, BLACK);
+                    write(page, regular, index ? line : bullet + line, MARGIN + (index ? indent : 0), row, 11, BLACK, A4[0] - MARGIN, base);
                 });
                 gap = 5;
             }
@@ -500,14 +648,14 @@ window.DocPdf = (function () {
 
         // Fußzeile erst jetzt – erst hier steht fest, wie viele Seiten es sind.
         const pages = pdf.getPages();
-        const foot = wrapShort(show(footer), regular, 8, width - 90, 2);
+        const foot = wrapShort(show(footer), regular, 8, width - 90, 2, measure);
         pages.forEach((sheet, index) => {
             const number = `Seite ${index + 1} von ${pages.length}`;
             rule(sheet, 44);
-            foot.forEach((line, row) => put(sheet, regular, line, MARGIN, 31 - row * 10, 8, GREY));
-            put(sheet, regular, number, A4[0] - MARGIN - textWidth(regular, number, 8), 31, 8, GREY);
+            foot.forEach((line, row) => write(sheet, regular, line, MARGIN, 31 - row * 10, 8, GREY, A4[0] - MARGIN - 90, directionOf(line)));
+            put(sheet, regular, number, A4[0] - MARGIN - measure(regular, number, 8), 31, 8, GREY);
         });
-        return { blob: await save(pdf), replaced };
+        return { blob: await save(pdf), replaced, unicode };
     }
 
     // ---------- Dateiname ----------
@@ -659,5 +807,5 @@ window.DocPdf = (function () {
         });
     }
 
-    return { ready, build, report, bundle, fileName, canShow, pick };
+    return { ready, build, report, bundle, fileName, canShow, pick, directionOf, hasRtl };
 })();
