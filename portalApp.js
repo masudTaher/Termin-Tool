@@ -690,24 +690,62 @@ if (!window.TerminContact) {
         const reportForm = document.createElement('form');
         reportForm.className = 'my-extra-form';
         reportForm.noValidate = true;
-        const dateInput = document.createElement('input'); dateInput.type = 'date'; dateInput.setAttribute('aria-label', 'Datum des fehlenden Tages');
+        // Kalender des Monats (R78): mehrere Tage antippen, dann einmal melden – statt jeden Tag einzeln.
         const monthEnd = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0);
-        dateInput.min = `${month}-01`; dateInput.max = isoDate(monthEnd);
-        const noteInput = document.createElement('input'); noteInput.type = 'text'; noteInput.maxLength = 300; noteInput.placeholder = 'Was hast du an dem Tag gemacht? (z. B. Begleitung im Krankenhaus, Termin stand nicht im Plan)'; noteInput.setAttribute('aria-label', 'Begründung');
+        const todayIso = isoDate(new Date());
+        const reported = new Map(extra.map(item => [item.date, item.status]));
+        const picked = new Set();
+        const calendar = document.createElement('div'); calendar.className = 'my-extra-calendar'; calendar.setAttribute('role', 'group'); calendar.setAttribute('aria-label', 'Fehlende Tage auswählen');
+        const calendarHint = document.createElement('p'); calendarHint.className = 'my-extra-hint'; calendarHint.textContent = 'Tippe alle Tage an, die fehlen – du kannst mehrere auf einmal wählen.';
+        ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].forEach(name => { const head = document.createElement('span'); head.className = 'my-extra-weekday'; head.textContent = name; calendar.append(head); });
+        const firstWeekday = (new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).getDay() + 6) % 7;
+        for (let blank = 0; blank < firstWeekday; blank++) { const gap = document.createElement('span'); gap.className = 'my-extra-gap'; calendar.append(gap); }
+        const pickedInfo = document.createElement('p'); pickedInfo.className = 'my-extra-picked'; pickedInfo.setAttribute('role', 'status');
         const send = document.createElement('button'); send.type = 'submit'; send.className = 'button-primary'; send.textContent = 'Tag melden';
-        const hint = document.createElement('p'); hint.className = 'my-extra-hint'; hint.textContent = 'Das Büro prüft die Meldung. Bestätigt es den Tag, zählt er wie ein normaler Arbeitstag.';
-        reportForm.append(dateInput, noteInput, send, hint);
+        const showPicked = () => {
+            const chosen = [...picked].sort();
+            pickedInfo.textContent = chosen.length ? `Ausgewählt: ${chosen.length === 1 ? '1 Tag' : `${chosen.length} Tage`} – ${chosen.map(dateShort).join(', ')}` : 'Noch kein Tag ausgewählt.';
+            send.textContent = chosen.length > 1 ? `${chosen.length} Tage melden` : 'Tag melden';
+        };
+        for (let day = 1; day <= monthEnd.getDate(); day++) {
+            const date = `${month}-${String(day).padStart(2, '0')}`;
+            const cell = document.createElement('button'); cell.type = 'button'; cell.className = 'my-extra-day-pick'; cell.textContent = String(day); cell.dataset.date = date;
+            const weekday = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, day).getDay();
+            if (weekday === 0 || weekday === 6) cell.classList.add('is-weekend');
+            if (days.has(date)) { cell.classList.add('is-counted'); cell.disabled = true; cell.title = 'Dieser Tag zählt schon'; cell.setAttribute('aria-label', `${dateShort(date)} – zählt schon`); }
+            else if (reported.has(date)) { cell.classList.add(`is-${reported.get(date)}`); cell.disabled = true; cell.title = reported.get(date) === 'gemeldet' ? 'Schon gemeldet – das Büro prüft' : 'Abgelehnt'; }
+            else if (date > todayIso) { cell.classList.add('is-future'); cell.disabled = true; cell.title = 'Liegt noch in der Zukunft'; }
+            else {
+                cell.setAttribute('aria-pressed', 'false');
+                cell.setAttribute('aria-label', `${dateShort(date)} auswählen`);
+                cell.addEventListener('click', () => { if (picked.has(date)) picked.delete(date); else picked.add(date); cell.classList.toggle('is-picked', picked.has(date)); cell.setAttribute('aria-pressed', String(picked.has(date))); showPicked(); });
+            }
+            calendar.append(cell);
+        }
+        showPicked();
+        const noteInput = document.createElement('input'); noteInput.type = 'text'; noteInput.maxLength = 300; noteInput.placeholder = 'Was hast du an diesen Tagen gemacht? (z. B. Begleitung im Krankenhaus, Termin stand nicht im Plan)'; noteInput.setAttribute('aria-label', 'Begründung');
+        const hint = document.createElement('p'); hint.className = 'my-extra-hint'; hint.textContent = 'Das Büro prüft jede Meldung. Bestätigt es den Tag, zählt er wie ein normaler Arbeitstag.';
+        reportForm.append(calendarHint, calendar, pickedInfo, noteInput, send, hint);
         reportForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!dateInput.value) { toast('Bitte wähle das Datum.', 'error'); dateInput.focus(); return; }
-            if (days.has(dateInput.value)) { toast('Dieser Tag zählt schon.', 'info'); return; }
+            const dates = [...picked].sort();
+            if (!dates.length) { toast('Bitte tippe im Kalender die fehlenden Tage an.', 'error'); return; }
             if (!noteInput.value.trim()) { toast('Bitte schreib kurz, was du an dem Tag gemacht hast.', 'error'); noteInput.focus(); return; }
             send.disabled = true;
-            const { error } = await client.from('tt_extra_days').insert({ date: dateInput.value, note: noteInput.value.trim() });
+            let sent = 0; let failed = '';
+            for (const date of dates) {
+                const { error } = await client.from('tt_extra_days').insert({ date, note: noteInput.value.trim() });
+                if (!error) { sent += 1; continue; }
+                if (/schon einen Eintrag/.test(error.message || '')) continue;      // schon gemeldet – überspringen
+                failed = /does not exist|schema cache|relation|PGRST205/i.test(`${error.code || ''} ${error.message || ''}`) ? 'Dafür fehlt noch ein Datenbank-Update (Update 43). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error);
+                break;
+            }
             send.disabled = false;
-            if (error) { toast(/schon einen Eintrag/.test(error.message || '') ? 'Diesen Tag hast du schon gemeldet.' : /does not exist|schema cache|relation|PGRST205/i.test(`${error.code || ''} ${error.message || ''}`) ? 'Dafür fehlt noch ein Datenbank-Update (Update 43). Bitte der Einsatzleitung Bescheid sagen.' : TerminCloud.germanError(error), 'error'); return; }
-            toast('Tag gemeldet – das Büro prüft ihn.', 'success');
-            TerminCloud.callFunction?.({ action: 'extraDay', date: dateInput.value })?.catch?.(() => null);
+            if (failed) { toast(failed, 'error'); if (!sent) return; }
+            if (sent) {
+                toast(sent === 1 ? 'Tag gemeldet – das Büro prüft ihn.' : `${sent} Tage gemeldet – das Büro prüft sie.`, 'success');
+                TerminCloud.callFunction?.({ action: 'extraDay', date: dates[0], count: sent })?.catch?.(() => null);
+            } else toast('Diese Tage hast du schon gemeldet.', 'info');
             await renderStatement();
         });
         report.append(reportHead, reportForm);

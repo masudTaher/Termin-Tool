@@ -3111,3 +3111,17 @@ html[data-text="big"] { font-size: 112.5%; }
 .fleet-radio input { margin-top: 4px; }
 .fleet-fieldset { margin: 10px 0 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; }
 .fleet-fieldset legend { padding: 0 6px; color: var(--muted); font-size: .82rem; font-weight: 700; }
+/* ===== §98 (R78): Fehlende Tage im Kalender auswählen (mehrere auf einmal) ===== */
+.my-extra-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.my-extra-weekday { padding: 2px 0; color: var(--muted); font-size: .74rem; font-weight: 700; text-align: center; text-transform: uppercase; }
+.my-extra-form .my-extra-day-pick { width: auto; min-height: 40px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: .95rem; font-weight: 650; }
+.my-extra-day-pick.is-weekend { background: var(--surface-soft); }
+.my-extra-day-pick.is-picked { border-color: var(--brand); background: var(--brand); color: #fff; }
+.my-extra-day-pick.is-counted { border-color: #0f8a4d; background: #d8f5e6; color: #0f5132; opacity: 1; cursor: default; }
+.my-extra-day-pick.is-counted::after { content: " ✓"; font-size: .8em; }
+.my-extra-day-pick.is-gemeldet { border-style: dashed; border-color: #d98a00; background: #fff3cd; color: #5c3d00; opacity: 1; cursor: default; }
+.my-extra-day-pick.is-abgelehnt { opacity: .45; text-decoration: line-through; cursor: default; }
+.my-extra-day-pick.is-future { opacity: .35; cursor: default; }
+.my-extra-picked { margin: 2px 0 0; color: var(--ink); font-size: .9rem; font-weight: 600; }
+:root[data-theme="dark"] .my-extra-day-pick.is-counted { background: rgba(15, 138, 77, .25); color: #9fe3bf; }
+:root[data-theme="dark"] .my-extra-day-pick.is-gemeldet { background: rgba(217, 138, 0, .22); color: #ffd58a; }
