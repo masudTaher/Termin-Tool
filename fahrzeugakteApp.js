@@ -1970,6 +1970,14 @@
                 const meta = el('span');
                 meta.append(el('strong', null, item.plate), el('small', null, [item.vehicle, item.vehicle_type, item.mileage != null ? formatKm(item.mileage) : '', item.done ? `erledigt ${formatDateTime(item.done_at)}${item.done_by ? ` von ${item.done_by}` : ''}` : 'offen', item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
                 if (item.extra) meta.append(el('small', 'tyre-office-extra', `Extras: ${item.extra}`));
+                // Prüfpunkte der Werkstatt (Update 52)
+                const checks = item.checks && typeof item.checks === 'object' ? item.checks : {};
+                const checkWords = [checks.adblue ? 'AdBlue nachgefüllt' : '', checks.wischwasser ? 'Wischwasser nachgefüllt' : '', checks.checkup ? 'Check-up gemacht' : '', checks.bremsen === 'ok' ? 'Bremsen in Ordnung' : ''].filter(Boolean);
+                if (checkWords.length || checks.bremsen === 'wechsel') {
+                    const line = el('small', `tyre-office-checks${checks.bremsen === 'wechsel' ? ' is-bad' : ''}`);
+                    line.textContent = `Werkstatt: ${[checks.bremsen === 'wechsel' ? 'BREMSEN MÜSSEN GEWECHSELT WERDEN' : '', ...checkWords].filter(Boolean).join(' · ')}${checks.by ? ` (${checks.by}${checks.at ? `, ${formatDateTime(checks.at)}` : ''})` : ''}`;
+                    meta.append(line);
+                }
                 const toggle = el('button', item.done ? 'button-quiet' : 'button-secondary fleet-end-button', item.done ? 'Wieder offen' : 'Erledigt');
                 toggle.type = 'button';
                 toggle.addEventListener('click', async () => {
@@ -1988,6 +1996,7 @@
                 }
                 actions.append(toggle);
                 row.append(pill(item.done ? 'erledigt' : 'offen', item.done ? 'Erledigt' : 'Offen'), meta, actions);
+                if (checks.bremsen === 'wechsel') row.dataset.brakes = 'wechsel';
                 return row;
             }));
             box.append(head, rows);

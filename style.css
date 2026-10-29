@@ -3148,3 +3148,8 @@ html[data-text="big"] { font-size: 112.5%; }
 .reply-when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 700; }
 .reply-when input { min-height: 40px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
 .doctor-question-form { display: grid; gap: 8px; }
+
+/* ===== 102. Fuhrpark: Prüfpunkte der Werkstatt auf der Reifenliste (Update 52) ===== */
+.tyre-office-checks { display: block; color: #0f6b3c; font-weight: 650; }
+.tyre-office-checks.is-bad { color: #b42318; font-weight: 800; }
+.tyre-office-item[data-brakes="wechsel"] { border-color: color-mix(in srgb, #b42318 45%, var(--line)); background: color-mix(in srgb, #b42318 6%, var(--surface)); }

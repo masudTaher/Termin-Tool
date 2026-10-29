@@ -58,3 +58,16 @@ button, input, textarea { font: inherit; }
 
 /* Extras vom Büro je Fahrzeug (Update 44) */
 .tyre-item-extra { display: block; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: #fff4d6; color: #6b4a00; font-weight: 600; font-size: 0.95rem; }
+/* Prüfpunkte der Werkstatt (Update 52) */
+.tyre-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.tyre-chip { padding: 3px 10px; border-radius: 999px; background: #e6f5ec; color: #0f6b3c; font-size: .86rem; font-weight: 750; }
+.tyre-chip.is-bad { background: #fff1ef; color: #b42318; }
+.tyre-checks { display: grid; gap: 4px; margin: 4px 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.tyre-checks legend { padding: 0 6px; color: var(--soft); font-size: .9rem; font-weight: 700; }
+.tyre-check-row { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink) !important; font-size: 1rem !important; font-weight: 650 !important; cursor: pointer; }
+.tyre-check-row input { width: 24px; height: 24px; margin: 0; flex: 0 0 auto; accent-color: var(--go); }
+.tyre-check-row.is-bad input { accent-color: #b42318; }
+.tyre-check-row.is-bad:has(input:checked) span { color: #b42318; font-weight: 800; }
+.tyre-brakes { display: grid; gap: 0; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.tyre-brakes-label { color: var(--soft); font-size: .9rem; font-weight: 700; }
+.tyre-edit { font-size: .9rem; }

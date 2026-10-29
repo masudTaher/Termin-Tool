@@ -45,12 +45,17 @@
             if (item.extra) main.append(el('span', 'tyre-item-extra', `Bitte außerdem: ${item.extra}`));
             if (item.done) main.append(el('span', 'tyre-done-text', `Erledigt ${when(item.done_at)}${item.done_by ? ` · ${item.done_by}` : ''}`));
             if (item.note) main.append(el('span', 'tyre-item-note', `„${item.note}“`));
+            const checks = checkChips(item.checks);
+            if (checks) main.append(checks);
             const side = el('div', 'tyre-side');
             if (item.done) {
+                const edit = el('button', 'tyre-button tyre-button-quiet tyre-edit', 'Angaben ändern');
+                edit.type = 'button';
+                edit.addEventListener('click', () => openDone(item));
                 const undo = el('button', 'tyre-button tyre-button-quiet tyre-undo', 'Doch nicht fertig');
                 undo.type = 'button';
                 undo.addEventListener('click', () => mark(item, false, undo));
-                side.append(el('span', 'tyre-check', '✓'), undo);
+                side.append(el('span', 'tyre-check', '✓'), edit, undo);
             } else {
                 const ok = el('button', 'tyre-button tyre-button-main tyre-ok', 'Erledigt');
                 ok.type = 'button';
@@ -62,6 +67,28 @@
         }));
     }
 
+    // Prüfpunkte der Werkstatt (Update 52): AdBlue, Wischwasser, Check-up, Bremsen
+    const CHECK_WORDS = [['adblue', 'AdBlue nachgefüllt'], ['wischwasser', 'Wischwasser nachgefüllt'], ['checkup', 'Check-up gemacht']];
+    function checkChips(checks) {
+        if (!checks || typeof checks !== 'object') return null;
+        const chips = [];
+        CHECK_WORDS.forEach(([key, word]) => { if (checks[key]) chips.push(el('span', 'tyre-chip is-ok', `✓ ${word}`)); });
+        if (checks.bremsen === 'ok') chips.push(el('span', 'tyre-chip is-ok', '✓ Bremsen in Ordnung'));
+        if (checks.bremsen === 'wechsel') chips.push(el('span', 'tyre-chip is-bad', '⚠ Bremsen: Wechsel nötig'));
+        if (!chips.length) return null;
+        const box = el('span', 'tyre-chips');
+        box.append(...chips);
+        return box;
+    }
+    const readChecks = () => ({ adblue: $('tyreChkAdblue').checked, wischwasser: $('tyreChkWasser').checked, checkup: $('tyreChkCheckup').checked, bremsen: document.querySelector('input[name=tyreChkBremsen]:checked')?.value || '' });
+    function fillChecks(checks) {
+        const value = checks && typeof checks === 'object' ? checks : {};
+        $('tyreChkAdblue').checked = Boolean(value.adblue);
+        $('tyreChkWasser').checked = Boolean(value.wischwasser);
+        $('tyreChkCheckup').checked = Boolean(value.checkup);
+        const brakes = ['ok', 'wechsel'].includes(value.bremsen) ? value.bremsen : '';
+        document.querySelectorAll('input[name=tyreChkBremsen]').forEach(input => { input.checked = input.value === brakes; });
+    }
     const invalid = error => /nicht \(mehr\) gültig/.test(error?.message || '');
     const missing = error => /could not find the function|schema cache|does not exist/i.test(error?.message || '');
     async function load(quiet = false) {
@@ -87,6 +114,8 @@
         pending = item;
         $('tyreDoneTitle').textContent = `${item.plate} · ${item.vehicle}`;
         $('tyreDoneNote').value = item.note || '';
+        fillChecks(item.checks);
+        $('tyreDoneOk').textContent = item.done ? 'Angaben speichern' : 'Als erledigt markieren';
         $('tyreDone').showModal();
     }
     $('tyreDoneCancel').addEventListener('click', () => $('tyreDone').close());
@@ -94,17 +123,21 @@
         event.preventDefault();
         const item = pending;
         $('tyreDone').close();
-        if (item) mark(item, true, null, $('tyreDoneNote').value.trim());
+        if (item) mark(item, true, null, $('tyreDoneNote').value.trim(), readChecks());
     });
 
-    async function mark(item, done, button, note = null) {
+    async function mark(item, done, button, note = null, checks = null) {
         if (button) button.disabled = true;
-        const { data: row, error } = await client.rpc('tt_tyre_mark', { p_token: token, p_item: item.id, p_done: done, p_by: whoName(), p_note: note });
+        let { data: row, error } = await client.rpc('tt_tyre_mark', { p_token: token, p_item: item.id, p_done: done, p_by: whoName(), p_note: note, ...(checks ? { p_checks: checks } : {}) });
+        // Ohne Update 52 kennt die Datenbank die Prüfpunkte noch nicht – dann wenigstens abhaken und Bemerkung speichern.
+        let dropped = false;
+        if (error && checks && missing(error)) { dropped = true; ({ data: row, error } = await client.rpc('tt_tyre_mark', { p_token: token, p_item: item.id, p_done: done, p_by: whoName(), p_note: note })); }
         if (button) button.disabled = false;
         if (error) { status(invalid(error) ? 'Dieser Link ist nicht mehr gültig – die Liste wurde geschlossen.' : TerminCloud.germanError(error), 'error'); await load(true); return; }
         const index = (data.items || []).findIndex(entry => entry.id === item.id);
         if (index >= 0) data.items[index] = row;
-        status(done ? `${row.plate} ist als erledigt eingetragen.` : `${row.plate} steht wieder als offen.`, 'success');
+        const anyCheck = checks && (checks.adblue || checks.wischwasser || checks.checkup || checks.bremsen);
+        status(dropped && anyCheck ? `${row.plate} ist eingetragen – die Prüfpunkte konnten noch nicht gespeichert werden (Update 52 fehlt). Bitte in die Bemerkung schreiben.` : done ? (item.done ? `${row.plate}: Angaben gespeichert.` : `${row.plate} ist als erledigt eingetragen.${checks?.bremsen === 'wechsel' ? ' Die Einsatzleitung sieht die Meldung zu den Bremsen.' : ''}`) : `${row.plate} steht wieder als offen.`, dropped && anyCheck ? 'error' : 'success');
         render();
     }
 

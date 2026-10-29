@@ -33,6 +33,18 @@
          <form id="tyreDoneForm" method="dialog">
             <p class="tyre-kicker">ERLEDIGT</p>
             <h2 id="tyreDoneTitle">Fahrzeug</h2>
+            <fieldset class="tyre-checks">
+               <legend>Außerdem gemacht oder geprüft (bitte abhaken)</legend>
+               <label class="tyre-check-row"><input type="checkbox" id="tyreChkAdblue"><span>AdBlue nachgefüllt</span></label>
+               <label class="tyre-check-row"><input type="checkbox" id="tyreChkWasser"><span>Wischwasser nachgefüllt</span></label>
+               <label class="tyre-check-row"><input type="checkbox" id="tyreChkCheckup"><span>Check-up gemacht</span></label>
+               <div class="tyre-brakes" role="radiogroup" aria-labelledby="tyreBrakesLabel">
+                  <span id="tyreBrakesLabel" class="tyre-brakes-label">Bremsen</span>
+                  <label class="tyre-check-row"><input type="radio" name="tyreChkBremsen" value="" checked><span>nicht geprüft</span></label>
+                  <label class="tyre-check-row"><input type="radio" name="tyreChkBremsen" value="ok"><span>in Ordnung</span></label>
+                  <label class="tyre-check-row is-bad"><input type="radio" name="tyreChkBremsen" value="wechsel"><span>nicht in Ordnung – müssen gewechselt werden</span></label>
+               </div>
+            </fieldset>
             <label for="tyreDoneNote">Bemerkung (freiwillig)</label>
             <textarea id="tyreDoneNote" rows="3" maxlength="300" placeholder="z. B. Winterreifen montiert, DOT 2124, Profil 7 mm"></textarea>
             <div class="tyre-dialog-buttons"><button type="button" id="tyreDoneCancel" class="tyre-button tyre-button-quiet">Abbrechen</button><button type="submit" id="tyreDoneOk" class="tyre-button tyre-button-main">Als erledigt markieren</button></div>
