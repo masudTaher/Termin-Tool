@@ -220,7 +220,7 @@ if (!window.TerminContact) {
         if (!profile) { show('auth'); $('portalUser').textContent = DEFAULT_USER_LINE; return; }
         // Das Konto der Pforte gehört auf die Anzeige der Pforte, nicht ins Portal der Dolmetscher.
         if (profile.role === 'pforte') { window.location.replace('pforte.html'); return; }
-        if (profile.role === 'arzt') { window.location.replace('arzt.html'); return; }
+        if (profile.role === 'arzt' || profile.role === 'pr') { window.location.replace('arzt.html'); return; }
         $('portalUser').textContent = [profile.full_name || profile.email, isFest() ? 'fest angestellt' : ''].filter(Boolean).join(' · ');
         // Admins können zwischen der App der Dolmetscher und der Einsatzleitung wechseln.
         $('switchToOffice').hidden = $('officeCard').hidden = !TerminCloud.isAdmin(profile);
@@ -416,6 +416,9 @@ if (!window.TerminContact) {
         // Anweisung eines Arztes: ganz oben, bis sie bestätigt ist.
         const orders = openOrders();
         if (orders.length) notices.unshift([orders.length === 1 ? `Anweisung von ${orders[0].doctor_name || 'einem Arzt'} – bitte lesen und bestätigen` : `${orders.length} Anweisungen von Ärzten – bitte lesen und bestätigen`, () => goTo('messages')]);
+        // Berichtsanfrage der PR (Update 51): bleibt stehen, bis der Bericht hochgeladen ist.
+        const asks = questionData.filter(item => questionKind(item) === 'bericht' && !item.acknowledged_at);
+        if (asks.length) notices.unshift([asks.length === 1 ? `Bericht angefordert von ${asks[0].doctor_name || 'der PR'}${asks[0].patient_name ? ` (${asks[0].patient_name})` : ''} – bitte hochladen` : `${asks.length} Berichte angefordert – bitte hochladen`, () => goTo('messages')]);
         $('startNotices').replaceChildren(...notices.map(([text, action]) => {
             const item = document.createElement('li');
             const button = el('button', '', text);
@@ -3770,7 +3773,8 @@ if (!window.TerminContact) {
     let messagesShown = '';      // Stand der Anzeige – nur bei Änderungen wird neu gezeichnet
     let questionData = [];          // Fragen der Ärzte zu meinen Berichten (Update 36)
     // Art (Update 40): frage = antworten, info = „gelesen“ bestätigen, anweisung = „Verstanden“ bestätigen (groß und rot).
-    const questionKind = item => ['frage', 'info', 'anweisung'].includes(item.kind) ? item.kind : 'frage';
+    // bericht (Update 51): die PR bittet um den Bericht zu einem Termin – erledigt, sobald er hochgeladen ist.
+    const questionKind = item => ['frage', 'info', 'anweisung', 'bericht'].includes(item.kind) ? item.kind : 'frage';
     const questionOpen = item => questionKind(item) === 'frage' ? !item.answered_at && !item.seen_at : !item.acknowledged_at;
     const openOrders = () => questionData.filter(item => questionKind(item) === 'anweisung' && !item.acknowledged_at);
     const unreadQuestions = () => questionData.filter(questionOpen).length;
@@ -3794,7 +3798,7 @@ if (!window.TerminContact) {
         chatReady = !chat.error;
         chatData = chat.error ? [] : [...chat.data].reverse();
         const unread = unreadMessages();
-        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? (openOrders().length ? 'Ein Arzt hat dir eine Anweisung geschickt – bitte bestätigen.' : 'Ein Arzt hat dir zu deinem Bericht geschrieben.') : 'Neue Nachricht von der Einsatzleitung.', openOrders().length && unreadQuestions() > questionsBefore ? 'error' : 'success', null, { label: 'Lesen', run: () => goTo('messages') });
+        if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? (openOrders().length ? 'Ein Arzt hat dir eine Anweisung geschickt – bitte bestätigen.' : questionData.some(item => questionKind(item) === 'bericht' && questionOpen(item)) ? 'Ein Bericht wird angefordert – bitte hochladen.' : 'Ein Arzt hat dir zu deinem Bericht geschrieben.') : 'Neue Nachricht von der Einsatzleitung.', openOrders().length && unreadQuestions() > questionsBefore ? 'error' : 'success', null, { label: 'Lesen', run: () => goTo('messages') });
         loadMessages.loaded = true;
         if (currentView === 'messages') { renderMessages(); markMessagesRead(); }
     }
@@ -3825,11 +3829,36 @@ if (!window.TerminContact) {
             card.dataset.kind = kind;
             card.dataset.state = (kind === 'frage' ? item.answered_at : item.acknowledged_at) ? 'beantwortet' : 'offen';
             const head = el('div', 'doctor-question-head');
-            const who = item.doctor_name || 'Arzt';
-            head.append(el('strong', '', kind === 'anweisung' ? `Anweisung von ${who}` : kind === 'info' ? `Info von ${who}` : `${who} fragt`), el('span', '', `${chatDay(item.created_at)} · ${clock(item.created_at)} Uhr`));
-            const about = el('p', 'doctor-question-about', [item.patient_name ? `Patient/in: ${item.patient_name}` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_title || item.document_kind, item.document_date ? `vom ${DAY(item.document_date)}` : ''].filter(Boolean).join(' · '));
+            const who = item.doctor_name || (kind === 'bericht' ? 'PR' : 'Arzt');
+            head.append(el('strong', '', kind === 'anweisung' ? `Anweisung von ${who}` : kind === 'info' ? `Info von ${who}` : kind === 'bericht' ? `${who} bittet um deinen Bericht` : `${who} fragt`), el('span', '', `${chatDay(item.created_at)} · ${clock(item.created_at)} Uhr`));
+            const about = el('p', 'doctor-question-about', [item.patient_name ? `Patient/in: ${item.patient_name}` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_title || item.document_kind, item.document_date ? `${item.document_kind === 'Termin' ? 'am' : 'vom'} ${DAY(item.document_date)}` : ''].filter(Boolean).join(' · '));
             const question = el('p', 'doctor-question-text', item.question);
             card.append(head, about, question);
+            if (kind === 'bericht') {
+                // Erledigt, sobald der Bericht zu diesem Termin hochgeladen ist (Auslöser in der Datenbank).
+                if (item.acknowledged_at) card.append(el('span', 'doctor-question-meta is-ok', `Bericht hochgeladen · ${chatDay(item.acknowledged_at)} ${clock(item.acknowledged_at)} Uhr`));
+                else {
+                    const job = item.assignment_id ? jobsData.find(other => other.id === item.assignment_id) : null;
+                    const write = el('button', 'button-primary doctor-report-write', 'Bericht jetzt schreiben');
+                    write.type = 'button';
+                    if (job) write.addEventListener('click', () => window.PortalDocs?.reportFor(job.id));
+                    else { write.disabled = true; write.title = 'Dieser Termin ist nicht (mehr) in deiner Liste.'; }
+                    card.append(write);
+                }
+                if (item.answered_at && !card.dataset.editing) {
+                    const answer = el('p', 'doctor-question-answer', item.answer);
+                    const meta = el('span', 'doctor-question-meta', `Deine Rückmeldung · ${chatDay(item.answered_at)} ${clock(item.answered_at)} Uhr`);
+                    const change = el('button', 'link-button', 'Rückmeldung ändern');
+                    change.type = 'button';
+                    change.addEventListener('click', () => { card.dataset.editing = 'ja'; card.append(answerForm(item, card, 'Rückmeldung speichern')); change.remove(); });
+                    card.append(meta, answer, change);
+                } else if (!item.acknowledged_at) {
+                    const reply = el('details', 'doctor-question-reply');
+                    reply.append(el('summary', '', 'Rückmeldung schreiben (z. B. wann der Bericht kommt) …'), answerForm(item, card, 'Rückmeldung senden'));
+                    card.append(reply);
+                }
+                return card;
+            }
             if (kind !== 'frage') {
                 // Info und Anweisung: bestätigen – bei einer Anweisung groß und deutlich. Eine Rückmeldung ist freiwillig.
                 if (item.acknowledged_at) card.append(el('span', 'doctor-question-meta is-ok', `${kind === 'anweisung' ? 'Verstanden' : 'Gelesen'} · ${chatDay(item.acknowledged_at)} ${clock(item.acknowledged_at)} Uhr`));
@@ -3877,8 +3906,9 @@ if (!window.TerminContact) {
         const form = el('form', 'doctor-question-form');
         form.noValidate = true;
         const text = el('textarea');
-        text.rows = 3; text.maxLength = 4000; text.placeholder = label ? 'Deine Rückmeldung an den Arzt' : 'Deine Antwort an den Arzt'; text.value = item.answer || '';
-        text.setAttribute('aria-label', `Antwort an ${item.doctor_name || 'den Arzt'}`);
+        const to = item.doctor_name || (questionKind(item) === 'bericht' ? 'die PR' : 'den Arzt');
+        text.rows = 3; text.maxLength = 4000; text.placeholder = label ? `Deine Rückmeldung an ${to}` : `Deine Antwort an ${to}`; text.value = item.answer || '';
+        text.setAttribute('aria-label', `Antwort an ${to}`);
         const send = el('button', 'button-primary', label || (item.answered_at ? 'Antwort speichern' : 'Antworten'));
         send.type = 'submit';
         form.append(text, send);
@@ -3891,7 +3921,7 @@ if (!window.TerminContact) {
             send.disabled = false;
             if (error) { toast(TerminCloud.germanError(error), 'error'); return; }
             delete card.dataset.editing;
-            toast('Antwort gesendet – der Arzt sieht sie bei seinem Bericht.', 'success');
+            toast(questionKind(item) === 'bericht' ? 'Rückmeldung gesendet – die PR sieht sie beim Termin.' : 'Antwort gesendet – der Arzt sieht sie bei seinem Bericht.', 'success');
             await loadMessages();
         });
         return form;

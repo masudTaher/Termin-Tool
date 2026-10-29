@@ -299,7 +299,7 @@
     // Der Arzt meldet der Einsatzleitung etwas (Bericht, Termin, Patient, Sonstiges) – hier abhaken und antworten.
     // Darunter: was er den Dolmetschern geschrieben hat (Frage, Info, Anweisung) und ob sie geantwortet/bestätigt haben.
     const TOPIC_WORD = { bericht: 'Bericht', termin: 'Termin', patient: 'Patient', sonstiges: 'Sonstiges' };
-    const QUESTION_WORD = { frage: 'Frage', info: 'Info', anweisung: 'Anweisung' };
+    const QUESTION_WORD = { frage: 'Frage', info: 'Info', anweisung: 'Anweisung', bericht: 'Berichtsanfrage' };
     let doctorAll = false;
     const stamp = iso => { const at = new Date(iso); return `${at.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`; };
     const node = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
@@ -383,8 +383,8 @@
             row.dataset.kind = kind;
             const done = kind === 'frage' ? Boolean(item.answered_at) : Boolean(item.acknowledged_at);
             row.dataset.seen = done ? 'ja' : '';
-            row.append(node('strong', '', `${QUESTION_WORD[kind]} von ${item.doctor_name || 'Arzt'} an ${item.interpreter_name || 'Dolmetscher'}`),
-                node('span', 'start-doctor-meta', [item.document_title ? `zu „${item.document_title}“` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_date ? `Termin ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '', stamp(item.created_at), done ? (kind === 'frage' ? `beantwortet ${stamp(item.answered_at)}` : kind === 'info' ? `gelesen ${stamp(item.acknowledged_at)}` : `„Verstanden“ ${stamp(item.acknowledged_at)}`) : item.seen_at ? 'vom Dolmetscher gesehen, noch nicht ' + (kind === 'frage' ? 'beantwortet' : 'bestätigt') : 'vom Dolmetscher noch nicht gesehen'].filter(Boolean).join(' · ')),
+            row.append(node('strong', '', `${QUESTION_WORD[kind]} von ${item.doctor_name || (kind === 'bericht' ? 'PR' : 'Arzt')} an ${item.interpreter_name || 'Dolmetscher'}`),
+                node('span', 'start-doctor-meta', [item.document_title ? `zu „${item.document_title}“` : '', item.patient_nr ? `Akte ${item.patient_nr}` : '', item.document_date ? `Termin ${new Date(`${item.document_date}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '', stamp(item.created_at), done ? (kind === 'frage' ? `beantwortet ${stamp(item.answered_at)}` : kind === 'info' ? `gelesen ${stamp(item.acknowledged_at)}` : kind === 'bericht' ? `Bericht hochgeladen ${stamp(item.acknowledged_at)}` : `„Verstanden“ ${stamp(item.acknowledged_at)}`) : item.seen_at ? 'vom Dolmetscher gesehen, noch nicht ' + (kind === 'frage' ? 'beantwortet' : 'bestätigt') : 'vom Dolmetscher noch nicht gesehen'].filter(Boolean).join(' · ')),
                 node('p', 'start-doctor-text', item.question));
             if (item.answer) row.append(node('span', 'start-doctor-reply', `Antwort: „${item.answer}“`));
             return row;

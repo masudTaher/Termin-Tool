@@ -254,13 +254,14 @@ Deno.serve(async (req) => {
 
     if (action === 'question') {
       // Ein Arzt hat zu einem Bericht eine Frage gestellt (tt_doctor_questions, Update 36): Mitteilung an den Dolmetscher.
-      if (!(profile.role === 'arzt' || isStaff)) return json({ error: 'Nur Ärzte und die Einsatzleitung.' }, 403);
+      // Update 51: auch die PR (Berichtsanfragen fürs Visum).
+      if (!(profile.role === 'arzt' || profile.role === 'pr' || isStaff)) return json({ error: 'Nur Ärzte, PR und die Einsatzleitung.' }, 403);
       const { data: question } = await admin.from('tt_doctor_questions').select('*').eq('id', String(input.questionId ?? '')).maybeSingle();
       if (!question || (question.doctor_id !== profile.id && !isStaff)) return json({ error: 'Frage nicht gefunden.' }, 404);
       // Art (Update 40): Frage, Info oder Anweisung – die Anweisung bekommt die deutlichste Überschrift.
       const kind = String(question.kind ?? 'frage');
       const result = await sendTo([question.interpreter_id], {
-        title: kind === 'anweisung' ? `ANWEISUNG von ${question.doctor_name || 'Arzt'} – bitte bestätigen` : kind === 'info' ? `Info von ${question.doctor_name || 'Arzt'} zu deinem Bericht` : 'Frage eines Arztes zu deinem Bericht',
+        title: kind === 'anweisung' ? `ANWEISUNG von ${question.doctor_name || 'Arzt'} – bitte bestätigen` : kind === 'bericht' ? `Bericht angefordert von ${question.doctor_name || 'PR'} – bitte hochladen` : kind === 'info' ? `Info von ${question.doctor_name || 'Arzt'} zu deinem Bericht` : question.document_kind === 'Termin' ? `Frage von ${question.doctor_name || 'Arzt'} zu deinem Termin` : 'Frage eines Arztes zu deinem Bericht',
         body: `${question.doctor_name || 'Arzt'}: ${String(question.question).slice(0, 200)}`,
         url: 'portal.html?seite=nachrichten', tag: `frage-${question.id}`,
       });
@@ -473,7 +474,7 @@ Deno.serve(async (req) => {
 
     if (action === 'doctorFeedback') {
       // Ein Arzt meldet der Einsatzleitung etwas (Update 42): Mitteilung an Einsatzleitung und Sekretariat.
-      if (!(profile.role === 'arzt' || isStaff)) return json({ error: 'Nur Ärzte und die Einsatzleitung.' }, 403);
+      if (!(profile.role === 'arzt' || profile.role === 'pr' || isStaff)) return json({ error: 'Nur Ärzte, PR und die Einsatzleitung.' }, 403);
       const { data: note } = await admin.from('tt_doctor_feedback').select('*').eq('id', String(input.feedbackId ?? '')).maybeSingle();
       if (!note || (note.doctor_id !== profile.id && !isStaff)) return json({ error: 'Meldung nicht gefunden.' }, 404);
       const topicWord: Record<string, string> = { bericht: 'zu einem Bericht', termin: 'zu einem Termin', patient: 'zu einem Patienten', sonstiges: '' };

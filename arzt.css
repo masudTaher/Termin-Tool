@@ -153,3 +153,74 @@
 .doc-feedback-answer b { display: block; font-size: .82rem; }
 .doc-feedback-item .gate-button { min-height: 36px; justify-self: start; font-size: .9rem; }
 .doc-feedback-open-doc { min-height: 44px; font-size: .95rem; }
+
+/* Wer ist wo – PR und Büro (Update 51) */
+.gate-count.is-live b { color: var(--soft); }
+.gate-count.is-live[data-open="ja"] { border-color: var(--glow); background: #e8f3fc; }
+.gate-count.is-live[data-open="ja"] b { color: var(--glow); }
+.gate-count.is-missing b { color: var(--soft); }
+.gate-count.is-missing[data-open="ja"] { border-color: #f0a020; background: #fff6dd; }
+.gate-count.is-missing[data-open="ja"] b { color: var(--warn); }
+.doc-tabs { display: flex; gap: 6px; margin: 0 0 12px; padding: 4px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-2); width: max-content; max-width: 100%; }
+.doc-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 8px 22px; border: 0; border-radius: 12px; background: transparent; color: var(--soft); font: inherit; font-size: 1.02rem; font-weight: 800; cursor: pointer; }
+.doc-tab.is-active { background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(12, 27, 46, .12); }
+.doc-tab-count { display: inline-grid; min-width: 26px; height: 26px; padding: 0 7px; place-items: center; border-radius: 999px; background: var(--glow); color: #fff; font-size: .86rem; }
+.live-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 12px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
+.live-row { display: grid; grid-template-columns: 86px minmax(200px, 1.1fr) minmax(170px, 1fr) minmax(170px, 1fr) auto; grid-template-areas: "time who where patient report" "q q q q q"; gap: 8px 18px; align-items: center; padding: 14px 20px; border: 1px solid var(--line); border-left: 6px solid #c9d8e8; border-radius: 18px; background: var(--panel); box-shadow: 0 8px 24px rgba(12, 27, 46, .06); }
+.live-row[data-state="unterwegs"] { border-left-color: var(--glow); background: linear-gradient(90deg, rgba(10, 132, 214, .07), var(--panel) 40%); }
+.live-row[data-state="fertig"] { border-left-color: var(--go); }
+.live-row[data-state="aus"] { border-left-color: #b8c2cf; opacity: .72; }
+.live-row[data-report="nein"][data-state="fertig"] { border-color: #f0a020; box-shadow: 0 8px 24px rgba(240, 160, 32, .18); }
+.live-time { grid-area: time; display: grid; justify-items: center; line-height: 1; }
+.live-time strong { font-size: clamp(1.3rem, 1.6vw, 1.8rem); font-variant-numeric: tabular-nums; }
+.live-time span { color: var(--soft); font-size: .78rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.live-who { grid-area: who; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.live-who .doc-avatar { width: 48px; height: 48px; font-size: 1.1rem; }
+.live-row[data-state="fertig"] .doc-avatar { background: var(--go); }
+.live-row[data-state="geplant"] .doc-avatar, .live-row[data-state="aus"] .doc-avatar { background: #7b8fa6; }
+.live-who-text, .live-where, .live-patient { display: grid; gap: 2px; min-width: 0; }
+.live-where { grid-area: where; }
+.live-patient { grid-area: patient; }
+.live-who-text strong, .live-where strong, .live-patient strong { font-size: clamp(1.05rem, 1.2vw, 1.3rem); overflow-wrap: anywhere; }
+.live-label { color: var(--soft); font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.live-sub { color: var(--soft); font-size: .92rem; font-weight: 650; overflow-wrap: anywhere; }
+.live-state { justify-self: start; padding: 3px 10px; border-radius: 999px; background: #e3edf8; color: #1e4a7a; font-size: .84rem; font-weight: 800; }
+.live-row[data-state="unterwegs"] .live-state { background: var(--glow); color: #fff; }
+.live-row[data-state="fertig"] .live-state { background: #e6f5ec; color: #0f6b3c; }
+.live-row[data-state="aus"] .live-state { background: #eef1f5; color: #566273; }
+.live-report { grid-area: report; display: grid; justify-items: stretch; gap: 6px; min-width: 210px; }
+.live-report .gate-button { min-height: 44px; font-size: .95rem; }
+.live-report-state { padding: 6px 10px; border-radius: 10px; font-size: .88rem; font-weight: 750; text-align: center; }
+.live-report-state.is-ok { background: #e6f5ec; color: #0f6b3c; }
+.live-report-state.is-missing { background: #fff6dd; color: var(--warn); }
+.live-report-state.is-asked { background: #e8f3fc; color: #1e4a7a; }
+.live-report .live-sub { text-align: center; }
+.live-questions { grid-area: q; padding-top: 4px; border-top: 1px dashed var(--line); }
+.doc-question-about { color: var(--soft); font-size: .88rem; font-weight: 650; }
+.doc-question[data-kind="bericht"] { border-left-color: #f0a020; background: #fff8e8; }
+.doc-question[data-kind="bericht"][data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-job-questions { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.doc-job-questions h3 { margin: 0 0 8px; color: var(--soft); font-size: 1rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.doc-job-question-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 1100px) {
+  .live-row { grid-template-columns: 70px minmax(0, 1fr); grid-template-areas: "time who" "where where" "patient patient" "report report" "q q"; }
+  .live-report { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  .live-report .live-report-state, .live-report .live-sub { flex: 1 1 100%; text-align: left; }
+  .live-list { overflow: visible; }
+}
+/* Sieben Zähler im Kopf (PR): umbrechen statt über die Uhr laufen */
+.doc-app .gate-counts { flex-wrap: wrap; justify-content: flex-end; gap: 8px 10px; }
+@media (min-width: 1100px) {
+  .doc-app .gate-count { min-width: 100px; padding: 6px 10px; border-radius: 14px; }
+  .doc-app .gate-count b { font-size: clamp(1.4rem, 1.8vw, 2.2rem); }
+  .doc-app .gate-count span { font-size: .64rem; letter-spacing: .04em; }
+}
+/* Bis 1700px: Zähler und Werkzeuge teilen sich die zweite Zeile (sonst drei Zeilen Kacheln) */
+@media (min-width: 1100px) and (max-width: 1699px) {
+  .doc-app .gate-top { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "title clock" "counts counts" "tools tools"; gap: 10px 28px; padding-bottom: 12px; }
+  .doc-app .gate-counts { justify-self: stretch; justify-content: flex-start; }
+  .doc-app .gate-tools { margin-top: 0; }
+}
+@media (min-width: 1700px) {
+  .doc-app .gate-top { grid-template-columns: auto auto minmax(0, 1fr); gap: 12px 28px; }
+}

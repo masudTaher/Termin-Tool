@@ -3127,3 +3127,9 @@ html[data-text="big"] { font-size: 112.5%; }
 :root[data-theme="dark"] .my-extra-day-pick.is-gemeldet { background: rgba(217, 138, 0, .22); color: #ffd58a; }
 /* ===== §99 (R79): „bearbeitet von“ je Termin im Live-Tracking ===== */
 .row-editor { display: block; margin-top: 3px; color: var(--row-ink, var(--muted)); font-size: .68rem; font-weight: 600; opacity: .75; white-space: nowrap; }
+
+/* ===== 100. Portal: Berichtsanfrage der PR (Update 51) ===== */
+.doctor-question[data-kind="bericht"] { border-color: color-mix(in srgb, #d97706 45%, var(--line)); border-left-color: #d97706; background: color-mix(in srgb, #d97706 7%, var(--surface)); }
+.doctor-question[data-kind="bericht"][data-state="offen"] .doctor-question-head strong { color: #b45309; }
+.doctor-question[data-kind="bericht"][data-state="beantwortet"] { border-color: color-mix(in srgb, #18794e 35%, var(--line)); border-left-color: #18794e; background: color-mix(in srgb, #18794e 6%, var(--surface)); }
+.doctor-report-write { min-height: 50px; font-size: 1.02rem; font-weight: 800; }

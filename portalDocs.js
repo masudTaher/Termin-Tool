@@ -888,7 +888,9 @@ window.PortalDocs = (function () {
         }
     });
 
-    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }),
+    return { load, open, startWizard: () => startWizard(), startFor: item => { pending = item; core.goTo('docNew'); },
+        // Bericht zu einem bestimmten Auftrag schreiben (z. B. nach einer Berichtsanfrage der PR, Update 51)
+        reportFor: assignmentId => { reportJobId = assignmentId; core.goTo('docReport'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }),
         // Erledigte Termine eines Tages, zu denen noch kein Bericht geschrieben ist (ausgefallene zählen nicht).
         missingReports: date => core.jobs().filter(job => job.date === date && !job.cancelled && job.response !== 'abgesagt' && jobDone(job) && !job.storno_at && !['storniert', 'alleine'].includes(job.work_status) && !reportOf(job.id)).length };
 })();

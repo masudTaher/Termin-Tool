@@ -100,7 +100,7 @@
         { group: 'Verwaltung', items: [
             { page: 'team', href: 'team.html', label: 'Team', icon: ICONS.cloud },
             { page: 'pforte', href: 'pforte.html', label: 'Pforte', icon: ICONS.gate },
-            { page: 'arzt', href: 'arzt.html', label: 'Ärzte-Anzeige', icon: ICONS.stetho }
+            { page: 'arzt', href: 'arzt.html', label: 'Ärzte · PR', icon: ICONS.stetho }
         ] }
     ];
 

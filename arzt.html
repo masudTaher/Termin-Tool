@@ -15,7 +15,7 @@
          <form id="docSignIn" class="gate-auth-card" novalidate>
             <p class="gate-kicker">MEDICAL OFFICE BONN</p>
             <h1>Berichte des Tages</h1>
-            <p class="gate-auth-text">Anzeige für die Ärztinnen und Ärzte im Haus. Bitte mit dem eigenen Konto anmelden.</p>
+            <p class="gate-auth-text">Anzeige für die Ärztinnen und Ärzte im Haus und für die PR. Bitte mit dem eigenen Konto anmelden.</p>
             <label for="docEmail">E-Mail</label>
             <input id="docEmail" type="email" autocomplete="username" required>
             <label for="docPassword">Passwort</label>
@@ -36,6 +36,8 @@
                <div class="gate-count is-back"><b id="docCountMedical">0</b><span>Arztberichte</span></div>
                <div class="gate-count"><b id="docCountOther">0</b><span>Rezepte u. a.</span></div>
                <button type="button" class="gate-count is-ask doc-count-button" id="docCountAskBox" title="Meine Fragen an die Dolmetscher"><b id="docCountAsk">0</b><span>Fragen offen</span></button>
+               <button type="button" class="gate-count is-live doc-count-button" id="docCountLiveBox" title="Wer ist gerade wo? Termine von heute" hidden><b id="docCountLive">0</b><span>jetzt unterwegs</span></button>
+               <button type="button" class="gate-count is-missing doc-count-button" id="docCountMissingBox" title="Termine von heute, zu denen noch kein Bericht da ist" hidden><b id="docCountMissing">0</b><span>Berichte fehlen heute</span></button>
             </div>
             <div class="gate-tools">
                <button type="button" id="docFeedbackOpen" class="gate-button doc-feedback-open" title="Der Einsatzleitung etwas melden – zu Berichten, Terminen oder Patienten">An die Einsatzleitung <b id="docFeedbackBadge" class="doc-feedback-badge" hidden>0</b></button>
@@ -58,11 +60,25 @@
                <label class="gate-day doc-side-day" for="docDay"><span>Anderer Tag</span><input id="docDay" type="date"></label>
             </aside>
             <main class="doc-main">
+               <!-- PR und Büro (Update 51): Unterlagen oder „Wer ist wo“ -->
+               <div class="doc-tabs" id="docTabs" role="tablist" aria-label="Ansicht" hidden>
+                  <button type="button" class="doc-tab is-active" id="docTabDocs" role="tab" aria-selected="true">Unterlagen</button>
+                  <button type="button" class="doc-tab" id="docTabLive" role="tab" aria-selected="false">Wer ist wo <b id="docTabLiveCount" class="doc-tab-count" hidden>0</b></button>
+               </div>
                <div class="doc-headline">
                   <h2 id="docListTitle">Heute</h2>
                   <p id="docListSub" class="doc-headline-sub"></p>
                </div>
-               <div class="doc-filters" role="group" aria-label="Anzeigen">
+               <div class="doc-filters" id="liveFilters" role="group" aria-label="Termine anzeigen" hidden>
+                  <button type="button" class="doc-chip is-active" data-live="alle">Alle Termine</button>
+                  <button type="button" class="doc-chip" data-live="unterwegs">Jetzt unterwegs</button>
+                  <button type="button" class="doc-chip" data-live="ohne">Ohne Bericht</button>
+                  <button type="button" class="doc-chip" data-live="fertig">Fertig</button>
+                  <label class="doc-search"><span class="visually-hidden">Suchen</span><input id="liveSearch" type="search" placeholder="Dolmetscher, Arzt oder Patient suchen"></label>
+               </div>
+               <ul id="liveList" class="live-list" hidden></ul>
+               <p id="liveEmpty" class="gate-empty" hidden>Heute stehen keine Termine an.</p>
+               <div class="doc-filters" id="docFilters" role="group" aria-label="Anzeigen">
                   <button type="button" class="doc-chip is-active" data-filter="alle">Alles</button>
                   <button type="button" class="doc-chip" data-filter="ungelesen">Ungelesen</button>
                   <button type="button" class="doc-chip" data-filter="dolmetscher">Dolmetscherberichte</button>
@@ -72,6 +88,7 @@
                </div>
                <ul id="docList" class="doc-list"></ul>
                <p id="docEmpty" class="gate-empty" hidden>Heute ist noch nichts hereingekommen.</p>
+               <section id="docJobQuestions" class="doc-job-questions" hidden><h3>Zu Terminen</h3><ul id="docJobQuestionList" class="doc-job-question-list"></ul></section>
             </main>
          </div>
       </div>
@@ -96,6 +113,7 @@
                <label class="doc-ask-kind" data-kind="frage"><input type="radio" name="docAskKind" value="frage" checked><span><b>Frage</b><small>Der Dolmetscher antwortet dir hier beim Bericht.</small></span></label>
                <label class="doc-ask-kind" data-kind="info"><input type="radio" name="docAskKind" value="info"><span><b>Info</b><small>Ein Hinweis zur Kenntnis – der Dolmetscher bestätigt „gelesen“.</small></span></label>
                <label class="doc-ask-kind" data-kind="anweisung"><input type="radio" name="docAskKind" value="anweisung"><span><b>Anweisung</b><small>Erscheint beim Dolmetscher groß und rot – er bestätigt mit „Verstanden“.</small></span></label>
+               <label class="doc-ask-kind" data-kind="bericht" id="docAskKindReport" hidden><input type="radio" name="docAskKind" value="bericht"><span><b>Bericht anfordern</b><small>Der Dolmetscher bekommt die Bitte mit Patient und Termin. Sobald er den Bericht hochlädt, gilt sie als erledigt.</small></span></label>
             </div>
             <label for="docAskText" class="visually-hidden">Dein Text</label>
             <textarea id="docAskText" rows="4" maxlength="2000" placeholder="Was möchtest du wissen? Der Dolmetscher sieht Patient, Bericht und Datum dazu."></textarea>
