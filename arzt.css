@@ -224,3 +224,9 @@
 @media (min-width: 1700px) {
   .doc-app .gate-top { grid-template-columns: auto auto minmax(0, 1fr); gap: 12px 28px; }
 }
+/* Schnellantwort des Dolmetschers (R81) */
+.doc-reply-pill { display: inline-block; margin-right: 6px; padding: 3px 10px; border-radius: 999px; background: #e3edf8; color: #1e4a7a; font-size: .86rem; font-weight: 800; }
+.doc-reply-pill[data-status="erledigt"] { background: #e6f5ec; color: #0f6b3c; }
+.doc-reply-pill[data-status="arbeit"] { background: #e3edf8; color: #1e4a7a; }
+.doc-reply-pill[data-status="kommt"] { background: #fff6dd; color: var(--warn); }
+.live-reply { margin: 0; }

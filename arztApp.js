@@ -111,6 +111,19 @@
     const KIND_WORD = { frage: 'Frage', info: 'Info', anweisung: 'Anweisung', bericht: 'Berichtsanfrage' };
     const kindOf = item => KIND_WORD[item.kind] ? item.kind : 'frage';
     const questionDone = item => (kindOf(item) === 'frage' ? Boolean(item.answered_at) : Boolean(item.acknowledged_at));
+    // Schnellantwort des Dolmetschers (R81): „Wird erledigt“, „In Bearbeitung“, „Kommt am …“ – als farbige Pille
+    const replyStatus = answer => { const text = String(answer || ''); return text.startsWith('Wird erledigt') ? 'erledigt' : text.startsWith('In Bearbeitung') ? 'arbeit' : /^Kommt am /.test(text) ? 'kommt' : ''; };
+    function answerNode(answer, className = 'doc-question-answer') {
+        const node = el('p', className);
+        const status = replyStatus(answer);
+        if (!status) { node.textContent = answer; return node; }
+        const head = String(answer).match(/^(Wird erledigt|In Bearbeitung|Kommt am [^–]*?)\s*(?:–\s*(.*))?$/s);
+        const pill = el('span', 'doc-reply-pill', head ? head[1].trim() : answer);
+        pill.dataset.status = status;
+        node.append(pill);
+        if (head && head[2]) node.append(el('span', '', ` ${head[2]}`));
+        return node;
+    }
     function questionBlock(doc) { return questionCards(questionsOf(doc)); }
     function questionCards(items, { withAbout = false } = {}) {
         const box = el('div', 'doc-questions');
@@ -125,7 +138,7 @@
             if (withAbout) card.append(el('span', 'doc-question-about', [item.document_title, clean(item.patient_name), clean(item.patient_nr) ? `Akte ${clean(item.patient_nr)}` : '', item.interpreter_name ? `Dolmetscher/in: ${item.interpreter_name}` : '', item.document_date ? german(item.document_date) : ''].filter(Boolean).join(' · ')));
             card.append(el('p', 'doc-question-text', item.question));
             if (kind !== 'frage' && item.acknowledged_at) card.append(el('span', 'doc-question-head is-ok', `${kind === 'anweisung' ? 'Verstanden' : kind === 'bericht' ? 'Bericht hochgeladen' : 'Gelesen'}${kind === 'bericht' ? '' : ` von ${item.interpreter_name || 'Dolmetscher'}`} · ${german(item.acknowledged_at)} ${clock(item.acknowledged_at)} Uhr`));
-            if (item.answered_at) card.append(el('span', 'doc-question-head', `${kind === 'frage' ? 'Antwort' : 'Rückmeldung'} von ${item.interpreter_name || 'Dolmetscher'} · ${german(item.answered_at)} ${clock(item.answered_at)} Uhr`), el('p', 'doc-question-answer', item.answer));
+            if (item.answered_at) card.append(el('span', 'doc-question-head', `${kind === 'frage' ? 'Antwort' : 'Rückmeldung'} von ${item.interpreter_name || 'Dolmetscher'} · ${german(item.answered_at)} ${clock(item.answered_at)} Uhr`), answerNode(item.answer));
             if (!done) {
                 const wait = el('span', 'doc-question-wait', kind === 'frage' ? (item.seen_at ? 'Der Dolmetscher hat die Frage gesehen – noch keine Antwort.' : 'Noch nicht beantwortet.') : kind === 'anweisung' ? (item.seen_at ? 'Der Dolmetscher hat die Anweisung gesehen – noch nicht bestätigt.' : 'Noch nicht bestätigt.') : kind === 'bericht' ? (item.seen_at ? 'Der Dolmetscher hat die Anfrage gesehen – Bericht noch nicht hochgeladen.' : 'Bericht noch nicht hochgeladen.') : (item.seen_at ? 'Gesehen – noch nicht als gelesen bestätigt.' : 'Noch nicht gelesen.'));
                 card.append(wait);
@@ -437,7 +450,7 @@
         } else if (state.key === 'aus') {
             report.append(el('span', 'live-report-state', 'Kein Bericht nötig'));
         } else {
-            if (row.request_id && !row.request_done_at) report.append(el('span', 'live-report-state is-asked', `Angefordert ${clock(row.request_at)} Uhr${row.request_by ? ` von ${row.request_by}` : ''}`), el('span', 'live-sub', clean(row.request_answer) ? `Antwort: ${clean(row.request_answer)}` : state.key === 'fertig' ? 'Bericht noch nicht hochgeladen.' : 'Der Termin läuft noch.'));
+            if (row.request_id && !row.request_done_at) report.append(el('span', 'live-report-state is-asked', `Angefordert ${clock(row.request_at)} Uhr${row.request_by ? ` von ${row.request_by}` : ''}`), clean(row.request_answer) ? answerNode(clean(row.request_answer), 'live-sub live-reply') : el('span', 'live-sub', state.key === 'fertig' ? 'Bericht noch nicht hochgeladen.' : 'Der Termin läuft noch.'));
             else report.append(el('span', 'live-report-state is-missing', state.key === 'fertig' ? 'Bericht fehlt' : 'Noch kein Bericht'));
             const askReport = el('button', `gate-button live-report-ask${row.request_id && !row.request_done_at ? ' gate-button-quiet' : ' gate-button-main'}`, row.request_id && !row.request_done_at ? 'Noch einmal anfordern' : 'Bericht anfordern');
             askReport.type = 'button';

@@ -238,6 +238,7 @@ if (!window.TerminContact) {
         if (!isFest()) renderWorked();
         renderAccount();
         renderHome();
+        showUrgent();
         // Direkter Sprung aus einer Mitteilung: portal.html?seite=nachrichten
         const wanted = new URLSearchParams(location.search).get('seite');
         if (wanted === 'nachrichten') { history.replaceState(null, '', location.pathname); goTo('messages'); }
@@ -3799,8 +3800,11 @@ if (!window.TerminContact) {
         chatData = chat.error ? [] : [...chat.data].reverse();
         const unread = unreadMessages();
         if (loadMessages.loaded && unread > before && currentView !== 'messages') toast(unreadQuestions() > questionsBefore ? (openOrders().length ? 'Ein Arzt hat dir eine Anweisung geschickt – bitte bestätigen.' : questionData.some(item => questionKind(item) === 'bericht' && questionOpen(item)) ? 'Ein Bericht wird angefordert – bitte hochladen.' : 'Ein Arzt hat dir zu deinem Bericht geschrieben.') : 'Neue Nachricht von der Einsatzleitung.', openOrders().length && unreadQuestions() > questionsBefore ? 'error' : 'success', null, { label: 'Lesen', run: () => goTo('messages') });
+        const newQuestions = loadMessages.loaded && unreadQuestions() > questionsBefore;
         loadMessages.loaded = true;
         if (currentView === 'messages') { renderMessages(); markMessagesRead(); }
+        syncUrgent();
+        if (newQuestions) showUrgent({ newOnly: true });
     }
 
     const AUDIENCE_NOTE = { alle: 'an alle', fest: 'an alle Festangestellten', 'temporär': 'an alle Temporären' };
@@ -3821,8 +3825,14 @@ if (!window.TerminContact) {
         list.dataset.signature = signature;
         const DAY = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
         // Offene Anweisungen zuerst, dann offene Fragen und Infos, dann der Rest.
-        const weight = item => (questionOpen(item) ? 0 : 2) + (questionKind(item) === 'anweisung' ? 0 : 1);
-        list.replaceChildren(...[...questionData].sort((left, right) => weight(left) - weight(right) || new Date(right.created_at) - new Date(left.created_at)).map(item => {
+        list.replaceChildren(...sortedQuestions().map(item => questionCard(item)));
+    }
+    const questionWeight = item => (questionOpen(item) ? 0 : 2) + (questionKind(item) === 'anweisung' ? 0 : 1);
+    const sortedQuestions = () => [...questionData].sort((left, right) => questionWeight(left) - questionWeight(right) || new Date(right.created_at) - new Date(left.created_at));
+    // Eine Karte je Nachricht eines Arztes oder der PR – in „Nachrichten“ und in der Eilmeldung beim Start.
+    function questionCard(item) {
+        const DAY = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+        {
             const kind = questionKind(item);
             const card = el('li', 'doctor-question');
             card.dataset.id = item.id;
@@ -3841,7 +3851,7 @@ if (!window.TerminContact) {
                     const job = item.assignment_id ? jobsData.find(other => other.id === item.assignment_id) : null;
                     const write = el('button', 'button-primary doctor-report-write', 'Bericht jetzt schreiben');
                     write.type = 'button';
-                    if (job) write.addEventListener('click', () => window.PortalDocs?.reportFor(job.id));
+                    if (job) write.addEventListener('click', () => { if ($('urgentDialog')?.open) $('urgentDialog').close(); window.PortalDocs?.reportFor(job.id); });
                     else { write.disabled = true; write.title = 'Dieser Termin ist nicht (mehr) in deiner Liste.'; }
                     card.append(write);
                 }
@@ -3900,8 +3910,47 @@ if (!window.TerminContact) {
                 card.append(meta, answer, change);
             } else card.append(answerForm(item, card));
             return card;
-        }));
+        }
     }
+    // Schnellantwort (R81): „Wird erledigt“, „In Bearbeitung“, „Kommt am …“ – dazu freiwillig eine Bemerkung. Die Antwort
+    // steht als Text in der Datenbank (z. B. „Kommt am 30.10.2026, 14:00 Uhr – Arzt schickt den Bericht per Post“).
+    const REPLY_STATUS = [['erledigt', 'Wird erledigt'], ['arbeit', 'In Bearbeitung'], ['kommt', 'Kommt am …']];
+    const replyStatusOf = answer => { const text = String(answer || ''); return text.startsWith('Wird erledigt') ? 'erledigt' : text.startsWith('In Bearbeitung') ? 'arbeit' : /^Kommt am /.test(text) ? 'kommt' : ''; };
+    // ---------- Eilmeldung (R81): offene Nachrichten der Ärzte und der PR – gleich beim Start, groß, mit Antwort ----------
+    // „Offen“ heißt hier: noch nicht beantwortet bzw. bestätigt. Einmal gezeigt, kommt sie erst beim nächsten Start wieder –
+    // oder sofort, wenn etwas Neues eintrifft.
+    const urgentShown = new Set();
+    const questionPending = item => { const kind = questionKind(item); return kind === 'frage' ? !item.answered_at : kind === 'bericht' ? !item.acknowledged_at && !item.answered_at : !item.acknowledged_at; };
+    const pendingQuestions = () => sortedQuestions().filter(questionPending);
+    function renderUrgent() {
+        const items = pendingQuestions();
+        $('urgentSub').textContent = items.length === 1 ? 'Eine Nachricht wartet auf deine Antwort – bitte gleich antworten.' : `${items.length} Nachrichten warten auf deine Antwort – bitte gleich antworten.`;
+        $('urgentList').replaceChildren(...items.map(item => questionCard(item)));
+        return items;
+    }
+    function showUrgent({ newOnly = false } = {}) {
+        const dialog = $('urgentDialog');
+        if (!dialog || !profile?.active || profile.must_change_password) return;
+        const items = pendingQuestions();
+        if (!items.length) { if (dialog.open) dialog.close(); return; }
+        if (newOnly && !items.some(item => !urgentShown.has(item.id))) { if (dialog.open) renderUrgent(); return; }
+        // Nicht mitten im Tippen oder über einem anderen Fenster
+        if (document.querySelector('dialog[open]:not(#urgentDialog)') || ['docReport', 'docNew'].includes(currentView)) return;
+        items.forEach(item => urgentShown.add(item.id));
+        renderUrgent();
+        if (!dialog.open) dialog.showModal();
+        const unseen = items.filter(item => !item.seen_at);
+        if (unseen.length) client.from('tt_doctor_questions').update({ seen_at: new Date().toISOString() }).in('id', unseen.map(item => item.id)).then(() => null, () => null);
+    }
+    function syncUrgent() {
+        const dialog = $('urgentDialog');
+        if (!dialog?.open) return;
+        if (!pendingQuestions().length) { dialog.close(); toast('Alles beantwortet – danke!', 'success'); return; }
+        renderUrgent();
+    }
+    $('urgentLater')?.addEventListener('click', () => $('urgentDialog').close());
+    $('urgentDialog')?.addEventListener('close', () => $('urgentList').replaceChildren());   // geschlossen = leer (keine doppelten Karten im Dokument)
+    $('urgentAll')?.addEventListener('click', () => { $('urgentDialog').close(); goTo('messages'); });
     function answerForm(item, card, label = '') {
         const form = el('form', 'doctor-question-form');
         form.noValidate = true;
@@ -3911,11 +3960,42 @@ if (!window.TerminContact) {
         text.setAttribute('aria-label', `Antwort an ${to}`);
         const send = el('button', 'button-primary', label || (item.answered_at ? 'Antwort speichern' : 'Antworten'));
         send.type = 'submit';
-        form.append(text, send);
+        // Schnellantwort: ein Tipp genügt – die Bemerkung ist freiwillig.
+        const chips = el('div', 'reply-chips');
+        chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Schnellantwort');
+        const when = el('div', 'reply-when');
+        const date = el('input'); date.type = 'date'; date.min = TerminCloud.todayIso(); date.setAttribute('aria-label', 'Datum');
+        const time = el('input'); time.type = 'time'; time.setAttribute('aria-label', 'Uhrzeit');
+        when.append(el('span', '', 'Kommt am'), date, time);
+        when.hidden = true;
+        let status = '';
+        const existing = replyStatusOf(item.answer);
+        if (existing) {
+            status = existing;
+            const rest = String(item.answer).replace(/^(Wird erledigt|In Bearbeitung|Kommt am [^–]*)\.?\s*(–\s*)?/, '');
+            text.value = rest;
+            const found = String(item.answer).match(/^Kommt am (\d{2})\.(\d{2})\.(\d{4})(?:, (\d{2}:\d{2}) Uhr)?/);
+            if (found) { date.value = `${found[3]}-${found[2]}-${found[1]}`; time.value = found[4] || ''; }
+        }
+        const paint = () => { chips.querySelectorAll('button').forEach(button => button.classList.toggle('is-active', button.dataset.status === status)); when.hidden = status !== 'kommt'; text.placeholder = status ? 'Bemerkung (freiwillig)' : text.placeholder; };
+        REPLY_STATUS.forEach(([key, word]) => {
+            const chip = el('button', 'reply-chip', word);
+            chip.type = 'button'; chip.dataset.status = key;
+            chip.addEventListener('click', () => { status = status === key ? '' : key; paint(); if (status === 'kommt') date.focus(); });
+            chips.append(chip);
+        });
+        paint();
+        form.append(chips, when, text, send);
         form.addEventListener('submit', async event => {
             event.preventDefault();
-            const answer = text.value.trim();
-            if (!answer) { toast('Bitte schreib eine Antwort.', 'error'); text.focus(); return; }
+            const note = text.value.trim();
+            let answer = note;
+            if (status === 'kommt') {
+                if (!date.value) { toast('Bitte das Datum wählen, wann der Bericht kommt.', 'error'); date.focus(); return; }
+                const [y, m, d] = date.value.split('-');
+                answer = `Kommt am ${d}.${m}.${y}${time.value ? `, ${time.value} Uhr` : ''}${note ? ` – ${note}` : ''}`;
+            } else if (status) answer = `${status === 'erledigt' ? 'Wird erledigt' : 'In Bearbeitung'}${note ? ` – ${note}` : ''}`;
+            if (!answer) { toast('Bitte eine Antwort wählen oder schreiben.', 'error'); text.focus(); return; }
             send.disabled = true;
             const { error } = await client.from('tt_doctor_questions').update({ answer, seen_at: item.seen_at || new Date().toISOString() }).eq('id', item.id);
             send.disabled = false;

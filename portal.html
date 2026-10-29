@@ -866,6 +866,15 @@
          <div class="modal-buttons"><button type="button" class="button-secondary" id="keepCancel">Abbrechen</button></div>
       </dialog>
 
+      <!-- Eilmeldung (R81): offene Nachrichten der Ärzte und der PR – gleich beim Start -->
+      <dialog id="urgentDialog" class="confirm-dialog urgent-dialog" aria-labelledby="urgentTitle">
+         <span class="urgent-kicker">EILMELDUNG</span>
+         <h2 id="urgentTitle">Nachrichten von Ärzten und PR</h2>
+         <p id="urgentSub" class="field-hint"></p>
+         <ul id="urgentList" class="doctor-question-list urgent-list"></ul>
+         <div class="modal-buttons"><button type="button" class="button-secondary" id="urgentLater">Später</button><button type="button" class="button-secondary" id="urgentAll">Alle Nachrichten</button></div>
+      </dialog>
+
       <!-- Mein Fahrzeug: Standort und Details – jederzeit, solange das Auto übernommen ist -->
       <dialog id="carDialog" class="confirm-dialog car-dialog" aria-labelledby="carDialogTitle">
          <span class="car-dialog-label">Dein Fahrzeug</span>

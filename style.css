@@ -3133,3 +3133,18 @@ html[data-text="big"] { font-size: 112.5%; }
 .doctor-question[data-kind="bericht"][data-state="offen"] .doctor-question-head strong { color: #b45309; }
 .doctor-question[data-kind="bericht"][data-state="beantwortet"] { border-color: color-mix(in srgb, #18794e 35%, var(--line)); border-left-color: #18794e; background: color-mix(in srgb, #18794e 6%, var(--surface)); }
 .doctor-report-write { min-height: 50px; font-size: 1.02rem; font-weight: 800; }
+
+/* ===== 101. Portal: Eilmeldung beim Start + Schnellantwort (R81) ===== */
+.urgent-dialog { width: min(96vw, 560px); max-height: 92vh; overflow: auto; border: 2px solid #b42318; box-shadow: 0 24px 60px rgba(180, 35, 24, .25), var(--shadow-lg); }
+.urgent-kicker { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #b42318; color: #fff; font-size: .78rem; font-weight: 850; letter-spacing: .14em; }
+.urgent-dialog h2 { margin: 10px 0 4px; }
+.urgent-list { margin-top: 12px; }
+.urgent-dialog .modal-buttons { margin-top: 14px; }
+.reply-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.reply-chip { min-height: 40px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.reply-chip.is-active { border-color: #18794e; background: #18794e; color: #fff; }
+.reply-chip[data-status="arbeit"].is-active { border-color: #1769aa; background: #1769aa; }
+.reply-chip[data-status="kommt"].is-active { border-color: #b45309; background: #b45309; }
+.reply-when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 700; }
+.reply-when input { min-height: 40px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.doctor-question-form { display: grid; gap: 8px; }
