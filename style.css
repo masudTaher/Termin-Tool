@@ -3153,3 +3153,8 @@ html[data-text="big"] { font-size: 112.5%; }
 .tyre-office-checks { display: block; color: #0f6b3c; font-weight: 650; }
 .tyre-office-checks.is-bad { color: #b42318; font-weight: 800; }
 .tyre-office-item[data-brakes="wechsel"] { border-color: color-mix(in srgb, #b42318 45%, var(--line)); background: color-mix(in srgb, #b42318 6%, var(--surface)); }
+
+/* ===== 103. Festangestellte: Parkgebühren-Abrechnung (R83) ===== */
+.fest-receipt-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin: 0 0 12px; }
+.fest-receipt-tools .field-hint { flex: 1 1 320px; margin: 0; }
+.fest-parking-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; text-decoration: none; }

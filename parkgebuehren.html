@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="robots" content="noindex, nofollow">
+      <title>Parkgebühren · Medical Office Bonn</title>
+      <link rel="stylesheet" href="parkgebuehren.css">
+   </head>
+   <body>
+      <!-- Werkzeugleiste (nicht im Druck) -->
+      <header class="pk-tools" id="pkTools">
+         <div class="pk-tools-left">
+            <a class="pk-back" href="festangestellte.html?reiter=belege">‹ Festangestellte</a>
+            <label class="pk-field"><span>Monat</span><input id="pkMonth" type="month"></label>
+            <label class="pk-check"><input id="pkOnlyChecked" type="checkbox" checked><span>Nur geprüfte Belege</span></label>
+         </div>
+         <div class="pk-tools-right">
+            <span id="pkState" class="pk-state" role="status" aria-live="polite"></span>
+            <button type="button" id="pkPrint" class="pk-button pk-button-main">Drucken / als PDF speichern</button>
+         </div>
+      </header>
+
+      <main id="pkDoc" class="pk-doc" hidden>
+         <!-- Seite 1: Übersicht -->
+         <section class="pk-page" id="pkOverview">
+            <h1>Übersicht Parkgebühren</h1>
+            <p class="pk-sub">Festangestellte Mitarbeiter/innen · Erstattung von Parkgebühren</p>
+            <div class="pk-info">
+               <div class="pk-info-col">
+                  <div class="pk-info-row"><span>Abrechnungsmonat</span><strong id="pkMonthLabel">–</strong></div>
+                  <div class="pk-info-row"><span>Zeitraum</span><b id="pkRange">–</b></div>
+               </div>
+               <div class="pk-info-col pk-info-right">
+                  <div class="pk-info-row"><span>Mitarbeiter/innen</span><strong id="pkPeople">0</strong></div>
+                  <div class="pk-info-row"><span>Anzahl Belege</span><strong id="pkCount">0</strong></div>
+                  <div class="pk-info-row pk-info-total"><span>Gesamtbetrag</span><strong id="pkTotal">0,00 €</strong></div>
+               </div>
+            </div>
+            <table class="pk-table pk-table-overview">
+               <thead><tr><th class="pk-nr">Nr.</th><th>Name</th><th>Vollständiger Name</th><th class="pk-num">Belege</th><th class="pk-num">Betrag</th></tr></thead>
+               <tbody id="pkOverviewBody"></tbody>
+               <tfoot><tr><td colspan="4" class="pk-sum-label">Gesamtsumme</td><td class="pk-num pk-sum" id="pkTotalFoot">0,00 €</td></tr></tfoot>
+            </table>
+            <p class="pk-empty" id="pkEmpty" hidden>Für diesen Monat gibt es keine Parkbelege.</p>
+            <p class="pk-correct">Sachlich und rechnerisch richtig.</p>
+            <div class="pk-sign">
+               <div class="pk-sign-field"><b id="pkDate"></b><span>Datum</span></div>
+               <div class="pk-sign-field"><b>&nbsp;</b><span>Unterschrift Prüfer/in</span></div>
+            </div>
+         </section>
+         <!-- Je Mitarbeiter/in eine Seite -->
+         <div id="pkPersons"></div>
+      </main>
+
+      <template id="pkPersonTemplate">
+         <section class="pk-page pk-person">
+            <h1>Abrechnung Parkgebühren</h1>
+            <p class="pk-sub">Festangestellte Mitarbeiter/innen · Erstattung von Parkgebühren</p>
+            <div class="pk-info">
+               <div class="pk-info-col">
+                  <div class="pk-info-row"><span>Mitarbeiter/in</span><strong class="pk-person-name pk-highlight"></strong></div>
+                  <div class="pk-info-row"><span>Name</span><b class="pk-person-full"></b></div>
+                  <div class="pk-info-row"><span>Monat</span><b class="pk-person-month"></b></div>
+                  <div class="pk-info-row"><span>Zeitraum</span><b class="pk-person-range"></b></div>
+               </div>
+               <div class="pk-info-col pk-info-right">
+                  <div class="pk-info-row"><span>Anzahl Belege</span><strong class="pk-person-count"></strong></div>
+                  <div class="pk-info-row pk-info-total"><span>Gesamtbetrag</span><strong class="pk-person-total"></strong></div>
+               </div>
+            </div>
+            <table class="pk-table pk-table-person">
+               <thead><tr><th class="pk-nr">Nr.</th><th class="pk-date">Datum</th><th>Ort / Parkplatz</th><th class="pk-proof">Nachweis</th><th class="pk-num">Betrag</th></tr></thead>
+               <tbody class="pk-person-body"></tbody>
+               <tfoot><tr><td colspan="4" class="pk-sum-label">Summe</td><td class="pk-num pk-sum pk-person-sum"></td></tr></tfoot>
+            </table>
+         </section>
+      </template>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="parkgebuehrenApp.js"></script>
+   </body>
+</html>

@@ -80,6 +80,7 @@
     }
 
     function render() {
+        updateParkingLink();
         const range = monthRange(month);
         const sum = status => overtime.filter(item => item.status === status).reduce((total, item) => total + minutesOf(item), 0);
         const open = overtime.filter(item => item.status === 'eingereicht');
@@ -694,6 +695,8 @@
         XLSX.writeFile(book, `Festangestellte ${range.label} Überstunden, Belege, Abwesenheiten ${absenceYear}.xlsx`);
     }
 
+    // Parkgebühren-Abrechnung (R83): eigene Druckseite für den gewählten Monat
+    const updateParkingLink = () => { const link = $('festParkingSheet'); if (link) link.href = `parkgebuehren.html?monat=${month}`; };
     $('festMonth').addEventListener('change', () => {
         if (!/^\d{4}-\d{2}$/.test($('festMonth').value)) return;
         month = $('festMonth').value;
