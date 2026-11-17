@@ -1928,6 +1928,31 @@
         tyreItems = tyreReady ? items.data : [];
         renderTyre();
     }
+    // Update 53: drei Abschnitte je Liste – noch nicht bearbeitet, gerade in der Werkstatt (gelb), fertig und zurückgebracht.
+    const tyreStage = item => item.done ? 'fertig' : item.in_shop_at ? 'werkstatt' : 'offen';
+    const TYRE_STAGE = { offen: ['offen', 'Noch nicht bearbeitet'], werkstatt: ['in Arbeit', 'In der Werkstatt'], fertig: ['erledigt', 'Fertig und zurückgebracht'] };
+    const tyreCounts = list => { const count = { offen: 0, werkstatt: 0, fertig: 0 }; list.forEach(item => { count[tyreStage(item)] += 1; }); return count; };
+    const tyreCountText = list => { const c = tyreCounts(list); return list.length && c.fertig === list.length ? 'Alles fertig und zurückgebracht' : [`${c.fertig} fertig`, c.werkstatt ? `${c.werkstatt} in der Werkstatt` : '', `${c.offen} offen`].filter(Boolean).join(' · '); };
+    // Stand eines Eintrags durch das Büro ändern (die Werkstatt sieht es sofort). Am Fahrzeug wie bei der Werkstatt: in der Werkstatt → „Bei ATU / Werkstatt“.
+    async function officeTyreStage(item, campaign, stage, button) {
+        const now = new Date().toISOString();
+        const who = `${profile.full_name || 'Einsatzleitung'} (Büro)`;
+        const changes = stage === 'fertig' ? { done: true, done_at: now, done_by: who, updated_at: now }
+            : stage === 'werkstatt' ? { done: false, done_at: null, done_by: '', in_shop_at: item.in_shop_at || now, in_shop_by: item.in_shop_by || who, updated_at: now }
+            : { done: false, done_at: null, done_by: '', in_shop_at: null, in_shop_by: '', updated_at: now };
+        if (button) button.disabled = true;
+        let { error } = await client.from('tt_tyre_items').update(changes).eq('id', item.id);
+        if (error && /in_shop/.test(error.message || '')) { delete changes.in_shop_at; delete changes.in_shop_by; ({ error } = await client.from('tt_tyre_items').update(changes).eq('id', item.id)); if (!error) showToast('Der Schritt „in der Werkstatt“ braucht noch das Datenbank-Update 53 (supabase/update-53.sql).', 'info'); }
+        if (button) button.disabled = false;
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        if (item.vehicle_id) {
+            const vehicle = vehicles.find(entry => entry.id === item.vehicle_id);
+            const mark = `Werkstatt-Liste: ${campaign.title}`;
+            if (stage === 'werkstatt' && vehicle && !vehicle.service_status) await client.from('tt_vehicles').update({ service_status: 'werkstatt', service_note: mark, service_since: now, service_until: null }).eq('id', vehicle.id);
+            if (stage !== 'werkstatt' && vehicle && vehicle.service_status === 'werkstatt' && vehicle.service_note === mark) await client.from('tt_vehicles').update({ service_status: '', service_note: '', service_since: null, service_until: null }).eq('id', vehicle.id);
+        }
+        await refresh();
+    }
     function renderTyre() {
         const section = $('tyreSection');
         if (!section) return;
@@ -1935,81 +1960,155 @@
         const closed = tyreCampaigns.filter(item => !item.active);
         $('tyreNewOpen').disabled = !tyreReady;
         $('tyreSummary').textContent = !tyreReady ? 'Noch nicht eingerichtet – dafür fehlt Update 39 in der Datenbank.'
-            : open.length ? open.map(campaign => { const list = tyreItems.filter(item => item.campaign_id === campaign.id); return `${campaign.title}: ${list.filter(item => item.done).length} von ${list.length} erledigt`; }).join(' · ')
+            : open.length ? open.map(campaign => `${campaign.title}: ${tyreCountText(tyreItems.filter(item => item.campaign_id === campaign.id))}`).join(' · ')
             : 'Keine offene Liste. Mit „Neue Liste erstellen“ bekommst du einen Link für die Werkstatt.';
         $('tyreCampaigns').replaceChildren(...open.map(campaign => {
             const list = tyreItems.filter(item => item.campaign_id === campaign.id);
-            const done = list.filter(item => item.done).length;
+            const count = tyreCounts(list);
             const box = el('div', 'tyre-campaign');
             box.dataset.id = campaign.id;
             const head = el('div', 'tyre-campaign-head');
-            const title = el('div');
+            const title = el('div', 'tyre-campaign-title');
             title.append(el('strong', null, campaign.title), el('small', null, [`Liste vom ${formatDate(campaign.created_at)}`, campaign.created_by_name, campaign.tyres_to ? `danach: ${TYRES[campaign.tyres_to] || campaign.tyres_to}` : '', campaign.note ? `Hinweis: ${campaign.note}` : ''].filter(Boolean).join(' · ')));
             const progress = el('div', 'tyre-office-progress');
-            const bar = el('div', 'tyre-office-bar'); const fill = el('i'); fill.style.width = `${list.length ? Math.round(done / list.length * 100) : 0}%`; bar.append(fill);
-            progress.append(bar, el('span', null, done === list.length && list.length ? 'Alles erledigt' : `${done} von ${list.length} erledigt`));
+            const bar = el('div', 'tyre-office-bar'); const fill = el('i'); fill.style.width = `${list.length ? Math.round(count.fertig / list.length * 100) : 0}%`; bar.append(fill);
+            progress.append(bar, el('span', null, tyreCountText(list)));
+            const tiles = el('div', 'tyre-office-tiles');
+            tiles.append(...['offen', 'werkstatt', 'fertig'].map(stage => { const tile = el('span', 'tyre-office-tile'); tile.dataset.stage = stage; tile.append(el('strong', null, String(count[stage])), el('span', null, TYRE_STAGE[stage][1])); return tile; }));
             const actions = el('div', 'tyre-campaign-actions');
+            const add = el('button', 'button-secondary', 'Fahrzeuge hinzufügen');
+            add.type = 'button';
+            add.addEventListener('click', () => openTyreAdd(campaign));
             const link = el('button', 'button-secondary', 'Link zeigen');
             link.type = 'button';
             link.addEventListener('click', () => showTyreLink(campaign));
             const close = el('button', 'button-quiet-danger', 'Liste schließen');
             close.type = 'button';
             close.addEventListener('click', async () => {
-                if (!await confirmDialog(`„${campaign.title}“ schließen?\n\nDer Link der Werkstatt geht dann nicht mehr. Die Liste bleibt unter „Frühere Listen“ stehen.`, 'Liste schließen')) return;
+                if (!await confirmDialog(`„${campaign.title}“ schließen?\n\nDer Link der Werkstatt geht dann nicht mehr. Die Liste bleibt unter „Frühere Listen“ stehen und lässt sich dort wieder öffnen.`, 'Liste schließen')) return;
                 const { error } = await client.from('tt_tyre_campaigns').update({ active: false, closed_at: new Date().toISOString() }).eq('id', campaign.id);
                 if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
                 showToast('Liste geschlossen – der Link ist nicht mehr gültig.', 'success');
                 await loadTyre();
             });
-            actions.append(link, close);
-            head.append(title, progress, actions);
-            const rows = el('ul', 'directory-list tyre-office-list');
-            rows.replaceChildren(...list.map(item => {
-                const row = el('li', 'vehicle-entry tyre-office-item');
-                row.dataset.done = item.done ? 'ja' : '';
-                const meta = el('span');
-                meta.append(el('strong', null, item.plate), el('small', null, [item.vehicle, item.vehicle_type, item.mileage != null ? formatKm(item.mileage) : '', item.done ? `erledigt ${formatDateTime(item.done_at)}${item.done_by ? ` von ${item.done_by}` : ''}` : 'offen', item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
-                if (item.extra) meta.append(el('small', 'tyre-office-extra', `Extras: ${item.extra}`));
-                // Prüfpunkte der Werkstatt (Update 52)
-                const checks = item.checks && typeof item.checks === 'object' ? item.checks : {};
-                const checkWords = [checks.adblue ? 'AdBlue nachgefüllt' : '', checks.wischwasser ? 'Wischwasser nachgefüllt' : '', checks.checkup ? 'Check-up gemacht' : '', checks.bremsen === 'ok' ? 'Bremsen in Ordnung' : ''].filter(Boolean);
-                if (checkWords.length || checks.bremsen === 'wechsel') {
-                    const line = el('small', `tyre-office-checks${checks.bremsen === 'wechsel' ? ' is-bad' : ''}`);
-                    line.textContent = `Werkstatt: ${[checks.bremsen === 'wechsel' ? 'BREMSEN MÜSSEN GEWECHSELT WERDEN' : '', ...checkWords].filter(Boolean).join(' · ')}${checks.by ? ` (${checks.by}${checks.at ? `, ${formatDateTime(checks.at)}` : ''})` : ''}`;
-                    meta.append(line);
-                }
-                const toggle = el('button', item.done ? 'button-quiet' : 'button-secondary fleet-end-button', item.done ? 'Wieder offen' : 'Erledigt');
-                toggle.type = 'button';
-                toggle.addEventListener('click', async () => {
-                    toggle.disabled = true;
-                    const { error } = await client.from('tt_tyre_items').update(item.done ? { done: false, done_at: null, done_by: '', updated_at: new Date().toISOString() } : { done: true, done_at: new Date().toISOString(), done_by: `${profile.full_name || 'Einsatzleitung'} (Büro)`, updated_at: new Date().toISOString() }).eq('id', item.id);
-                    toggle.disabled = false;
-                    if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-                    await loadTyre();
-                });
-                const actions = el('span', 'vehicle-entry-actions');
-                if (swapReady) {
-                    const extra = el('button', 'button-quiet', item.extra ? 'Extras ändern' : 'Extras');
-                    extra.type = 'button';
-                    extra.addEventListener('click', () => openTyreExtra(item));
-                    actions.append(extra);
-                }
-                actions.append(toggle);
-                row.append(pill(item.done ? 'erledigt' : 'offen', item.done ? 'Erledigt' : 'Offen'), meta, actions);
-                if (checks.bremsen === 'wechsel') row.dataset.brakes = 'wechsel';
-                return row;
-            }));
-            box.append(head, rows);
+            actions.append(add, link, close);
+            head.append(title, progress, tiles, actions);
+            box.append(head);
+            // Drei Abschnitte: in der Werkstatt zuerst (das ist gerade los), dann offen, dann fertig
+            ['werkstatt', 'offen', 'fertig'].forEach(stage => {
+                const part = list.filter(item => tyreStage(item) === stage);
+                if (!part.length) return;
+                const group = el('section', 'tyre-office-group');
+                group.dataset.stage = stage;
+                const heading = el('h3');
+                heading.append(TYRE_STAGE[stage][1], el('span', 'tyre-office-group-count', String(part.length)));
+                group.append(heading);
+                const rows = el('ul', 'directory-list tyre-office-list');
+                rows.replaceChildren(...part.map(item => {
+                    const row = el('li', 'vehicle-entry tyre-office-item');
+                    row.dataset.stage = stage;
+                    row.dataset.done = item.done ? 'ja' : '';
+                    const meta = el('span');
+                    const state = stage === 'fertig' ? `fertig ${formatDateTime(item.done_at)}${item.done_by ? ` von ${item.done_by}` : ''}` : stage === 'werkstatt' ? `in der Werkstatt seit ${formatDateTime(item.in_shop_at)}${item.in_shop_by ? ` (${item.in_shop_by})` : ''}` : 'noch nicht bearbeitet';
+                    meta.append(el('strong', null, item.plate), el('small', null, [item.vehicle, item.vehicle_type, item.mileage != null ? formatKm(item.mileage) : '', state, item.note ? `„${item.note}“` : ''].filter(Boolean).join(' · ')));
+                    if (item.extra) meta.append(el('small', 'tyre-office-extra', `Extras: ${item.extra}`));
+                    // Prüfpunkte der Werkstatt (Update 52/53)
+                    const checks = item.checks && typeof item.checks === 'object' ? item.checks : {};
+                    const axle = checks.bremsen_vorne && checks.bremsen_hinten ? ' vorne und hinten' : checks.bremsen_vorne ? ' vorne' : checks.bremsen_hinten ? ' hinten' : '';
+                    const checkWords = [checks.adblue ? 'AdBlue nachgefüllt' : '', checks.wischwasser ? 'Wischwasser nachgefüllt' : '', checks.checkup ? 'Check-up gemacht' : '', checks.bremsen === 'ok' ? 'Bremsen in Ordnung' : '', checks.bremsen === 'gewechselt' ? `Bremsen${axle} gewechselt` : ''].filter(Boolean);
+                    if (checkWords.length || checks.bremsen === 'wechsel') {
+                        const line = el('small', `tyre-office-checks${checks.bremsen === 'wechsel' ? ' is-bad' : ''}`);
+                        line.textContent = `Werkstatt: ${[checks.bremsen === 'wechsel' ? `BREMSEN${axle.toUpperCase()} MÜSSEN GEWECHSELT WERDEN` : '', ...checkWords].filter(Boolean).join(' · ')}${checks.by ? ` (${checks.by}${checks.at ? `, ${formatDateTime(checks.at)}` : ''})` : ''}`;
+                        meta.append(line);
+                    }
+                    const actions = el('span', 'vehicle-entry-actions');
+                    const stageButton = (text, next, className) => { const node = el('button', className, text); node.type = 'button'; node.addEventListener('click', () => officeTyreStage(item, campaign, next, node)); return node; };
+                    if (swapReady) {
+                        const extra = el('button', 'button-quiet', item.extra ? 'Extras ändern' : 'Extras');
+                        extra.type = 'button';
+                        extra.addEventListener('click', () => openTyreExtra(item));
+                        actions.append(extra);
+                    }
+                    if (stage === 'offen') actions.append(stageButton('In der Werkstatt', 'werkstatt', 'button-secondary'), stageButton('Fertig', 'fertig', 'button-secondary fleet-end-button'));
+                    else if (stage === 'werkstatt') actions.append(stageButton('Doch nicht', 'offen', 'button-quiet'), stageButton('Fertig', 'fertig', 'button-secondary fleet-end-button'));
+                    else actions.append(stageButton('Wieder offen', 'offen', 'button-quiet'));
+                    if (stage !== 'fertig') {
+                        const remove = el('button', 'button-quiet', 'Von der Liste nehmen');
+                        remove.type = 'button';
+                        remove.addEventListener('click', async () => {
+                            if (!await confirmDialog(`${item.plate} von der Liste „${campaign.title}“ nehmen?`, 'Von der Liste nehmen')) return;
+                            const { error } = await client.from('tt_tyre_items').delete().eq('id', item.id);
+                            if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                            await loadTyre();
+                        });
+                        actions.append(remove);
+                    }
+                    row.append(pill(TYRE_STAGE[stage][0], TYRE_STAGE[stage][1]), meta, actions);
+                    if (checks.bremsen === 'wechsel') row.dataset.brakes = 'wechsel';
+                    return row;
+                }));
+                group.append(rows);
+                box.append(group);
+            });
+            if (!list.length) box.append(el('p', 'field-hint', 'Noch kein Fahrzeug auf dieser Liste – mit „Fahrzeuge hinzufügen“ dazunehmen.'));
             return box;
         }));
         $('tyreClosedBox').hidden = !closed.length;
         $('tyreClosed').replaceChildren(...closed.map(campaign => {
             const list = tyreItems.filter(item => item.campaign_id === campaign.id);
-            const row = el('li', 'directory-entry');
-            row.append(el('span', 'directory-entry-name', `${campaign.title} · ${formatDate(campaign.created_at)} · geschlossen ${campaign.closed_at ? formatDate(campaign.closed_at) : ''} · ${list.filter(item => item.done).length} von ${list.length} erledigt`));
+            const row = el('li', 'directory-entry tyre-closed-entry');
+            row.append(el('span', 'directory-entry-name', `${campaign.title} · ${formatDate(campaign.created_at)} · geschlossen ${campaign.closed_at ? formatDate(campaign.closed_at) : ''} · ${tyreCountText(list)}`));
+            const reopen = el('button', 'button-quiet', 'Wieder öffnen');
+            reopen.type = 'button';
+            reopen.title = 'Die Liste wieder öffnen – dann gilt der alte Link wieder und du kannst Fahrzeuge dazunehmen';
+            reopen.addEventListener('click', async () => {
+                if (!await confirmDialog(`„${campaign.title}“ wieder öffnen?\n\nDer bisherige Link der Werkstatt gilt dann wieder, und du kannst Fahrzeuge dazunehmen.`, 'Wieder öffnen')) return;
+                const { error } = await client.from('tt_tyre_campaigns').update({ active: true, closed_at: null }).eq('id', campaign.id);
+                if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+                showToast(`„${campaign.title}“ ist wieder offen.`, 'success');
+                await loadTyre();
+            });
+            row.append(reopen);
             return row;
         }));
     }
+    // Fahrzeuge nachträglich auf eine offene Liste setzen (Update 53)
+    let tyreAddCampaign = null;
+    function openTyreAdd(campaign) {
+        tyreAddCampaign = campaign;
+        const onList = new Set(tyreItems.filter(item => item.campaign_id === campaign.id).map(item => item.vehicle_id));
+        const candidates = vehicles.filter(vehicle => !onList.has(vehicle.id)).sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
+        $('tyreAddTitle').textContent = `Fahrzeuge zu „${campaign.title}“ hinzufügen`;
+        $('tyreAddEmpty').hidden = candidates.length > 0;
+        $('tyreAddList').replaceChildren(...candidates.map(vehicle => {
+            const row = el('li');
+            const label = el('label', 'tyre-vehicle-option');
+            const box = el('input');
+            box.type = 'checkbox';
+            box.value = vehicle.id;
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            row.append(label);
+            return row;
+        }));
+        $('tyreAddSave').disabled = !candidates.length;
+        $('tyreAddDialog').showModal();
+    }
+    $('tyreAddCancel').addEventListener('click', () => $('tyreAddDialog').close());
+    $('tyreAddForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const campaign = tyreAddCampaign;
+        if (!campaign) return;
+        const chosen = [...$('tyreAddList').querySelectorAll('input:checked')].map(box => vehicles.find(vehicle => vehicle.id === box.value)).filter(Boolean);
+        if (!chosen.length) { showToast('Bitte mindestens ein Fahrzeug auswählen.', 'info'); return; }
+        const start = Math.max(0, ...tyreItems.filter(item => item.campaign_id === campaign.id).map(item => item.position || 0));
+        $('tyreAddSave').disabled = true;
+        const { error } = await client.from('tt_tyre_items').insert(chosen.map((vehicle, index) => ({ campaign_id: campaign.id, vehicle_id: vehicle.id, plate: vehicle.plate, vehicle: [vehicle.brand, vehicle.body].filter(Boolean).join(' '), vehicle_type: vehicle.type || '', mileage: vehicle.mileage ?? null, position: start + index + 1, ...(swapReady ? { extra: vehicle.atu_note || '' } : {}) })));
+        $('tyreAddSave').disabled = false;
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        $('tyreAddDialog').close();
+        showToast(`${chosen.length} ${chosen.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} zu „${campaign.title}“ hinzugefügt – die Werkstatt sieht sie sofort.`, 'success');
+        await loadTyre();
+    });
     function showTyreLink(campaign) {
         const url = tyreLink(campaign);
         $('tyreLinkField').value = url;

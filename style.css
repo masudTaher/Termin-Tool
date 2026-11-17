@@ -3158,3 +3158,96 @@ html[data-text="big"] { font-size: 112.5%; }
 .fest-receipt-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin: 0 0 12px; }
 .fest-receipt-tools .field-hint { flex: 1 1 320px; margin: 0; }
 .fest-parking-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; text-decoration: none; }
+
+/* ===== 104. Monatsabrechnung Schritt für Schritt (R84) ===== */
+.pay-wizard-wrap { margin: 0 0 16px; }
+.pay-wizard { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.pay-wiz { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid var(--line, #d7dee8); border-radius: 14px; background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pay-wiz:hover, .pay-wiz:focus-visible { background: #eef4fb; color: inherit; transform: none; box-shadow: none; }
+.pay-wiz.is-active { border-color: var(--accent, #2563eb); box-shadow: 0 0 0 3px rgba(37, 99, 235, .15), 0 8px 20px rgba(37, 99, 235, .10); }
+.pay-wiz-no { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0; color: #1e293b; font-weight: 850; }
+.pay-wiz.is-active .pay-wiz-no { background: var(--accent, #2563eb); color: #fff; }
+.pay-wiz[data-state="fertig"] .pay-wiz-no { background: #15803d; color: #fff; }
+.pay-wiz[data-state="offen"] .pay-wiz-no { background: #f59e0b; color: #1f2937; }
+.pay-wiz-text { display: grid; gap: 1px; min-width: 0; }
+.pay-wiz-text strong { font-size: .95rem; line-height: 1.2; }
+.pay-wiz-text small { color: #64748b; font-size: .78rem; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-wiz-badge { min-width: 24px; padding: 2px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: .8rem; font-weight: 800; text-align: center; }
+.pay-wiz-badge[data-kind="warte"] { background: #e0f2fe; color: #075985; }
+.pay-todo-summary { margin: 10px 2px 0; color: #475569; font-weight: 600; }
+.pay-todo-summary[data-state="fertig"] { color: #15803d; }
+.pay-panel-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 18px; margin: 0 0 14px; }
+.pay-panel-head h2 { margin: 2px 0 6px; font-size: 1.35rem; }
+.pay-panel-head p { margin: 0; color: #475569; max-width: 70ch; }
+.pay-panel-head .page-kicker { margin-bottom: 0; }
+.pay-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pay-panel .pay-steps { margin: 0 0 16px; }
+.pay-panel .pay-steps:empty { display: none; }
+.pay-guide { margin: 18px 0 0; padding: 14px 16px; border: 1px dashed var(--line, #d7dee8); border-radius: 14px; background: #f8fafc; }
+.pay-guide h3 { margin: 0 0 8px; font-size: 1rem; }
+.pay-guide-list { margin: 0; padding: 0 0 0 22px; display: grid; gap: 4px; }
+.pay-guide-list button { display: grid; justify-items: start; gap: 1px; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pay-guide-list button:hover, .pay-guide-list button:focus-visible { background: #eef4fb; color: inherit; transform: none; box-shadow: none; }
+.pay-guide-list span { color: #64748b; font-size: .9rem; }
+.pay-fold { margin: 0 0 16px; border: 1px solid var(--line, #d7dee8); border-radius: 14px; background: #fff; padding: 0 14px; }
+.pay-fold > summary { padding: 12px 2px; font-weight: 800; cursor: pointer; list-style: revert; }
+.pay-fold[open] > summary { border-bottom: 1px solid var(--line, #d7dee8); margin-bottom: 12px; }
+.pay-fold > :last-child { margin-bottom: 14px; }
+.pay-sub-title { margin: 6px 0 8px; font-size: 1rem; }
+.pay-downloads { display: grid; gap: 10px; }
+.pay-download { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 12px 16px; padding: 14px 16px; border: 1px solid var(--line, #d7dee8); border-radius: 14px; background: #fff; }
+.pay-download-main { border-color: #93c5fd; background: #f3f8ff; }
+.pay-download-quiet { background: #f8fafc; }
+.pay-download-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 12px; background: #1f3a5f; color: #fff; font-weight: 900; font-size: .85rem; letter-spacing: .04em; }
+.pay-download-main .pay-download-icon { background: #15803d; }
+.pay-download-text h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.pay-download-text p { margin: 0; color: #475569; font-size: .92rem; }
+.pay-download-info { margin-top: 4px !important; color: #1e293b !important; font-weight: 650; }
+.pay-download-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.pay-download-actions .button-secondary, .pay-download-actions .button-primary { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+.pay-nav { display: flex; justify-content: space-between; gap: 10px; margin: 16px 0 0; }
+.pay-nav button[hidden] { display: none; }
+@media (max-width: 1100px) { .pay-wizard { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .pay-wizard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pay-wiz { min-height: 56px; padding: 8px; }
+  .pay-wiz-text small { display: none; }
+  .pay-download { grid-template-columns: 44px minmax(0, 1fr); }
+  .pay-download-icon { width: 44px; height: 44px; }
+  .pay-download-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+:root[data-theme="dark"] .pay-wiz, :root[data-theme="dark"] .pay-download, :root[data-theme="dark"] .pay-fold { background: #0f1b2d; border-color: #24364f; }
+:root[data-theme="dark"] .pay-wiz:hover, :root[data-theme="dark"] .pay-guide-list button:hover { background: #16263d; }
+:root[data-theme="dark"] .pay-wiz-no { background: #24364f; color: #e2e8f0; }
+:root[data-theme="dark"] .pay-wiz-text small, :root[data-theme="dark"] .pay-panel-head p, :root[data-theme="dark"] .pay-download-text p, :root[data-theme="dark"] .pay-guide-list span, :root[data-theme="dark"] .pay-todo-summary { color: #94a3b8; }
+:root[data-theme="dark"] .pay-guide, :root[data-theme="dark"] .pay-download-quiet { background: #0b1526; border-color: #24364f; }
+:root[data-theme="dark"] .pay-download-main { background: #0d1f33; border-color: #2a4a7a; }
+:root[data-theme="dark"] .pay-download-info { color: #e2e8f0 !important; }
+
+/* ===== 105. Werkstatt-Liste im Fuhrpark (Update 53): Karte je Liste, drei Abschnitte, Fahrzeuge dazu ===== */
+.tyre-campaigns { display: grid; gap: 14px; margin-top: 10px; }
+.tyre-campaign { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.tyre-campaign-head { display: grid; gap: 10px; margin-bottom: 8px; }
+.tyre-campaign-title strong { display: block; font-size: 1.08rem; }
+.tyre-campaign-title small { color: var(--muted); }
+.tyre-office-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; color: var(--muted); font-size: .9rem; font-weight: 600; }
+.tyre-office-bar { height: 10px; overflow: hidden; border-radius: 999px; background: #e3eaf2; }
+.tyre-office-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #17a860, #0f8a4d); transition: width .3s; }
+.tyre-office-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tyre-office-tile { display: grid; gap: 1px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-hover); color: var(--ink-soft); font-size: .8rem; font-weight: 700; text-align: center; line-height: 1.2; }
+.tyre-office-tile strong { font-size: 1.35rem; color: var(--ink); line-height: 1.1; }
+.tyre-office-tile[data-stage="offen"] { border-top: 4px solid #d98a00; }
+.tyre-office-tile[data-stage="werkstatt"] { border-top: 4px solid #d9a400; background: #fff8dc; color: #6b4a00; }
+.tyre-office-tile[data-stage="fertig"] { border-top: 4px solid #0f8a4d; }
+.tyre-campaign-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tyre-office-group { margin-top: 10px; }
+.tyre-office-group h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 5px 10px; border-radius: 8px; font-size: .95rem; }
+.tyre-office-group[data-stage="offen"] h3 { background: #fdeedb; color: #7a4a00; }
+.tyre-office-group[data-stage="werkstatt"] h3 { background: #fff8dc; color: #6b4a00; border-left: 5px solid #d9a400; }
+.tyre-office-group[data-stage="fertig"] h3 { background: #e6f5ec; color: #0f5132; }
+.tyre-office-group-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, .85); font-size: .8rem; }
+.tyre-office-item > span > strong { margin-right: 8px; }
+.tyre-office-item[data-stage="werkstatt"] { border-color: #e6c84a; background: #fffbea; }
+.tyre-office-item[data-stage="fertig"] { background: #f4fbf7; }
+.tyre-closed-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+@media (max-width: 560px) { .tyre-office-tile { font-size: .72rem; padding: 6px 4px; } }

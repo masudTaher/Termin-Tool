@@ -25,7 +25,11 @@
     let moreDetails = false;          // „Mehr Details“ in der aufgeklappten Person
     let hiddenPeople = [];
     let autoNames = new Set();
-    let tab = 'list';
+    // Schritte der Seite (R84): month → list → special → receipts → lists → send. Der zuletzt offene Schritt bleibt bis zum Neuladen.
+    const STEPS = ['month', 'list', 'special', 'receipts', 'lists', 'send'];
+    const STEP_KEY = 'terminTool.payroll.step';
+    const savedStep = () => { try { const saved = sessionStorage.getItem(STEP_KEY); return STEPS.includes(saved) ? saved : 'month'; } catch (error) { return 'month'; } };
+    let tab = savedStep();
     // Archiv: alle freigegebenen Abrechnungen über alle Monate (null = noch nicht geladen)
     let archive = null;
     let archiveQuery = '';
@@ -132,13 +136,45 @@
         document.querySelectorAll('[data-payroll-tab]').forEach(button => button.classList.toggle('is-active', button.dataset.payrollTab === tab));
         document.querySelectorAll('[data-payroll-panel]').forEach(panel => { panel.hidden = panel.dataset.payrollPanel !== tab; });
         renderTodo();
+        templateInfo();
         renderList();
         renderSpecial();
         renderReceipts();
         renderArchive();
-        // Das Archiv wird geholt, sobald der Reiter zum ersten Mal offen ist – und nach jeder Freigabe neu.
-        if (tab === 'archive' && archive == null) loadArchive();
+        renderWizard();
+        // Das Archiv wird geholt, sobald der Schritt „Senden“ zum ersten Mal offen ist – und nach jeder Freigabe neu.
+        if (tab === 'send' && archive == null) loadArchive();
     }
+
+    // Schrittleiste: welcher Schritt ist offen, wo wartet noch etwas, „Zurück“/„Weiter“.
+    const stepBadges = {};
+    function renderWizard() {
+        document.querySelectorAll('.pay-wiz').forEach(button => {
+            const key = button.dataset.payrollTab;
+            const info = stepBadges[key] || { open: 0, waiting: 0 };
+            const badge = button.querySelector('.pay-wiz-badge');
+            badge.hidden = !(info.open || info.waiting);
+            badge.textContent = String(info.open || info.waiting);
+            badge.dataset.kind = info.open ? 'offen' : 'warte';
+            button.dataset.state = info.open ? 'offen' : (key === 'month' || info.done ? 'fertig' : '');
+        });
+        const index = STEPS.indexOf(tab);
+        $('payPrev').hidden = index <= 0;
+        $('payNext').hidden = index >= STEPS.length - 1;
+        const titles = { month: 'Monat', list: 'Arbeitstage', special: 'Sondertage', receipts: 'Belege', lists: 'Listen & Vorlagen', send: 'Senden & Bestätigen' };
+        $('payPrev').textContent = index > 0 ? `← Zurück: ${titles[STEPS[index - 1]]}` : '← Zurück';
+        $('payNext').textContent = index < STEPS.length - 1 ? `Weiter: ${titles[STEPS[index + 1]]} →` : 'Weiter →';
+        try { sessionStorage.setItem(STEP_KEY, tab); } catch (error) { /* gilt dann nur bis zum Neuladen */ }
+    }
+    function goStep(target) {
+        if (!STEPS.includes(target)) return;
+        tab = target;
+        render();
+        $('payWizard').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+    $('payPrev').addEventListener('click', () => goStep(STEPS[STEPS.indexOf(tab) - 1]));
+    $('payNext').addEventListener('click', () => goStep(STEPS[STEPS.indexOf(tab) + 1]));
+    document.querySelectorAll('[data-goto]').forEach(button => button.addEventListener('click', () => goStep(button.dataset.goto)));
 
     // ---------- Endliste ----------
     async function savePayroll(name, changes) {
@@ -531,8 +567,6 @@
         finally { button.disabled = false; button.textContent = label; }
     }
     function renderTodo() {
-        const box = $('payTodoSteps');
-        if (!box) return;
         const range = Abrechnung.monthRange(month);
         const newReceipts = [...receipts].filter(item => item.status === 'eingereicht').sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)));
         const objections = result.rows.filter(row => row.statement?.response === 'einwand');
@@ -546,7 +580,7 @@
         $('payTodoSummary').textContent = todo
             ? `${range.label}: ${[newReceipts.length ? `${newReceipts.length} ${newReceipts.length === 1 ? 'Beleg' : 'Belege'} prüfen` : '', toPrintCount ? `${toPrintCount} ${toPrintCount === 1 ? 'Beleg' : 'Belege'} drucken` : '', objections.length ? `${objections.length} ${objections.length === 1 ? 'Einwand' : 'Einwände'} beantworten` : '', checks.length ? `${checks.length} offene ${checks.length === 1 ? 'Punkt' : 'Punkte'}` : '', ready.length ? `${ready.length} ${ready.length === 1 ? 'Abrechnung' : 'Abrechnungen'} senden` : ''].filter(Boolean).join(' · ')}${waiting.length ? ` · ${waiting.length} ${waiting.length === 1 ? 'wartet' : 'warten'} auf Bestätigung` : ''}`
             : `${range.label}: Nichts wartet auf dich.${waiting.length ? ` ${waiting.length} ${waiting.length === 1 ? 'Abrechnung wartet' : 'Abrechnungen warten'} noch auf die Bestätigung der Dolmetscher.` : ''}${confirmed.length === result.rows.length && result.rows.length ? ' Alle Abrechnungen sind bestätigt ✓' : ''}`;
-        $('payTodo').dataset.state = todo ? 'offen' : 'fertig';
+        $('payTodoSummary').dataset.state = todo ? 'offen' : 'fertig';
         const step = (key, number, title, count, hint, done) => {
             const item = el('li', 'pay-step');
             item.dataset.step = key;
@@ -597,7 +631,7 @@
         // 1b. Belege drucken: was noch nicht ausgedruckt ist – je Person als eine PDF-Datei, danach „Gedruckt“
         const toPrint = receipts.filter(item => printable(item) && item.status === 'geprüft' && !item.printed_at);
         const printedCount = receipts.filter(item => printable(item) && item.printed_at).length;
-        const sP = step('print', '1b', 'Belege ausdrucken', toPrint.length, toPrint.length ? 'Geprüfte Belege, die noch niemand gedruckt hat – je Person als PDF, dann „Gedruckt ✓“' : (printedCount ? `Alle gedruckt (${printedCount})` : 'Nichts zu drucken'));
+        const sP = step('print', 2, 'Belege ausdrucken', toPrint.length, toPrint.length ? 'Geprüfte Belege, die noch niemand gedruckt hat – je Person als PDF, dann „Gedruckt ✓“' : (printedCount ? `Alle gedruckt (${printedCount})` : 'Nichts zu drucken'));
         const byPerson = new Map();
         toPrint.forEach(item => { const key = item.person_name; if (!byPerson.has(key)) byPerson.set(key, []); byPerson.get(key).push(item); });
         [...byPerson.entries()].sort((left, right) => left[0].localeCompare(right[0], 'de')).forEach(([name, list]) => {
@@ -611,7 +645,7 @@
         steps.push(sP.item);
 
         // 2. Einwände beantworten
-        const s2 = step('objections', 2, 'Einwände beantworten', objections.length, objections.length ? 'Eine Person hat ihre Abrechnung nicht bestätigt – korrigieren und neu senden, oder ablehnen' : 'Keine Einwände');
+        const s2 = step('objections', 1, 'Einwände beantworten', objections.length, objections.length ? 'Eine Person hat ihre Abrechnung nicht bestätigt – korrigieren und neu senden, oder ablehnen' : 'Keine Einwände');
         objections.forEach(row => {
             s2.body.append(line(row.name, `Einwand: „${row.statement.response_note || '–'}“ · aktuell ${euro(row.total)}`,
                 button('Zur Person (korrigieren)', 'button-secondary', () => { openPerson = Abrechnung.key(row.name); tab = 'list'; render(); document.querySelector(`.pay-person[data-person="${CSS.escape(Abrechnung.key(row.name))}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }),
@@ -622,7 +656,7 @@
 
         // 2b. Gemeldete Arbeitstage (Update 43): Dolmetscher melden einen fehlenden Tag – bestätigen oder ablehnen
         const reported = extraDays.filter(item => item.status === 'gemeldet').sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)));
-        const sE = step('extra', '2b', 'Gemeldete Arbeitstage prüfen', reported.length, reported.length ? 'Ein Dolmetscher sagt: An diesem Tag habe ich gearbeitet, aber er zählt nicht' : (extraDaysReady ? 'Nichts gemeldet' : 'Dafür fehlt Update 43 in der Datenbank'));
+        const sE = step('extra', 1, 'Gemeldete Arbeitstage prüfen', reported.length, reported.length ? 'Ein Dolmetscher sagt: An diesem Tag habe ich gearbeitet, aber er zählt nicht' : (extraDaysReady ? 'Nichts gemeldet' : 'Dafür fehlt Update 43 in der Datenbank'));
         reported.forEach(item => {
             sE.body.append(line(`${item.person_name} · ${Abrechnung.longDate(item.date)}`, item.note ? `„${item.note}“` : 'ohne Begründung',
                 button('Bestätigen', 'button-primary', () => decideExtraDay(item, 'bestätigt'), 'Der Tag zählt dann wie ein Arbeitstag'),
@@ -631,13 +665,18 @@
         });
         steps.push(sE.item);
 
-        // 3. Offene Punkte
-        const s3 = step('checks', 3, 'Offene Punkte klären', checks.length, checks.length ? 'Fehlende Arbeitstage, Sondertage zum Prüfen, Belege ohne Person' : 'Alles geklärt');
-        checks.forEach(text => s3.body.append(line(text, '')));
+        // 3. Offene Punkte – Sondertage im Schritt „Sondertage“, alles andere bei den Arbeitstagen
+        const specialChecks = checks.filter(text => /Sondertag/.test(text));
+        const dayChecks = checks.filter(text => !/Sondertag/.test(text));
+        const s3 = step('checks', 2, 'Offene Punkte klären', dayChecks.length, dayChecks.length ? 'Fehlende Arbeitstage, Belege ohne Person' : 'Alles geklärt');
+        dayChecks.forEach(text => s3.body.append(line(text, '')));
         steps.push(s3.item);
+        const s3b = step('specialChecks', 1, 'Sondertage klären', specialChecks.length, specialChecks.length ? 'Noch auf „prüfen“ oder mehr Sondertage als Arbeitstage' : 'Alle Sondertage sind geklärt');
+        specialChecks.forEach(text => s3b.body.append(line(text, '')));
+        steps.push(s3b.item);
 
         // 4. Abrechnungen senden
-        const s4 = step('release', 4, 'Abrechnungen zum Bestätigen senden', ready.length, ready.length ? 'Noch nicht gesendet oder seit dem Senden geändert' : (noAccount.length ? `Alles gesendet · ${noAccount.length} ohne Portal-Konto` : 'Alles gesendet'));
+        const s4 = step('release', 2, 'Abrechnungen zum Bestätigen senden', ready.length, ready.length ? 'Noch nicht gesendet oder seit dem Senden geändert' : (noAccount.length ? `Alles gesendet · ${noAccount.length} ohne Portal-Konto` : 'Alles gesendet'));
         if (ready.length > 1) s4.body.append(line(`Alle ${ready.length} auf einmal`, 'Schon bestätigte, unveränderte Abrechnungen bleiben, wie sie sind.', button(`Alle ${ready.length} senden`, 'button-primary', () => $('releaseAll').click())));
         ready.forEach(row => {
             s4.body.append(line(`${row.name} · ${row.total == null ? '–' : euro(row.total)}`, [row.workdays != null ? `${row.workdays} Arbeitstage` : '', row.receiptCount ? `${row.receiptCount} Belege` : '', row.changedSince ? 'geändert seit dem Senden' : (row.statement ? 'Korrektur angefragt' : 'noch nicht gesendet')].filter(Boolean).join(' · '),
@@ -648,7 +687,7 @@
         steps.push(s4.item);
 
         // 5. Warten auf Bestätigung
-        const s5 = step('waiting', 5, 'Warten auf Bestätigung der Dolmetscher', waiting.length, waiting.length ? 'Gesendet – die Person hat noch nicht bestätigt. „Erinnern“ schickt eine Mitteilung aufs Handy.' : 'Niemand muss mehr bestätigen', true);
+        const s5 = step('waiting', 3, 'Warten auf Bestätigung der Dolmetscher', waiting.length, waiting.length ? 'Gesendet – die Person hat noch nicht bestätigt. „Erinnern“ schickt eine Mitteilung aufs Handy.' : 'Niemand muss mehr bestätigen', true);
         waiting.forEach(row => {
             s5.body.append(line(`${row.name} · ${euro(row.total)}`, `gesendet am ${row.statement.released_at ? new Date(row.statement.released_at).toLocaleDateString('de-DE') : '–'}`,
                 button('Erinnern', 'button-secondary', async (event) => {
@@ -660,11 +699,20 @@
         steps.push(s5.item);
 
         // 6. Bestätigt
-        const s6 = step('confirmed', 6, 'Bestätigt', confirmed.length, confirmed.length ? confirmed.map(row => row.name).join(', ') : 'Noch nichts bestätigt', true);
+        const s6 = step('confirmed', 4, 'Bestätigt', confirmed.length, confirmed.length ? confirmed.map(row => row.name).join(', ') : 'Noch nichts bestätigt', true);
         confirmed.forEach(row => s6.body.append(line(`${row.name} · ${euro(row.total)}`, `bestätigt am ${row.statement.responded_at ? new Date(row.statement.responded_at).toLocaleDateString('de-DE') : '–'}`)));
         steps.push(s6.item);
 
-        box.replaceChildren(...steps);
+        // Jeder Punkt steht in dem Schritt, zu dem er gehört.
+        const home = { receipts: 'todoReceipts', print: 'todoReceipts', objections: 'todoSend', extra: 'todoDays', checks: 'todoDays', specialChecks: 'todoSpecial', release: 'todoSend', waiting: 'todoSend', confirmed: 'todoSend' };
+        const groups = { todoDays: [], todoSpecial: [], todoReceipts: [], todoSend: [] };
+        steps.forEach(item => groups[home[item.dataset.step]].push(item));
+        Object.entries(groups).forEach(([id, items]) => $(id)?.replaceChildren(...items));
+        stepBadges.list = { open: reported.length + dayChecks.length, done: result.rows.length > 0 };
+        stepBadges.special = { open: specialChecks.length, done: true };
+        stepBadges.receipts = { open: newReceipts.length + toPrint.length, done: true };
+        stepBadges.lists = { open: 0, done: false };
+        stepBadges.send = { open: objections.length + ready.length, waiting: waiting.length, done: result.rows.length > 0 && !ready.length && !objections.length };
     }
 
     function renderList() {
@@ -1023,6 +1071,40 @@
         refresh();
     });
     document.querySelectorAll('[data-payroll-tab]').forEach(button => button.addEventListener('click', () => { tab = button.dataset.payrollTab; render(); }));
+    // Schritt 5: die abgestimmte Excel-Vorlage mit allem vorausfüllen, was das Programm schon weiß.
+    function templateData() {
+        const people = result.rows.map(row => ({ name: row.name, fullName: row.fullName || '', workdays: row.workdays, remark: row.remark || '',
+            status: ['erfasst', 'geprüft', 'ausgezahlt', 'Rückfrage'].includes(row.status) ? row.status : '', note: '' }));
+        const special = [...specialDays, ...trackingSpecial].sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)))
+            .map(item => ({ name: item.person_name, date: item.date, job: item.job || '', amount: Number(item.amount), counts: item.counts || 'prüfen', mark: item.mark || '', hint: item.hint || '' }));
+        const own = receipts.filter(item => item.status !== 'abgelehnt').sort((a, b) => a.person_name.localeCompare(b.person_name, 'de') || String(a.date).localeCompare(String(b.date)))
+            .map(item => ({ name: item.person_name, date: item.date, place: item.place || '', amount: Number(item.amount), proof: item.proof || 'Parkbeleg',
+                note: [item.note || '', item.kind && item.kind !== 'Parken' ? item.kind : '', item.status === 'eingereicht' ? 'noch nicht geprüft' : ''].filter(Boolean).join(' · ') }));
+        return { month, rate, checkDate, people, special, receipts: own };
+    }
+    function templateInfo() {
+        const data = templateData();
+        const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+        $('payrollTemplateInfo').textContent = `Schon eingetragen für ${Abrechnung.monthRange(month).label}: ${count(data.people.length, 'Person', 'Personen')} mit Arbeitstagen · ${count(data.special.length, 'Sondertag', 'Sondertage')} · ${count(data.receipts.length, 'Beleg', 'Belege')} · Tagessatz ${euro(rate)}${checkDate ? ` · Prüfdatum ${Abrechnung.longDate(checkDate)}` : ' · Prüfdatum noch leer'}`;
+    }
+    $('payrollTemplate').addEventListener('click', async event => {
+        const button = event.currentTarget;
+        if (typeof XlsxVorlage === 'undefined') { showToast('Die Vorlagen-Funktion konnte nicht geladen werden. Seite neu laden.', 'error'); return; }
+        button.disabled = true;
+        const label = button.textContent;
+        button.textContent = 'Vorlage wird gefüllt …';
+        try {
+            const response = await fetch('vorlagen/Monatsabrechnung-Temporaer.xlsx', { cache: 'no-cache' });
+            if (!response.ok) throw new Error('Die Vorlage konnte nicht geladen werden. Prüfe das Internet und versuche es noch einmal.');
+            const blob = await XlsxVorlage.fill(await response.arrayBuffer(), templateData());
+            const url = URL.createObjectURL(blob);
+            const link = el('a'); link.href = url; link.download = XlsxVorlage.fileName(month); link.rel = 'noopener';
+            document.body.append(link); link.click(); link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+            showToast(`${XlsxVorlage.fileName(month)} heruntergeladen – in Excel öffnen, der Rest wie gewohnt.`, 'success');
+        } catch (error) { showToast(error.message || 'Die Vorlage konnte nicht gefüllt werden.', 'error'); }
+        finally { button.disabled = false; button.textContent = label; }
+    });
 
     // ---------- Archiv: Freigegebenes je Dolmetscher ----------
     // Jede Freigabe ist ein fester Stand (genau das, was die Person im Portal sieht). Hier stehen alle Freigaben aller
@@ -1194,7 +1276,15 @@
             return;
         }
         const range = Abrechnung.monthRange(parsed.month);
-        const confirmed = await confirmDialog(`${file.name}: ${range.label} mit ${parsed.payroll.length} Personen, ${parsed.receipts.length} Belegen und ${parsed.specialDays.length} Sondertagen importieren? Ein früherer Import dieses Monats wird ersetzt; Belege aus dem Portal bleiben erhalten.`, 'Importieren');
+        // Was schon im Programm steht (Belege aus dem Portal, Sondertage aus dem Büro oder dem Live-Tracking), kommt mit der
+        // vorausgefüllten Vorlage wieder zurück – das wird nicht noch einmal angelegt.
+        if (parsed.month === month) {
+            const known = new Set(receipts.filter(item => item.source !== 'import').map(item => `${Abrechnung.key(item.person_name)}|${item.date}|${Abrechnung.round(item.amount)}`));
+            parsed.receipts = parsed.receipts.filter(item => !known.has(`${Abrechnung.key(item.person_name)}|${item.date}|${Abrechnung.round(item.amount)}`));
+            const knownSpecial = new Set([...specialDays.filter(item => item.source !== 'import'), ...trackingSpecial].map(item => `${Abrechnung.key(item.person_name)}|${item.date}`));
+            parsed.specialDays = parsed.specialDays.filter(item => !knownSpecial.has(`${Abrechnung.key(item.person_name)}|${item.date}`));
+        }
+        const confirmed = await confirmDialog(`${file.name}: ${range.label} mit ${parsed.payroll.length} Personen, ${parsed.receipts.length} ${parsed.receipts.length === 1 ? 'neuen Beleg' : 'neuen Belegen'} und ${parsed.specialDays.length} ${parsed.specialDays.length === 1 ? 'neuen Sondertag' : 'neuen Sondertagen'} importieren? Ein früherer Import dieses Monats wird ersetzt; was schon im Programm steht, bleibt erhalten.`, 'Importieren');
         if (!confirmed) return;
         setStatus('Import läuft …');
         const steps = [

@@ -71,3 +71,27 @@ button, input, textarea { font: inherit; }
 .tyre-brakes { display: grid; gap: 0; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .tyre-brakes-label { color: var(--soft); font-size: .9rem; font-weight: 700; }
 .tyre-edit { font-size: .9rem; }
+
+/* Drei Abschnitte (Update 53): noch nicht bearbeitet (orange), gerade in der Werkstatt (gelb), fertig und zurückgebracht (grün) */
+:root { --shop: #d9a400; --shop-bg: #fff8dc; --shop-ink: #6b4a00; }
+.tyre-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tyre-tile { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--soft); text-decoration: none; font-size: .82rem; font-weight: 700; line-height: 1.2; text-align: center; }
+.tyre-tile strong { font-size: 1.7rem; line-height: 1; color: var(--ink); }
+.tyre-tile[data-stage="offen"] { border-top: 5px solid #d98a00; }
+.tyre-tile[data-stage="werkstatt"] { border-top: 5px solid var(--shop); background: var(--shop-bg); color: var(--shop-ink); }
+.tyre-tile[data-stage="fertig"] { border-top: 5px solid var(--go); }
+.tyre-section { display: grid; gap: 8px; scroll-margin-top: 12px; }
+.tyre-section h2 { display: flex; align-items: center; gap: 8px; font-size: 1.15rem; padding: 6px 10px; border-radius: 10px; }
+.tyre-section[data-stage="offen"] h2 { background: #fdeedb; color: #7a4a00; }
+.tyre-section[data-stage="werkstatt"] h2 { background: var(--shop-bg); color: var(--shop-ink); border-left: 6px solid var(--shop); }
+.tyre-section[data-stage="fertig"] h2 { background: #e6f5ec; color: #0f5132; }
+.tyre-section-count { display: inline-grid; place-items: center; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 999px; background: rgba(255, 255, 255, .8); font-size: .95rem; }
+.tyre-section-hint { color: var(--soft); font-size: .9rem; }
+.tyre-item[data-stage="werkstatt"] { border-left-color: var(--shop); background: var(--shop-bg); }
+.tyre-item[data-stage="werkstatt"] .tyre-plate { border-color: #b88700; color: var(--shop-ink); }
+.tyre-shop-text { color: var(--shop-ink); font-weight: 750; }
+.tyre-button-shop { border-color: #b88700; background: linear-gradient(180deg, #ffd94d, #e6b800); color: #3d2b00; box-shadow: 0 8px 20px rgba(217, 164, 0, .3); }
+.tyre-check-row.is-good:has(input:checked) span { color: var(--go); font-weight: 800; }
+.tyre-brakes-where { display: grid; gap: 0; margin: 4px 0 0 34px; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 10px; background: #fff; }
+.tyre-brakes-where .tyre-check-row { min-height: 36px; }
+@media (max-width: 480px) { .tyre-tile { font-size: .74rem; padding: 8px 6px; } .tyre-tile strong { font-size: 1.4rem; } }

@@ -1,6 +1,8 @@
 // Reifenwechsel-Liste für die Werkstatt (ATU): reifen.html?k=<Schlüssel>. Ohne Anmeldung – der Schlüssel im Link ist der Zugang.
 // Die Werkstatt sieht Kennzeichen, Modell und Kilometerstand der Fahrzeuge auf der Liste und hakt ab, was fertig ist (mit Name und
 // Bemerkung). Die Einsatzleitung sieht denselben Stand im Fuhrpark. Daten: tt_tyre_list / tt_tyre_mark (supabase/update-39.sql).
+// Update 53: drei Abschnitte je Fahrzeug – noch nicht bearbeitet → gerade in der Werkstatt (tt_tyre_shop) → fertig und zurückgebracht;
+// Bremsen vorne/hinten, „wurden gewechselt“.
 (function () {
     const $ = id => document.getElementById(id);
     const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
@@ -22,10 +24,15 @@
     try { $('tyreWho').value = localStorage.getItem('tyre.who') || ''; } catch (error) { /* ohne Speicher */ }
     $('tyreWho').addEventListener('change', () => { try { localStorage.setItem('tyre.who', whoName()); } catch (error) { /* ohne Speicher */ } });
 
+    // Wo steht das Fahrzeug? fertig (zurückgebracht) · werkstatt (gerade bei ATU) · offen (noch nicht bearbeitet)
+    const stageOf = item => item.done ? 'fertig' : item.in_shop_at ? 'werkstatt' : 'offen';
+    const STAGE_WORD = { offen: 'noch nicht bearbeitet', werkstatt: 'in der Werkstatt', fertig: 'fertig' };
     function render() {
         if (!data) return;
         const items = data.items || [];
-        const done = items.filter(item => item.done).length;
+        const count = { offen: 0, werkstatt: 0, fertig: 0 };
+        items.forEach(item => { count[stageOf(item)] += 1; });
+        const done = count.fertig;
         $('tyreTitle').textContent = data.title || 'Reifenwechsel';
         $('tyreSub').textContent = `${items.length} ${items.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · Liste vom ${new Date(data.created_at).toLocaleDateString('de-DE')}${data.created_by ? ` · ${data.created_by}` : ''}`;
         const TYRES = { sommer: 'Sommerreifen', winter: 'Winterreifen', ganzjahr: 'Ganzjahresreifen' };
@@ -34,37 +41,45 @@
         $('tyreNote').textContent = [target, data.note || ''].filter(Boolean).join(' ');
         $('tyreProgress').hidden = !items.length;
         $('tyreBar').style.width = `${items.length ? Math.round(done / items.length * 100) : 0}%`;
-        $('tyreProgressText').textContent = done === items.length && items.length ? 'Alle Fahrzeuge erledigt – danke!' : `${done} von ${items.length} erledigt · ${items.length - done} offen`;
+        $('tyreProgressText').textContent = done === items.length && items.length ? 'Alle Fahrzeuge fertig und zurückgebracht – danke!'
+            : [`${done} fertig`, count.werkstatt ? `${count.werkstatt} in der Werkstatt` : '', `${count.offen} noch nicht bearbeitet`].filter(Boolean).join(' · ');
         document.title = `${done}/${items.length} · Reifenwechsel · Medical Office Bonn`;
-        $('tyreList').replaceChildren(...items.map(item => {
-            const row = el('li', 'tyre-item');
-            row.dataset.id = item.id;
-            row.dataset.done = item.done ? 'ja' : '';
-            const main = el('div', 'tyre-main');
-            main.append(el('strong', 'tyre-plate', item.plate || '–'), el('span', 'tyre-model', [item.vehicle, item.vehicle_type, km(item.mileage)].filter(Boolean).join(' · ')));
-            if (item.extra) main.append(el('span', 'tyre-item-extra', `Bitte außerdem: ${item.extra}`));
-            if (item.done) main.append(el('span', 'tyre-done-text', `Erledigt ${when(item.done_at)}${item.done_by ? ` · ${item.done_by}` : ''}`));
-            if (item.note) main.append(el('span', 'tyre-item-note', `„${item.note}“`));
-            const checks = checkChips(item.checks);
-            if (checks) main.append(checks);
-            const side = el('div', 'tyre-side');
-            if (item.done) {
-                const edit = el('button', 'tyre-button tyre-button-quiet tyre-edit', 'Angaben ändern');
-                edit.type = 'button';
-                edit.addEventListener('click', () => openDone(item));
-                const undo = el('button', 'tyre-button tyre-button-quiet tyre-undo', 'Doch nicht fertig');
-                undo.type = 'button';
-                undo.addEventListener('click', () => mark(item, false, undo));
-                side.append(el('span', 'tyre-check', '✓'), edit, undo);
-            } else {
-                const ok = el('button', 'tyre-button tyre-button-main tyre-ok', 'Erledigt');
-                ok.type = 'button';
-                ok.addEventListener('click', () => openDone(item));
-                side.append(ok);
-            }
-            row.append(main, side);
-            return row;
-        }));
+        $('tyreTiles').hidden = !items.length;
+        $('tyreCountOffen').textContent = String(count.offen);
+        $('tyreCountWerkstatt').textContent = String(count.werkstatt);
+        $('tyreCountFertig').textContent = String(count.fertig);
+        document.querySelectorAll('.tyre-section').forEach(section => {
+            const stage = section.dataset.stage;
+            const list = items.filter(item => stageOf(item) === stage);
+            section.hidden = !list.length;
+            section.querySelector('[data-count]').textContent = String(list.length);
+            section.querySelector('[data-list]').replaceChildren(...list.map(item => row(item, stage)));
+        });
+    }
+    function row(item, stage) {
+        const li = el('li', 'tyre-item');
+        li.dataset.id = item.id;
+        li.dataset.stage = stage;
+        li.dataset.done = item.done ? 'ja' : '';
+        const main = el('div', 'tyre-main');
+        main.append(el('strong', 'tyre-plate', item.plate || '–'), el('span', 'tyre-model', [item.vehicle, item.vehicle_type, km(item.mileage)].filter(Boolean).join(' · ')));
+        if (item.extra) main.append(el('span', 'tyre-item-extra', `Bitte außerdem: ${item.extra}`));
+        if (stage === 'werkstatt') main.append(el('span', 'tyre-shop-text', `In der Werkstatt seit ${when(item.in_shop_at)}${item.in_shop_by ? ` · ${item.in_shop_by}` : ''}`));
+        if (item.done) main.append(el('span', 'tyre-done-text', `Fertig und zurückgebracht ${when(item.done_at)}${item.done_by ? ` · ${item.done_by}` : ''}`));
+        if (item.note) main.append(el('span', 'tyre-item-note', `„${item.note}“`));
+        const checks = checkChips(item.checks);
+        if (checks) main.append(checks);
+        const side = el('div', 'tyre-side');
+        const button = (className, text, handler) => { const node = el('button', `tyre-button ${className}`, text); node.type = 'button'; node.addEventListener('click', () => handler(node)); return node; };
+        if (stage === 'fertig') {
+            side.append(el('span', 'tyre-check', '✓'), button('tyre-button-quiet tyre-edit', 'Angaben ändern', () => openDone(item)), button('tyre-button-quiet tyre-undo', 'Doch nicht fertig', node => mark(item, false, node)));
+        } else if (stage === 'werkstatt') {
+            side.append(button('tyre-button-main tyre-ok', 'Fertig – zurückgebracht', () => openDone(item)), button('tyre-button-quiet tyre-undo', 'Doch nicht bei uns', node => shop(item, false, node)));
+        } else {
+            side.append(button('tyre-button-shop tyre-ok', 'Ist jetzt bei uns', node => shop(item, true, node)), button('tyre-button-quiet', 'Gleich fertig melden', () => openDone(item)));
+        }
+        li.append(main, side);
+        return li;
     }
 
     // Prüfpunkte der Werkstatt (Update 52): AdBlue, Wischwasser, Check-up, Bremsen
@@ -73,22 +88,31 @@
         if (!checks || typeof checks !== 'object') return null;
         const chips = [];
         CHECK_WORDS.forEach(([key, word]) => { if (checks[key]) chips.push(el('span', 'tyre-chip is-ok', `✓ ${word}`)); });
+        const axle = checks.bremsen_vorne && checks.bremsen_hinten ? ' vorne und hinten' : checks.bremsen_vorne ? ' vorne' : checks.bremsen_hinten ? ' hinten' : '';
         if (checks.bremsen === 'ok') chips.push(el('span', 'tyre-chip is-ok', '✓ Bremsen in Ordnung'));
-        if (checks.bremsen === 'wechsel') chips.push(el('span', 'tyre-chip is-bad', '⚠ Bremsen: Wechsel nötig'));
+        if (checks.bremsen === 'wechsel') chips.push(el('span', 'tyre-chip is-bad', `⚠ Bremsen${axle}: Wechsel nötig`));
+        if (checks.bremsen === 'gewechselt') chips.push(el('span', 'tyre-chip is-ok', `✓ Bremsen${axle} gewechselt`));
         if (!chips.length) return null;
         const box = el('span', 'tyre-chips');
         box.append(...chips);
         return box;
     }
-    const readChecks = () => ({ adblue: $('tyreChkAdblue').checked, wischwasser: $('tyreChkWasser').checked, checkup: $('tyreChkCheckup').checked, bremsen: document.querySelector('input[name=tyreChkBremsen]:checked')?.value || '' });
+    const brakeChoice = () => document.querySelector('input[name=tyreChkBremsen]:checked')?.value || '';
+    const needsAxle = value => value === 'wechsel' || value === 'gewechselt';
+    const readChecks = () => ({ adblue: $('tyreChkAdblue').checked, wischwasser: $('tyreChkWasser').checked, checkup: $('tyreChkCheckup').checked, bremsen: brakeChoice(),
+        bremsen_vorne: needsAxle(brakeChoice()) && $('tyreChkBremsenVorne').checked, bremsen_hinten: needsAxle(brakeChoice()) && $('tyreChkBremsenHinten').checked });
     function fillChecks(checks) {
         const value = checks && typeof checks === 'object' ? checks : {};
         $('tyreChkAdblue').checked = Boolean(value.adblue);
         $('tyreChkWasser').checked = Boolean(value.wischwasser);
         $('tyreChkCheckup').checked = Boolean(value.checkup);
-        const brakes = ['ok', 'wechsel'].includes(value.bremsen) ? value.bremsen : '';
+        const brakes = ['ok', 'wechsel', 'gewechselt'].includes(value.bremsen) ? value.bremsen : '';
         document.querySelectorAll('input[name=tyreChkBremsen]').forEach(input => { input.checked = input.value === brakes; });
+        $('tyreChkBremsenVorne').checked = Boolean(value.bremsen_vorne);
+        $('tyreChkBremsenHinten').checked = Boolean(value.bremsen_hinten);
+        $('tyreBrakesWhere').hidden = !needsAxle(brakes);
     }
+    document.querySelectorAll('input[name=tyreChkBremsen]').forEach(input => input.addEventListener('change', () => { $('tyreBrakesWhere').hidden = !needsAxle(brakeChoice()); }));
     const invalid = error => /nicht \(mehr\) gültig/.test(error?.message || '');
     const missing = error => /could not find the function|schema cache|does not exist/i.test(error?.message || '');
     async function load(quiet = false) {
@@ -115,15 +139,17 @@
         $('tyreDoneTitle').textContent = `${item.plate} · ${item.vehicle}`;
         $('tyreDoneNote').value = item.note || '';
         fillChecks(item.checks);
-        $('tyreDoneOk').textContent = item.done ? 'Angaben speichern' : 'Als erledigt markieren';
+        $('tyreDoneOk').textContent = item.done ? 'Angaben speichern' : 'Fertig – zurückgebracht';
         $('tyreDone').showModal();
     }
     $('tyreDoneCancel').addEventListener('click', () => $('tyreDone').close());
     $('tyreDoneForm').addEventListener('submit', event => {
         event.preventDefault();
         const item = pending;
+        const checks = readChecks();
+        if (needsAxle(checks.bremsen) && !checks.bremsen_vorne && !checks.bremsen_hinten) { $('tyreBrakesWhere').hidden = false; $('tyreChkBremsenVorne').focus(); status('Bitte bei den Bremsen noch „vorne“ und/oder „hinten“ ankreuzen.', 'info'); return; }
         $('tyreDone').close();
-        if (item) mark(item, true, null, $('tyreDoneNote').value.trim(), readChecks());
+        if (item) mark(item, true, null, $('tyreDoneNote').value.trim(), checks);
     });
 
     async function mark(item, done, button, note = null, checks = null) {
@@ -137,7 +163,20 @@
         const index = (data.items || []).findIndex(entry => entry.id === item.id);
         if (index >= 0) data.items[index] = row;
         const anyCheck = checks && (checks.adblue || checks.wischwasser || checks.checkup || checks.bremsen);
-        status(dropped && anyCheck ? `${row.plate} ist eingetragen – die Prüfpunkte konnten noch nicht gespeichert werden (Update 52 fehlt). Bitte in die Bemerkung schreiben.` : done ? (item.done ? `${row.plate}: Angaben gespeichert.` : `${row.plate} ist als erledigt eingetragen.${checks?.bremsen === 'wechsel' ? ' Die Einsatzleitung sieht die Meldung zu den Bremsen.' : ''}`) : `${row.plate} steht wieder als offen.`, dropped && anyCheck ? 'error' : 'success');
+        status(dropped && anyCheck ? `${row.plate} ist eingetragen – die Prüfpunkte konnten noch nicht gespeichert werden (Update 52 fehlt). Bitte in die Bemerkung schreiben.` : done ? (item.done ? `${row.plate}: Angaben gespeichert.` : `${row.plate} ist als fertig und zurückgebracht eingetragen.${checks?.bremsen === 'wechsel' ? ' Die Einsatzleitung sieht die Meldung zu den Bremsen.' : ''}`) : `${row.plate} steht wieder als ${row.in_shop_at ? 'in der Werkstatt' : 'noch nicht bearbeitet'}.`, dropped && anyCheck ? 'error' : 'success');
+        render();
+    }
+
+    // „Ist jetzt bei uns“ / „Doch nicht bei uns“ (Update 53): das Büro sieht das Fahrzeug dann als „Bei ATU / Werkstatt“.
+    async function shop(item, inShop, button) {
+        if (inShop && !whoName()) { status('Bitte zuerst unten deinen Namen eintragen – dann steht er dabei.', 'info'); $('tyreWho').focus(); return; }
+        if (button) button.disabled = true;
+        const { data: row, error } = await client.rpc('tt_tyre_shop', { p_token: token, p_item: item.id, p_in: inShop, p_by: whoName() });
+        if (button) button.disabled = false;
+        if (error) { status(invalid(error) ? 'Dieser Link ist nicht mehr gültig – die Liste wurde geschlossen.' : missing(error) ? 'Dieser Schritt ist in der Datenbank noch nicht eingerichtet (Update 53 fehlt). Bitte das Fahrzeug später direkt als fertig melden.' : TerminCloud.germanError(error), 'error'); await load(true); return; }
+        const index = (data.items || []).findIndex(entry => entry.id === item.id);
+        if (index >= 0) data.items[index] = row;
+        status(inShop ? `${row.plate} steht jetzt als „in der Werkstatt“ – das Büro sieht das.` : `${row.plate} steht wieder als „noch nicht bearbeitet“.`, 'success');
         render();
     }
 

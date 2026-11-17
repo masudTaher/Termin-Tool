@@ -21,7 +21,27 @@
             <p id="tyreProgressText"></p>
          </section>
          <p id="tyreStatus" class="tyre-status" role="status" aria-live="polite" hidden></p>
-         <ul id="tyreList" class="tyre-list"></ul>
+         <!-- Update 53: drei Abschnitte – noch nicht bearbeitet, gerade in der Werkstatt, fertig und zurückgebracht -->
+         <nav id="tyreTiles" class="tyre-tiles" hidden aria-label="Übersicht">
+            <a href="#tyreSecOffen" class="tyre-tile" data-stage="offen"><strong id="tyreCountOffen">0</strong><span>noch nicht bearbeitet</span></a>
+            <a href="#tyreSecWerkstatt" class="tyre-tile" data-stage="werkstatt"><strong id="tyreCountWerkstatt">0</strong><span>in der Werkstatt</span></a>
+            <a href="#tyreSecFertig" class="tyre-tile" data-stage="fertig"><strong id="tyreCountFertig">0</strong><span>fertig &amp; zurück</span></a>
+         </nav>
+         <section id="tyreSecWerkstatt" class="tyre-section" data-stage="werkstatt" hidden>
+            <h2>Gerade in der Werkstatt <span class="tyre-section-count" data-count></span></h2>
+            <p class="tyre-section-hint">Diese Fahrzeuge habt ihr gerade da. Wenn ein Auto fertig ist und zurückgebracht wurde: „Fertig – zurückgebracht“.</p>
+            <ul class="tyre-list" data-list></ul>
+         </section>
+         <section id="tyreSecOffen" class="tyre-section" data-stage="offen" hidden>
+            <h2>Noch nicht bearbeitet <span class="tyre-section-count" data-count></span></h2>
+            <p class="tyre-section-hint">Sobald ein Auto bei euch ankommt: „Ist jetzt bei uns“ – dann sieht das Büro, dass es in der Werkstatt steht.</p>
+            <ul class="tyre-list" data-list></ul>
+         </section>
+         <section id="tyreSecFertig" class="tyre-section" data-stage="fertig" hidden>
+            <h2>Fertig und zurückgebracht <span class="tyre-section-count" data-count></span></h2>
+            <ul class="tyre-list" data-list></ul>
+         </section>
+         <ul id="tyreList" class="tyre-list" hidden></ul>
          <footer class="tyre-foot">
             <label class="tyre-who"><span>Dein Name (steht beim Abhaken dabei)</span><input id="tyreWho" type="text" maxlength="80" autocomplete="name" placeholder="z. B. Kevin, ATU Bonn"></label>
             <button type="button" id="tyreRefresh" class="tyre-button tyre-button-quiet">Aktualisieren</button>
@@ -31,7 +51,7 @@
 
       <dialog id="tyreDone" class="tyre-dialog">
          <form id="tyreDoneForm" method="dialog">
-            <p class="tyre-kicker">ERLEDIGT</p>
+            <p class="tyre-kicker">FERTIG UND ZURÜCKGEBRACHT</p>
             <h2 id="tyreDoneTitle">Fahrzeug</h2>
             <fieldset class="tyre-checks">
                <legend>Außerdem gemacht oder geprüft (bitte abhaken)</legend>
@@ -43,11 +63,17 @@
                   <label class="tyre-check-row"><input type="radio" name="tyreChkBremsen" value="" checked><span>nicht geprüft</span></label>
                   <label class="tyre-check-row"><input type="radio" name="tyreChkBremsen" value="ok"><span>in Ordnung</span></label>
                   <label class="tyre-check-row is-bad"><input type="radio" name="tyreChkBremsen" value="wechsel"><span>nicht in Ordnung – müssen gewechselt werden</span></label>
+                  <label class="tyre-check-row is-good"><input type="radio" name="tyreChkBremsen" value="gewechselt"><span>wurden gewechselt</span></label>
+                  <div id="tyreBrakesWhere" class="tyre-brakes-where" hidden>
+                     <span class="tyre-brakes-label">Welche Achse?</span>
+                     <label class="tyre-check-row"><input type="checkbox" id="tyreChkBremsenVorne"><span>vorne</span></label>
+                     <label class="tyre-check-row"><input type="checkbox" id="tyreChkBremsenHinten"><span>hinten</span></label>
+                  </div>
                </div>
             </fieldset>
             <label for="tyreDoneNote">Bemerkung (freiwillig)</label>
             <textarea id="tyreDoneNote" rows="3" maxlength="300" placeholder="z. B. Winterreifen montiert, DOT 2124, Profil 7 mm"></textarea>
-            <div class="tyre-dialog-buttons"><button type="button" id="tyreDoneCancel" class="tyre-button tyre-button-quiet">Abbrechen</button><button type="submit" id="tyreDoneOk" class="tyre-button tyre-button-main">Als erledigt markieren</button></div>
+            <div class="tyre-dialog-buttons"><button type="button" id="tyreDoneCancel" class="tyre-button tyre-button-quiet">Abbrechen</button><button type="submit" id="tyreDoneOk" class="tyre-button tyre-button-main">Fertig – zurückgebracht</button></div>
          </form>
       </dialog>
 
