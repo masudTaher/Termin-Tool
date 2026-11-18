@@ -87,9 +87,17 @@
             { page: 'patienten', href: 'patienten.html', label: 'Patientenakten', icon: ICONS.patients }
         ] },
         { group: 'Fahrzeuge', items: [
-            { page: 'fahrzeugakte', href: 'fahrzeugakte.html', label: 'Fuhrpark', icon: ICONS.car },
-            { page: 'tankkarten', href: 'fahrzeugakte.html?ansicht=tankkarten', label: 'Tankkarten', icon: ICONS.card },
-            { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Übergaben', icon: ICONS.folder }
+            // R89: Die Bereiche des Fuhrparks stehen als Unterpunkte links im Menü (nicht mehr als Reiterleiste auf der Seite).
+            { page: 'fahrzeugakte', href: 'fahrzeugakte.html?ansicht=uebersicht', label: 'Fuhrpark', icon: ICONS.car, hint: 'Autos, Werkstatt, Tankkarten', children: [
+                { view: 'uebersicht', label: 'Übersicht', hint: 'Meldungen und offene Punkte' },
+                { view: 'fahrzeuge', label: 'Fahrzeuge', hint: 'Akte je Fahrzeug' },
+                { view: 'werkstatt', label: 'Werkstatt', hint: 'Reifen, ATU, Prüfpunkte' },
+                { view: 'fahrerakte', label: 'Fahrerakte', hint: 'Meldungen über Vorfahrer' },
+                { view: 'heidelberg', label: 'Heidelberg', hint: 'Fahrzeuge am Standort' },
+                { view: 'tankkarten', label: 'Tankkarten', hint: 'Wer hat welche Karte' },
+                { view: 'archiv', label: 'Archiv', hint: 'Abgegebene Fahrzeuge' }
+            ] },
+            { page: 'fahrzeuge', href: 'fahrzeuge.html', label: 'Übergaben', icon: ICONS.folder, hint: 'Wer hat welches Auto' }
         ] },
         { group: 'Dolmetscher', items: [
             { page: 'dolmetscher', href: 'dolmetscher.html', label: 'Dolmetscher', icon: ICONS.people },
@@ -107,13 +115,14 @@
     ];
 
     function buildShell() {
-        // „Tankkarten“ ist eine eigene Ansicht der Fuhrpark-Seite (eigener Menüpunkt, getrennt von den Fahrzeugen).
-        const fuelView = document.body.dataset.page === 'fahrzeugakte' && /[?&]ansicht=tankkarten(&|$)/.test(location.search);
-        if (fuelView) { document.body.dataset.view = 'tankkarten'; document.title = 'Tankkarten · Medical Office Bonn'; }
-        // R87: Der Fuhrpark hat Unterreiter; ein Sprung mit ?ansicht=<Reiter> öffnet den passenden (die Seite selbst schaltet um).
+        // R87/R89: Der Fuhrpark hat Bereiche; ein Sprung mit ?ansicht=<Bereich> öffnet den passenden (die Seite selbst schaltet um
+        // und markiert den Unterpunkt links im Menü).
         const wantedView = document.body.dataset.page === 'fahrzeugakte' ? (location.search.match(/[?&]ansicht=([a-z]+)/) || [])[1] : '';
-        if (wantedView && wantedView !== 'tankkarten') document.body.dataset.view = wantedView;
-        const current = fuelView ? 'tankkarten' : document.body.dataset.page || '';
+        if (wantedView) document.body.dataset.view = wantedView;
+        const current = document.body.dataset.page || '';
+        const subNav = item => item.children && item.page === current ? `<div class="app-nav-sub" role="group" aria-label="${item.label} – Bereiche">${item.children.map(child => `
+                            <a class="app-nav-sublink" data-nav-view="${child.view}" href="${item.href.replace(/\?.*$/, '')}?ansicht=${child.view}" title="${child.hint || child.label}"${child.view === (wantedView || '') ? ' aria-current="page"' : ''}><span>${child.label}</span><b class="nav-badge" data-nav-view-badge="${child.view}" hidden></b></a>`).join('')}
+                        </div>` : '';
         const nav = document.createElement('aside');
         nav.className = 'app-nav';
         nav.innerHTML = `
@@ -126,9 +135,9 @@
                 ${NAV.map(section => `
                     ${section.group ? `<p class="app-nav-group">${section.group}</p>` : ''}
                     ${section.items.map(item => `
-                        <a class="app-nav-link" data-nav="${item.page}" href="${item.href}" title="${item.label}"${item.page === current ? ' aria-current="page"' : ''}>
-                            ${item.icon}<span>${item.label}</span>${item.step ? `<em aria-hidden="true">${item.step}</em>` : ''}
-                        </a>`).join('')}
+                        <a class="app-nav-link${item.children ? ' has-sub' : ''}" data-nav="${item.page}" href="${item.href}" title="${item.hint ? `${item.label} – ${item.hint}` : item.label}"${item.page === current ? ' aria-current="page"' : ''}>
+                            ${item.icon}<span>${item.label}${item.hint ? `<small>${item.hint}</small>` : ''}</span>${item.step ? `<em aria-hidden="true">${item.step}</em>` : ''}${item.children ? '<i class="app-nav-chevron" aria-hidden="true"></i>' : ''}
+                        </a>${subNav(item)}`).join('')}
                 `).join('')}
             </nav>
             <div class="app-nav-footer">

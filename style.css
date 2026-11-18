@@ -254,6 +254,19 @@ button:disabled { border-color: var(--line); background: var(--surface-soft); co
   font-weight: 700;
 }
 .app-nav-link[aria-current="page"] em { background: var(--nav-accent); color: #0c1b2f; }
+/* R89: Unterpunkte im Menü (Fuhrpark: Übersicht, Fahrzeuge, Werkstatt …) und kurze Erklärzeilen */
+.app-nav nav .app-nav-link > span { display: grid; min-width: 0; line-height: 1.2; }
+.app-nav-link > span small { display: block; margin-top: 1px; color: var(--nav-muted); font-size: .68rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-nav-link[aria-current="page"] > span small { color: color-mix(in srgb, #fff 70%, var(--nav-accent)); }
+.app-nav-chevron { width: 7px; height: 7px; flex: 0 0 auto; margin-left: auto; border-right: 2px solid var(--nav-muted); border-bottom: 2px solid var(--nav-muted); transform: rotate(-45deg); transition: transform .15s; }
+.app-nav-link[aria-current="page"] .app-nav-chevron { transform: rotate(45deg); border-color: var(--nav-accent); }
+.app-nav-sub { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 20px; padding-left: 10px; border-left: 1px solid var(--nav-line); }
+.app-nav-sublink, :root[data-theme="dark"] .app-nav-sublink { display: flex; min-height: 32px; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; color: var(--nav-muted); font-size: .84rem; font-weight: 600; text-decoration: none; }
+.app-nav-sublink:hover, :root[data-theme="dark"] .app-nav-sublink:hover { background: var(--nav-hover); color: #fff; }
+.app-nav-sublink[aria-current="page"], :root[data-theme="dark"] .app-nav-sublink[aria-current="page"] { background: var(--nav-active); color: #fff; box-shadow: inset 2px 0 0 var(--nav-accent); }
+.app-nav-sublink .nav-badge { margin-left: auto; min-width: 18px; height: 18px; font-size: .66rem; }
+@media (max-width: 1320px) { .app-nav-sub, .app-nav-chevron, .app-nav nav .app-nav-link > span { display: none; } }
+@media (max-width: 760px) { .app-nav-sub { display: flex; margin-left: 24px; } .app-nav nav .app-nav-link > span { display: grid; } .app-nav-sublink, :root[data-theme="dark"] .app-nav-sublink { min-height: 42px; font-size: .95rem; } .app-nav-chevron { display: block; } }
 .app-nav-footer { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--nav-line); }
 .app-nav-note { display: flex; align-items: flex-start; gap: 8px; margin: 8px 10px 0; color: var(--nav-muted); font-size: .7rem; line-height: 1.4; }
 .app-nav-note i { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #3ecf9f; box-shadow: 0 0 0 3px rgba(62, 207, 159, .18); }
@@ -2776,6 +2789,8 @@ body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
 /* R87: Unterreiter im Fuhrpark – nur der gewählte Bereich ist sichtbar */
 [data-tab-hidden] { display: none !important; }
 .fleet-tabs { grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: none; margin-bottom: 14px; }
+/* R89: Auf großen Bildschirmen stehen die Bereiche links im Menü – die Reiterleiste auf der Seite nur, wo das Menü eingeklappt ist. */
+@media (min-width: 1321px) { .fleet-tabs { display: none; } }
 .fleet-tabs button { position: relative; min-height: 42px; padding: 6px 8px; font-size: .9rem; font-weight: 700; white-space: nowrap; }
 .fleet-tabs .count-badge { margin-left: 6px; }
 @media (max-width: 900px) { .fleet-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

@@ -27,10 +27,28 @@
         document.title = `${FLEET_TAB_TITLE[fleetTab]} · Medical Office Bonn`;
         document.querySelectorAll('[data-fleet-panel]').forEach(panel => { if (panel.dataset.fleetPanel === fleetTab) panel.removeAttribute('data-tab-hidden'); else panel.setAttribute('data-tab-hidden', ''); });
         document.querySelectorAll('[data-fleet-tab]').forEach(button => { const on = button.dataset.fleetTab === fleetTab; button.classList.toggle('is-active', on); button.setAttribute('aria-selected', String(on)); });
+        // R89: Die Bereiche stehen links im Menü als Unterpunkte – der aktive wird dort markiert.
+        document.querySelectorAll('.app-nav-sublink[data-nav-view]').forEach(link => { if (link.dataset.navView === fleetTab) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
     }
-    function setFleetBadge(tab, count) { const badge = document.querySelector(`[data-tab-badge="${tab}"]`); if (!badge) return; badge.hidden = !count; badge.textContent = count ? String(count) : ''; }
+    function setFleetBadge(tab, count) {
+        document.querySelectorAll(`[data-tab-badge="${tab}"], [data-nav-view-badge="${tab}"]`).forEach(badge => { badge.hidden = !count; badge.textContent = count ? String(count) : ''; });
+    }
     function showFleetTab(tab) { if (!FLEET_TABS.includes(tab)) return; fleetTab = tab; try { sessionStorage.setItem('fleet.tab', tab); } catch (error) { /* ohne Speicher */ } applyFleetTab(); }
     document.querySelectorAll('[data-fleet-tab]').forEach(button => button.addEventListener('click', () => showFleetTab(button.dataset.fleetTab)));
+    // Unterpunkt im Menü: ohne Neuladen umschalten, Adresse mitführen (so bleibt der Bereich beim Aktualisieren erhalten).
+    // Das Menü baut appShell.js erst beim DOMContentLoaded – also erst danach anbinden.
+    const bindNavSub = () => {
+        document.querySelectorAll('.app-nav-sublink[data-nav-view]').forEach(link => link.addEventListener('click', event => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            showFleetTab(link.dataset.navView);
+            try { history.replaceState(null, '', `?ansicht=${link.dataset.navView}`); } catch (error) { /* dann eben ohne Adresse */ }
+            document.body.classList.remove('nav-open');
+            window.scrollTo({ top: 0 });
+        }));
+        applyFleetTab();
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindNavSub); else bindNavSub();
     applyFleetTab();
     let takeoverNotes = [];
     let driverNotes = [];           // Meldungen über den Vorfahrer (Update 42)
