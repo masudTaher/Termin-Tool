@@ -12,7 +12,7 @@ window.PortalDocs = (function () {
     const MAX_PDF_BYTES = 19 * 1024 * 1024;      // der Speicher nimmt höchstens 20 MB je Datei an
     const OCR_LIBRARY = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
     const OCR_TIMEOUT = 60000;
-    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, warnings, status';
+    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, warnings, status, companion_name';
 
     let documents = [];        // eigene Unterlagen und Berichte der letzten 30 Tage
     let draft = null;          // Unterlage, die gerade entsteht: { source, kind, pages: [], note }
@@ -55,8 +55,11 @@ window.PortalDocs = (function () {
         const profile = core.profile();
         if (!profile?.active) return;
         const since = new Date(Date.now() - 30 * 86400000).toISOString();
-        const { data, error } = await client.from('tt_documents').select(COLUMNS).eq('uploader_id', profile.id)
+        let { data, error } = await client.from('tt_documents').select(COLUMNS).eq('uploader_id', profile.id)
             .gte('created_at', since).order('created_at', { ascending: false }).limit(100);
+        // Ohne Update 55 fehlt die Spalte companion_name – dann ohne sie laden.
+        if (error && /companion_name/i.test(error.message || '')) ({ data, error } = await client.from('tt_documents').select(COLUMNS.replace(', companion_name', '')).eq('uploader_id', profile.id)
+            .gte('created_at', since).order('created_at', { ascending: false }).limit(100));
         const list = $('docList');
         if (error) {
             documents = [];
@@ -82,7 +85,7 @@ window.PortalDocs = (function () {
             const entry = el('li', 'directory-entry damage-entry sent-doc');
             const text = el('span', 'directory-entry-name');
             const isReport = item.kind === REPORT_KIND;
-            const who = isReport ? [item.patient_name || '', item.patient_nr ? `Patient ${item.patient_nr}` : '', `Termin ${dayText(item.date)}`].filter(Boolean).join(' · ') : [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ');
+            const who = isReport ? [item.companion_name ? `für Begleitperson ${item.companion_name}` : '', item.patient_name ? (item.companion_name ? `Hauptpatient/in ${item.patient_name}` : item.patient_name) : '', item.patient_nr ? `Patient ${item.patient_nr}` : '', `Termin ${dayText(item.date)}`].filter(Boolean).join(' · ') : [item.patient_nr ? `Patient ${item.patient_nr}` : '', item.patient_name].filter(Boolean).join(' · ');
             text.append(el('strong', '', isReport ? (item.assignment_id ? 'Bericht über Termin' : 'Bericht über den Tag') : item.kind), el('small', '', [who, !isReport && item.date ? `Termin ${dayText(item.date)}` : '', item.pages ? `${item.pages} ${item.pages === 1 ? 'Seite' : 'Seiten'}` : ''].filter(Boolean).join(' · ')));
             if (item.warnings?.length) text.append(el('small', 'sent-doc-warning', item.warnings.join(' ')));
             const side = el('span', 'vehicle-entry-actions');
@@ -135,7 +138,7 @@ window.PortalDocs = (function () {
         return {
             organisation: 'Botschaft Katar · Medical Office Bonn · Abteilung Transport und Dolmetscher',
             title: 'Bericht über Termin',
-            meta: [['Patient/in', item.patient_name || ''], ['Patientennummer', item.patient_nr || ''], ['Geburtsdatum', item.patient_birth || ''], ['Arzt / Praxis', item.doctor || ''],
+            meta: [...(item.companion_name ? [['Bericht für', `Begleitperson: ${item.companion_name}`]] : []), [item.companion_name ? 'Hauptpatient/in' : 'Patient/in', item.patient_name || ''], ['Patientennummer', item.patient_nr || ''], ['Geburtsdatum', item.patient_birth || ''], ['Arzt / Praxis', item.doctor || ''],
                 ['Termin am', dayText(item.date)], ['Bericht vom', dayText(written)], ['Dolmetscher/in', core.profile()?.full_name || ''], ['Nächster Termin', next || 'keiner angegeben']],
             sections: [{ heading: 'Bericht', text: [String(item.body || '').trim(), next ? `Nächster Termin: ${next}` : ''].filter(Boolean).join('\n\n') }, { heading: 'Hinweis', text: next ? '' : (item.note || '') },
                 { heading: 'Unterschrift', text: `${core.profile()?.full_name || ''}\n${dayText(written)}` }],
@@ -760,9 +763,90 @@ window.PortalDocs = (function () {
     const draftKey = () => `portal.reportDraft.${core.profile()?.id || ''}.${reportSource?.assignmentId || ''}`;
     const readDraft = () => { try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (error) { return null; } };
     const writeDraft = () => {
-        const value = { body: $('reportBody').value, nextDate: $('reportNextDate').value, nextTime: $('reportNextTime').value };
+        const value = { body: $('reportBody').value, nextDate: $('reportNextDate').value, nextTime: $('reportNextTime').value, forValue: reportFor, companionName: $('reportCompanionName').value };
         try { if (value.body || value.nextDate || value.nextTime) localStorage.setItem(draftKey(), JSON.stringify(value)); else localStorage.removeItem(draftKey()); } catch (error) { /* Entwurf gilt dann nur bis zum Schließen. */ }
     };
+
+    // ---------- R88: Für wen ist der Bericht – Patient selbst oder eine Begleitperson? ----------
+    // Begleitpersonen (Ehefrau, Mutter, Kind …) laufen unter der Aktennummer des Hauptpatienten mit. Ihr Name steht in der
+    // Bemerkung des Termins – im Auftrag als „Termin für Begleitperson“ oder als Zeile unter „Weitere Hinweise“.
+    // Steht dort ein weiterer Name, fragt die App beim Berichtschreiben nach, statt den Bericht stillschweigend dem Patienten zuzuordnen.
+    let reportFor = '';           // '' = noch nicht gewählt · 'patient' · 'c:<Name>' · 'other'
+    let reportCandidates = [];    // Namen aus dem Auftrag, die eine Begleitperson sein können
+    const RELATION_WORD = /\b(Ehefrau|Ehemann|Frau|Mutter|Vater|Tochter|Sohn|Schwester|Bruder|Kind|Baby|Oma|Opa|Großmutter|Großvater|Tante|Onkel|Begleitperson|Begleitung|Begleiter(?:in)?|Angehörige[rn]?)\b/iu;
+    const NOT_A_NAME = /\b(Uhr|Termin|Büro|Praxis|Station|Haus|Klinik|Zimmer|Etage|Stock|bitte|mitbringen|mitnehmen|abholen|Abholung|Fahrer|Taxi|Auto|Dr\.?|Prof\.?|MRT|CT|Röntgen|Labor|Rezept|Überweisung|Bericht|KG|SZ|Selbstzahler|Kostengarantie|nüchtern|Ausweis|Pass|Karte|Nummer|Tel\.?|Telefon|Handy|WhatsApp|Dolmetscher(?:in)?|Übersetzer(?:in)?)\b/iu;
+    const foldName = value => String(value || '').toLocaleLowerCase('de-DE').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    // Zwei bis vier Wörter, jedes beginnt groß, keine Ziffern, kein Begriff aus dem Praxisalltag – dann ist es sehr wahrscheinlich ein Name.
+    const looksLikeName = line => {
+        const words = String(line || '').trim().split(/\s+/);
+        return words.length >= 2 && words.length <= 4 && !/\d/.test(line) && !NOT_A_NAME.test(line)
+            && words.every(word => /^(?:\p{Lu}[\p{L}\p{M}'’.-]*|(?:al|el|bin|bint|abu|ibn|von|de)-?[\p{L}'’.-]*)$/u.test(word));
+    };
+    function companionCandidates(job, source) {
+        const parsed = job?.message ? core.parseJobMessage(job.message) : null;
+        if (!parsed) return [];
+        const facts = parsed.facts || {};
+        const skip = new Set([foldName(source.patientName), foldName(core.profile()?.full_name)].filter(Boolean));
+        const found = [];
+        const add = name => { const clean = String(name || '').replace(/\s+/g, ' ').trim(); if (clean && !skip.has(foldName(clean)) && !found.some(item => foldName(item) === foldName(clean))) found.push(clean); };
+        // 1. Ausdrücklich im Auftrag: „Termin für Begleitperson: Name, Name“
+        String(facts['Termin für Begleitperson'] || '').split(/\s*[,;]\s*|\s+und\s+/).forEach(add);
+        // 2. Zeilen unter „Weitere Hinweise“ (so kommt die Bemerkung des Termins im Auftrag an)
+        parsed.sections.filter(section => /HINWEIS/i.test(section.title)).flatMap(section => section.fields.map(([label, value]) => [label, value].filter(Boolean).join(': ')))
+            .concat(parsed.notices || []).forEach(line => {
+                const text = String(line || '').trim();
+                if (!text) return;
+                const tagged = text.match(/^(?:Begleitperson|Begleitung|Begleiter(?:in)?|für|mit)\s*[:–-]?\s*(.+)$/iu);
+                if (tagged && (looksLikeName(tagged[1]) || RELATION_WORD.test(tagged[1]))) { add(tagged[1]); return; }
+                if (looksLikeName(text)) { add(text); return; }
+                // „Mutter Fatima“, „Ehefrau: Amna Al-…“, „für die Tochter“ – Verwandtschaftswort plus (meist) Name
+                if (RELATION_WORD.test(text) && text.split(/\s+/).length <= 6 && !/\d/.test(text)) add(text);
+            });
+        return found.slice(0, 4);
+    }
+    const reportCompanionName = () => reportFor === 'other' ? $('reportCompanionName').value.replace(/\s+/g, ' ').trim() : reportFor.startsWith('c:') ? reportFor.slice(2) : '';
+    function renderReportFacts() {
+        const source = reportSource;
+        if (!source) return;
+        const companion = reportCompanionName();
+        const facts = [...(companion ? [['Bericht für', `Begleitperson: ${companion}`]] : []),
+            [companion ? 'Hauptpatient/in' : 'Patient/in', source.patientName], ['Patientennummer', source.patientNr], ['Arzt / Praxis', source.doctor],
+            ['Termin', [dayText(source.date), source.time ? `${source.time} Uhr` : ''].filter(Boolean).join(' · ')], ['Bericht vom', dayText(today())]];
+        $('reportFacts').replaceChildren(...facts.filter(row => row[1]).flatMap(([term, value]) => [el('dt', '', term), el('dd', '', value)]));
+    }
+    function pickReportFor(value) {
+        reportFor = value;
+        $('reportForChoices').querySelectorAll('.choice-button').forEach(button => button.classList.toggle('is-picked', button.dataset.value === value));
+        $('reportCompanionLabel').hidden = value !== 'other';
+        if (value === 'other' && !$('reportCompanionName').value) $('reportCompanionName').focus({ preventScroll: true });
+        renderReportFacts();
+        writeDraft();
+    }
+    function renderReportFor(job, preset) {
+        reportCandidates = companionCandidates(job, reportSource);
+        const entries = [['patient', `Patient/in selbst${reportSource.patientName ? `: ${reportSource.patientName}` : ''}`],
+            ...reportCandidates.map(name => [`c:${name}`, `Begleitperson: ${name}`]),
+            ['other', reportCandidates.length ? 'Andere Begleitperson (Name eintippen)' : 'Eine Begleitperson (Name eintippen)']];
+        core.choiceButtons($('reportForChoices'), entries, pickReportFor);
+        const hint = $('reportForHint');
+        hint.hidden = !reportCandidates.length;
+        hint.textContent = reportCandidates.length
+            ? `In der Bemerkung zu diesem Termin steht ein weiterer Name (${reportCandidates.join(', ')}). Meist ist der Termin dann für diese Begleitperson und nicht für ${reportSource.patientName || 'den Patienten'} selbst. Bitte wähle aus.`
+            : '';
+        // Vorbelegung: gespeicherter Bericht oder Entwurf. Ohne weiteren Namen gilt „Patient selbst“; mit Namen muss gewählt werden.
+        let value = preset?.forValue || '';
+        let typed = preset?.companionName || '';
+        if (!value && preset?.saved !== undefined) {
+            const saved = String(preset.saved || '').trim();
+            value = !saved ? 'patient' : reportCandidates.some(name => foldName(name) === foldName(saved)) ? `c:${reportCandidates.find(name => foldName(name) === foldName(saved))}` : 'other';
+            if (value === 'other') typed = saved;
+        }
+        if (!value && !reportCandidates.length) value = 'patient';
+        $('reportCompanionName').value = typed;
+        reportFor = '';
+        if (value) pickReportFor(value); else { $('reportCompanionLabel').hidden = true; renderReportFacts(); }
+    }
+    $('reportCompanionName').addEventListener('input', () => { renderReportFacts(); writeDraft(); });
     const jobDone = job => Boolean(job.finished_at) || ['beendet', 'alleine'].includes(job.work_status);
     const reportOf = assignmentId => documents.find(item => item.kind === REPORT_KIND && item.assignment_id === assignmentId) || null;
     const nextText = () => {
@@ -812,15 +896,14 @@ window.PortalDocs = (function () {
         const locked = false;
         $('reportPick').hidden = true;
         $('reportForm').hidden = false;
-        const facts = [['Patient/in', reportSource.patientName], ['Patientennummer', reportSource.patientNr], ['Arzt / Praxis', reportSource.doctor],
-            ['Termin', [dayText(reportSource.date), reportSource.time ? `${reportSource.time} Uhr` : ''].filter(Boolean).join(' · ')], ['Bericht vom', dayText(today())]];
-        $('reportFacts').replaceChildren(...facts.filter(row => row[1]).flatMap(([term, value]) => [el('dt', '', term), el('dd', '', value)]));
         const saved = reportExisting ? { body: reportExisting.body || '', next: String(reportExisting.note || '').startsWith(NEXT_PREFIX) ? String(reportExisting.note).slice(NEXT_PREFIX.length) : '' } : null;
         const savedNext = saved?.next.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:, (\d{2}:\d{2}) Uhr)?/);
         const draftValue = locked ? null : readDraft();
         $('reportBody').value = draftValue?.body ?? saved?.body ?? '';
         $('reportNextDate').value = draftValue?.nextDate ?? (savedNext ? `${savedNext[3]}-${savedNext[2]}-${savedNext[1]}` : '');
         $('reportNextTime').value = draftValue?.nextTime ?? (savedNext?.[4] || '');
+        // R88: Für wen? – aus dem Entwurf, sonst aus dem gespeicherten Bericht, sonst nach den Namen im Auftrag.
+        renderReportFor(job, draftValue?.forValue ? { forValue: draftValue.forValue, companionName: draftValue.companionName || '' } : reportExisting ? { saved: reportExisting.companion_name || '' } : null);
         $('reportNextDate').min = today();
         ['reportBody', 'reportNextDate', 'reportNextTime'].forEach(id => { $(id).disabled = locked; });
         $('reportSubmit').hidden = locked;
@@ -858,27 +941,35 @@ window.PortalDocs = (function () {
         if (body.length < 20) { toast('Der Bericht ist noch sehr kurz. Bitte schreib ein paar Sätze.', 'error', '#reportBody'); return; }
         if ($('reportNextTime').value && !$('reportNextDate').value) { toast('Bitte gib zum nächsten Termin auch das Datum an.', 'error', '#reportNextDate'); return; }
         if ($('reportNextDate').value && $('reportNextDate').value < today()) { toast('Der nächste Termin liegt in der Vergangenheit. Bitte prüfe das Datum.', 'error', '#reportNextDate'); return; }
+        // R88: Steht ein weiterer Name im Auftrag, muss gewählt sein, für wen der Bericht ist.
+        if (!reportFor) { toast(`Bitte wähle oben, ob der Bericht für ${source.patientName || 'den Patienten'} selbst oder für die Begleitperson ist.`, 'error', '#reportFor'); return; }
+        if (reportFor === 'other' && !reportCompanionName()) { toast('Bitte trag den Namen der Begleitperson ein.', 'error', '#reportCompanionName'); return; }
+        const companion = reportCompanionName();
         const button = $('reportSubmit');
         button.disabled = true;
         try {
-            const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, patient_birth: source.patientBirth || '', doctor: source.doctor, date: source.date };
+            const fields = { body, note: nextText(), patient_nr: source.patientNr, patient_name: source.patientName, patient_birth: source.patientBirth || '', doctor: source.doctor, date: source.date, companion_name: companion };
+            // Ohne Update 55 kennt die Datenbank die Spalte noch nicht: dann steht die Begleitperson als erste Zeile im Bericht.
+            const withoutColumn = row => { const { companion_name, ...rest } = row; return companion ? { ...rest, body: `Bericht für Begleitperson: ${companion}\n\n${rest.body}` } : rest; };
+            const missingColumn = error => /companion_name/i.test(String(error?.message || ''));
             // Ändern: Der Bericht steht danach wieder auf „neu“ (das Büro sieht „geändert“). Ohne Update 25 geht das nur vor dem Prüfen.
             const again = { ...fields, status: 'neu', checked_at: null, checked_by: '' };
             let changed = null;
             if (reportExisting) {
                 changed = await client.from('tt_documents').update({ ...again, edited_at: new Date().toISOString() }).eq('id', reportExisting.id).select('id');
+                if (changed.error && missingColumn(changed.error)) changed = await client.from('tt_documents').update(withoutColumn({ ...again, edited_at: new Date().toISOString() })).eq('id', reportExisting.id).select('id');
                 if (changed.error && /edited_at/i.test(changed.error.message || '')) changed = await client.from('tt_documents').update(reportExisting.status === 'neu' ? fields : again).eq('id', reportExisting.id).select('id');
                 if (!changed.error && !(changed.data || []).length) throw new Error('Das Büro hat diesen Bericht schon geprüft. Ändern ist in der Datenbank dafür noch nicht freigeschaltet (Update 25) – bitte sag der Einsatzleitung Bescheid.');
             }
-            const result = reportExisting
-                ? changed
-                : await client.from('tt_documents').insert({ ...fields, kind: REPORT_KIND, pages: 0, assignment_id: source.assignmentId || null, appointment_id: source.appointmentId || null,
-                    uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu' });
+            const insertRow = { ...fields, kind: REPORT_KIND, pages: 0, assignment_id: source.assignmentId || null, appointment_id: source.appointmentId || null,
+                uploader_id: profile.id, uploader_name: profile.full_name || profile.email || '', status: 'neu' };
+            let result = reportExisting ? changed : await client.from('tt_documents').insert(insertRow);
+            if (!reportExisting && result.error && missingColumn(result.error)) result = await client.from('tt_documents').insert(withoutColumn(insertRow));
             if (result.error) throw result.error;
             try { localStorage.removeItem(draftKey()); } catch (error) { /* kein Entwurf gespeichert */ }
             const updated = Boolean(reportExisting);
             await load();
-            await core.showSuccess(updated ? 'Bericht aktualisiert' : 'Bericht gesendet', [source.patientName, dayText(source.date)].filter(Boolean).join(' · '));
+            await core.showSuccess(updated ? 'Bericht aktualisiert' : 'Bericht gesendet', [companion ? `Begleitperson ${companion}` : source.patientName, dayText(source.date)].filter(Boolean).join(' · '));
             toast('Bericht gesendet. Danke!', 'success');
             core.goTo('docs');
         } catch (error) {

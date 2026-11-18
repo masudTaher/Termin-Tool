@@ -22,7 +22,7 @@
     // Geladen wird ohne den erkannten Text (text_content): Mit ganzen Papierakten wäre er für alle Unterlagen zusammen zu groß –
     // die Suche im Text läuft dann in der Datenbank (Update 29). Kennt die Datenbank die Spalten der Papierakte noch nicht,
     // wird wie früher alles geladen (fullText) und hier auf der Seite gesucht.
-    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, file_bytes, warnings, uploader_id, uploader_name, status, checked_at, checked_by, forwarded_at, forwarded_to, forwarded_by, replaced_by, edited_at, title, specialty, import_id, original_path, enhanced_at';
+    const COLUMNS = 'id, created_at, patient_nr, patient_name, patient_birth, date, doctor, appointment_id, assignment_id, kind, note, body, pages, file_path, file_bytes, warnings, uploader_id, uploader_name, status, checked_at, checked_by, forwarded_at, forwarded_to, forwarded_by, replaced_by, edited_at, title, specialty, import_id, original_path, enhanced_at, companion_name';
     const ORDER_KEY = 'terminTool.akte.order';
     const HANDOVER_KEY = 'terminTool.akte.patient';      // Übergabe an „Papierakte einlesen“ (bleibt in diesem Tab, steht nicht in der Adresse)
     const VISIT_STATUS = { offen: ['bekannt', 'offen'], losgefahren: ['in Arbeit', 'unterwegs'], beendet: ['erledigt', 'beendet'], alleine: ['erledigt', 'Patient ging alleine'], storniert: ['offen', 'storniert'] };
@@ -127,7 +127,7 @@
     // ---------- Laden ----------
     // Alle Unterlagen, neueste zuerst – in Blöcken, weil die Datenbank höchstens 1000 Zeilen auf einmal liefert.
     async function loadDocuments() {
-        for (const columns of [COLUMNS, '*']) {
+        for (const columns of [COLUMNS, COLUMNS.replace(', companion_name', ''), '*']) {   // ohne Update 55 fehlt companion_name
             const rows = [];
             let failed = null;
             for (let from = 0; ; from += PAGE_SIZE) {
@@ -410,6 +410,7 @@
                 : `${isReport(doc) ? 'Geschrieben' : 'Fotografiert'} von ${clean(doc.uploader_name) || 'unbekannt'} am ${formatStamp(doc.created_at)}`,
             doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''
         ].filter(Boolean).join(' · ')));
+        if (clean(doc.companion_name)) meta.append(el('span', 'doc-companion', `Für Begleitperson: ${clean(doc.companion_name)} – nicht für ${clean(doc.patient_name) || 'den Patienten'} selbst`));
         if (isReport(doc) && clean(doc.body)) meta.append(el('span', 'doc-note', excerpt(doc.body, 200)));
         if (clean(doc.note)) meta.append(el('span', 'doc-note', clean(doc.note).startsWith('Nächster Termin: ') ? clean(doc.note) : `Hinweis: ${clean(doc.note)}`));
         const warnings = (Array.isArray(doc.warnings) ? doc.warnings : []).map(clean).filter(Boolean);
@@ -644,7 +645,7 @@
         const visits = chartVisits || [];
         const reportedAll = chartReported || [];
         const visitsAll = visits;
-        const docText = doc => [docTitle(doc), doc.doctor, doc.note, doc.kind, isReport(doc) ? doc.body : '', doc.uploader_name].map(clean).join(' ');
+        const docText = doc => [docTitle(doc), doc.doctor, doc.note, doc.kind, isReport(doc) ? doc.body : '', doc.uploader_name, doc.companion_name].map(clean).join(' ');
         const visitText = visit => [visit.record['Arzt Nr::Name'], visit.record.Termin_Ort, visit.record['Arzt Nr::Ort'], visit.record.Ort, visit.record['Übersetzer'], visit.record.Bemerkung, visit.record.Status].map(clean).join(' ');
         const filtering = Boolean(chartYear || chartQuery);
         const visitsShown = visitsAll.filter(visit => chartDayOk(visit.date) && chartTextOk(visitText(visit)));
@@ -707,7 +708,7 @@
                 ...visitsShown.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
                 ...reported.map(item => ({ day: item.date, kind: 'Neuer Termin', tab: 'termine', text: [clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : '', clean(item.place), clean(item.description)].filter(Boolean).join(' · ') })),
                 ...[...patient.documents, ...reports].filter(docOk).map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBild(doc) ? 'bild' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
-                    text: [lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status, doc }))
+                    text: [clean(doc.companion_name) ? `für Begleitperson ${clean(doc.companion_name)}` : '', lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status, doc }))
             ].sort((left, right) => String(right.day).localeCompare(String(left.day)));
             if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
             if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', filtering ? 'Nichts passt zu Suche oder Zeitraum.' : 'In dieser Akte steht noch nichts.'));
@@ -1242,7 +1243,9 @@
     const nextOf = doc => clean(doc.note).startsWith(NEXT_PREFIX) ? clean(doc.note).slice(NEXT_PREFIX.length) : '';
     const reportText = doc => [clean(doc.body), nextOf(doc) ? `${NEXT_PREFIX}${nextOf(doc)}` : ''].filter(Boolean).join('\n\n');
     const reportRows = doc => forAppointment(doc) ? [
-        ['Patient/in', clean(doc.patient_name)],
+        // R88: Bericht für eine Begleitperson – sie läuft unter der Aktennummer des Hauptpatienten mit.
+        ...(clean(doc.companion_name) ? [['Bericht für', `Begleitperson: ${clean(doc.companion_name)}`]] : []),
+        [clean(doc.companion_name) ? 'Hauptpatient/in' : 'Patient/in', clean(doc.patient_name)],
         ['Patientennummer', clean(doc.patient_nr)],
         ['Geburtsdatum', clean(doc.patient_birth)],
         ['Arzt / Praxis', clean(doc.doctor)],

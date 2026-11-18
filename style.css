@@ -1961,6 +1961,13 @@ input[type="file"].visually-hidden { width: 1px; height: 1px; padding: 0; border
 .report-facts { margin-bottom: 4px; }
 .report-chip.is-sent { background: var(--accent-soft); color: var(--ok); }
 .report-next { margin: 4px 0 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 12px; }
+/* R88: Für wen ist der Bericht – Patient selbst oder Begleitperson */
+.report-for { margin: 4px 0 6px; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.report-for legend { padding: 0 6px; color: var(--ink); font-size: .9rem; font-weight: 700; }
+.report-for .field-hint { margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); }
+.report-for .choice-button { min-height: 46px; font-size: .95rem; }
+.report-for > label { display: block; margin-top: 10px; }
+.doc-companion { display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: var(--warn-soft); color: var(--ink); font-size: .78rem; font-weight: 700; }
 .report-next legend { padding: 0 6px; color: var(--ink); font-size: .9rem; font-weight: 700; }
 .report-next-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .report-next-row label { display: flex; min-width: 0; flex-direction: column; gap: 4px; color: var(--muted); font-size: .82rem; font-weight: 600; }

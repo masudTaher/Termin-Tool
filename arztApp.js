@@ -326,6 +326,8 @@
         const title = el('div', 'doc-entry-title');
         title.append(el('strong', '', clean(doc.title) || kindLabel(doc)), el('span', 'doc-from', fromLine(doc)));
         const body = el('div', 'doc-entry-body');
+        // R88: Bericht für eine Begleitperson des Patienten (läuft unter dessen Aktennummer mit)
+        if (clean(doc.companion_name)) body.append(el('p', 'doc-note doc-companion', `Für Begleitperson: ${clean(doc.companion_name)} – nicht für ${clean(doc.patient_name) || 'den Patienten'} selbst`));
         const text = clean(doc.body) ? String(doc.body).trim() : '';
         if (text) {
             const paragraph = el('p', 'doc-text', text);

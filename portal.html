@@ -608,6 +608,14 @@
                <form id="reportForm" class="fleet-form" novalidate hidden>
                   <dl id="reportFacts" class="vehicle-state report-facts"></dl>
                   <button type="button" id="reportOther" class="link-button">Anderen Termin wählen</button>
+                  <!-- R88: Für wen ist der Bericht? Steht in der Bemerkung des Termins ein weiterer Name, ist der Termin meist für
+                       eine Begleitperson (Ehefrau, Mutter, Kind …), die unter der Aktennummer des Hauptpatienten mitläuft. -->
+                  <fieldset class="report-for" id="reportFor">
+                     <legend>Für wen ist dieser Bericht?</legend>
+                     <p class="field-hint" id="reportForHint" hidden></p>
+                     <div class="choice-list" id="reportForChoices" role="radiogroup" aria-label="Für wen ist dieser Bericht?"></div>
+                     <label for="reportCompanionName" id="reportCompanionLabel" hidden>Name der Begleitperson<input id="reportCompanionName" type="text" maxlength="80" autocomplete="off" placeholder="z. B. Fatima Al-Kuwari (Ehefrau)"></label>
+                  </fieldset>
                   <label for="reportBody">Dein Bericht</label>
                   <textarea id="reportBody" rows="8" maxlength="6000" placeholder="Was wurde besprochen oder gemacht? Zum Beispiel: Untersuchung, neues Rezept für Physiotherapie, Überweisung zum Röntgen …"></textarea>
                   <fieldset class="report-next">
