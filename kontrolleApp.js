@@ -69,6 +69,19 @@
         if (record && CANCELLED.test(String(record.Status || ''))) return false;
         return true;
     };
+    // R90: Zu Physiotherapie und Visiten wird kein Bericht geschrieben – solche Termine stehen nicht als „fehlend“ in der Liste.
+    // Erkannt am Titel des Auftrags, am Arzt/Praxis-Namen im Auftrag und an den Feldern des Tagesplans (nicht an der Bemerkung:
+    // dort steht „KG“ für Kostengarantie, und „Rezept Physiotherapie“ in einem Hinweis wäre ein Fehlalarm).
+    const NO_REPORT = /physiotherap|physio\b|krankengymnast|visite/i;
+    const noReportExpected = assignment => {
+        const record = recordOf(assignment) || {};
+        const message = String(assignment.message || '');
+        const doctorLine = (message.match(/^Name:\s*(.+)$/m) || [])[1] || '';
+        const specialtyLine = (message.match(/^Fachrichtung:\s*(.+)$/m) || [])[1] || '';
+        const titleLine = (message.match(/^\*?Termin[^:]*:\s*(.+?)\*?$/m) || [])[1] || '';
+        return [assignment.title, doctorLine, specialtyLine, titleLine, record['Arzt Nr::Name'], record['Arzt / Abteilung'], record['Wofür'], record['Arzt Nr::Fachrichtung'], record.Fachrichtung]
+            .some(value => NO_REPORT.test(String(value || '')));
+    };
     const hasReport = assignment => documents.some(doc => doc.kind === REPORT_KIND && (doc.assignment_id === assignment.id
         || (doc.appointment_id && doc.appointment_id === assignment.appointment_id)
         || (!doc.assignment_id && !doc.appointment_id && doc.uploader_id === assignment.interpreter_id && doc.date === assignment.date)));
@@ -135,7 +148,7 @@
     // ---------- Listen ----------
     function openItems(kind) {
         const due = reportDueDate();
-        return assignments.filter(assignment => assignment.date <= due && attended(assignment) && (kind === 'bericht' ? !hasReport(assignment) : !hasPapers(assignment)));
+        return assignments.filter(assignment => assignment.date <= due && attended(assignment) && !noReportExpected(assignment) && (kind === 'bericht' ? !hasReport(assignment) : !hasPapers(assignment)));
     }
     const overdueVehicles = () => handovers.filter(vehicleOverdue);
 
