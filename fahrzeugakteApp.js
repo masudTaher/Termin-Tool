@@ -12,6 +12,26 @@
     let damages = [];
     let alerts = [];
     let openHandovers = [];
+    // ---------- Unterreiter (R87): Übersicht · Fahrzeuge · Werkstatt · Fahrerakte · Heidelberg · Tankkarten · Archiv ----------
+    // Die Abschnitte bleiben alle im Dokument (die Renderer schreiben weiter hinein); sichtbar ist nur der gewählte Reiter.
+    const FLEET_TABS = ['uebersicht', 'fahrzeuge', 'werkstatt', 'fahrerakte', 'heidelberg', 'tankkarten', 'archiv'];
+    const FLEET_TAB_TITLE = { uebersicht: 'Fuhrpark', fahrzeuge: 'Fahrzeuge', werkstatt: 'Werkstatt', fahrerakte: 'Fahrerakte', heidelberg: 'Heidelberg', tankkarten: 'Tankkarten', archiv: 'Fuhrpark-Archiv' };
+    let fleetTab = (() => {
+        const wanted = new URLSearchParams(location.search).get('ansicht');
+        if (FLEET_TABS.includes(wanted)) return wanted;
+        try { const saved = sessionStorage.getItem('fleet.tab'); if (FLEET_TABS.includes(saved)) return saved; } catch (error) { /* ohne Speicher */ }
+        return 'uebersicht';
+    })();
+    function applyFleetTab() {
+        document.body.dataset.view = fleetTab;
+        document.title = `${FLEET_TAB_TITLE[fleetTab]} · Medical Office Bonn`;
+        document.querySelectorAll('[data-fleet-panel]').forEach(panel => { if (panel.dataset.fleetPanel === fleetTab) panel.removeAttribute('data-tab-hidden'); else panel.setAttribute('data-tab-hidden', ''); });
+        document.querySelectorAll('[data-fleet-tab]').forEach(button => { const on = button.dataset.fleetTab === fleetTab; button.classList.toggle('is-active', on); button.setAttribute('aria-selected', String(on)); });
+    }
+    function setFleetBadge(tab, count) { const badge = document.querySelector(`[data-tab-badge="${tab}"]`); if (!badge) return; badge.hidden = !count; badge.textContent = count ? String(count) : ''; }
+    function showFleetTab(tab) { if (!FLEET_TABS.includes(tab)) return; fleetTab = tab; try { sessionStorage.setItem('fleet.tab', tab); } catch (error) { /* ohne Speicher */ } applyFleetTab(); }
+    document.querySelectorAll('[data-fleet-tab]').forEach(button => button.addEventListener('click', () => showFleetTab(button.dataset.fleetTab)));
+    applyFleetTab();
     let takeoverNotes = [];
     let driverNotes = [];           // Meldungen über den Vorfahrer (Update 42)
     let driverNotesReady = false;
@@ -335,6 +355,7 @@
         const now = new Date();
         const overdue = openHandovers.filter(item => !item.emergency && !TerminCloud.keepsOvernight(item) && item.driver_id && (item.date < TerminCloud.todayIso() || now.getHours() >= 16));
         const newDriverNotes = driverNotes.filter(item => !item.office_seen_at && !item.archived_at);
+        setFleetBadge('uebersicht', openAlerts.length + newDamages.length + takeoverNotes.length + overdue.length + newDriverNotes.length);
         $('inboxSummary').textContent = openAlerts.length || newDamages.length || takeoverNotes.length || overdue.length || newDriverNotes.length
             ? [
                 `${openAlerts.length} ${openAlerts.length === 1 ? 'offene Meldung' : 'offene Meldungen'}`,
@@ -769,6 +790,7 @@
         if (!section) return;
         const cars = heidelberg().sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
         const cards = fuelCards.filter(card => !card.holder_id && card.holder_name === 'Heidelberg');
+        setFleetBadge('heidelberg', cars.length);
         $('stationSummary').textContent = cars.length || cards.length
             ? `${cars.length} ${cars.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · ${cards.length} ${cards.length === 1 ? 'Tankkarte' : 'Tankkarten'} bei den Kollegen in Heidelberg`
             : 'Noch nichts eingetragen. Lege die Fahrzeuge der Heidelberger Kollegen an und gib ihre Tankkarten unter „Tankkarten“ an „Heidelberg“ aus.';
@@ -1466,6 +1488,7 @@
         const retired = allVehicles.filter(vehicle => !vehicle.active).sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
         $('retiredSection').hidden = !retired.length;
         $('retiredCount').textContent = String(retired.length);
+        setFleetBadge('archiv', retired.length);
         $('retiredList').replaceChildren(...retired.map(vehicle => {
             const row = el('li', 'vehicle-entry retired-entry');
             row.dataset.kind = vehicle.retired_kind || '';
@@ -1853,6 +1876,7 @@
         });
         const groups = [...byDriver.values()].sort((a, b) => (b.items.filter(item => !item.office_seen_at).length - a.items.filter(item => !item.office_seen_at).length) || (b.items.length - a.items.length) || a.name.localeCompare(b.name, 'de'));
         const unseenTotal = activeNotes.filter(item => !item.office_seen_at).length;
+        setFleetBadge('fahrerakte', unseenTotal);
         $('driverFileSummary').textContent = `${activeNotes.length} ${activeNotes.length === 1 ? 'Meldung' : 'Meldungen'} bei ${groups.length} ${groups.length === 1 ? 'Fahrer' : 'Fahrern'}${unseenTotal ? ` · ${unseenTotal} noch nicht gesehen` : ' · alles gesehen'}`;
         groups.forEach(group => {
             const unseen = group.items.filter(item => !item.office_seen_at).length;
@@ -1965,6 +1989,7 @@
         if (!section) return;
         const open = tyreCampaigns.filter(item => item.active);
         const closed = tyreCampaigns.filter(item => !item.active);
+        setFleetBadge('werkstatt', open.reduce((sum, campaign) => sum + tyreItems.filter(item => item.campaign_id === campaign.id && !item.done).length, 0) + vehicles.filter(vehicle => vehicle.service_status).length);
         $('tyreNewOpen').disabled = !tyreReady;
         $('tyreSummary').textContent = !tyreReady ? 'Noch nicht eingerichtet – dafür fehlt Update 39 in der Datenbank.'
             : open.length ? open.map(campaign => `${campaign.title}: ${tyreCountText(tyreItems.filter(item => item.campaign_id === campaign.id))}`).join(' · ')

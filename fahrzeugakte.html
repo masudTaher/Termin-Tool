@@ -10,20 +10,30 @@
    <body data-page="fahrzeugakte">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div class="fleet-heading-cars"><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fuhrpark und Schäden</h1><p>Alle Fahrzeuge auf einen Blick. Ein Tipp auf ein Auto zeigt Zustand, Schäden und Reparaturen.</p></div>
+            <div class="fleet-heading-cars"><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fuhrpark und Schäden</h1><p>In Reitern: Übersicht (offene Punkte), Fahrzeuge, Werkstatt, Fahrerakte, Heidelberg, Tankkarten, Archiv. Ein Tipp auf ein Auto zeigt Zustand, Schäden und Reparaturen.</p></div>
             <div class="fleet-heading-fuel"><p class="page-kicker">ONLINE · TANKKARTEN</p><h1>Tankkarten</h1><p>Wer hat welche Karte? Ausgeben und zurücknehmen kann nur der Admin.</p></div>
             <div class="fleet-heading-actions"><button type="button" id="enableNotifications" class="button-secondary" hidden>Benachrichtigungen einschalten</button><button type="button" id="fileReload" class="button-secondary">Aktualisieren</button></div>
          </div>
          <p id="fileStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
 
          <div id="fileApp" hidden>
-            <section class="directory-card" aria-labelledby="inboxTitle">
+            <!-- R87: Unterreiter – nicht alles auf einer Seite -->
+            <div class="portal-tabs fleet-tabs" id="fleetTabs" role="tablist" aria-label="Bereiche des Fuhrparks">
+               <button type="button" role="tab" data-fleet-tab="uebersicht" class="is-active" aria-selected="true">Übersicht<b class="count-badge" data-tab-badge="uebersicht" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="fahrzeuge" aria-selected="false">Fahrzeuge<b class="count-badge" data-tab-badge="fahrzeuge" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="werkstatt" aria-selected="false">Werkstatt<b class="count-badge" data-tab-badge="werkstatt" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="fahrerakte" aria-selected="false">Fahrerakte<b class="count-badge" data-tab-badge="fahrerakte" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="heidelberg" aria-selected="false">Heidelberg<b class="count-badge" data-tab-badge="heidelberg" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="tankkarten" aria-selected="false">Tankkarten<b class="count-badge" data-tab-badge="tankkarten" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="archiv" aria-selected="false">Archiv<b class="count-badge" data-tab-badge="archiv" hidden></b></button>
+            </div>
+            <section class="directory-card" aria-labelledby="inboxTitle" id="inboxSection" data-fleet-panel="uebersicht">
                <div class="directory-card-heading"><span class="directory-step">!</span><div><h2 id="inboxTitle">Darum musst du dich kümmern</h2><p id="inboxSummary">Wird geladen …</p></div></div>
                <ul id="inboxList" class="directory-list inbox-list"></ul>
                <button type="button" id="inboxMore" class="button-quiet inbox-more" hidden>Alle anzeigen</button>
             </section>
 
-            <section class="fleet-board" aria-labelledby="boardTitle">
+            <section class="fleet-board" aria-labelledby="boardTitle" id="boardSection" data-fleet-panel="fahrzeuge">
                <div class="board-toolbar" id="boardToolbar">
                   <h2 id="boardTitle" class="board-title">Fahrzeuge</h2>
                   <label class="board-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.500"/><path d="m16 16 4 4"/></svg><input id="fleetSearch" type="search" autocomplete="off" placeholder="Kennzeichen, Modell oder Fahrer suchen" aria-label="Fahrzeuge durchsuchen"></label>
@@ -44,7 +54,7 @@
                <div id="vehicleGrid" class="vehicle-board"></div>
             </section>
 
-            <section class="directory-card" aria-labelledby="fuelTitle" id="fuelSection">
+            <section class="directory-card" aria-labelledby="fuelTitle" id="fuelSection" data-fleet-panel="tankkarten">
                <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12.500" rx="2"/><path d="M3 10h18M7 14.500h4"/></svg></span><div><h2 id="fuelTitle">Tankkarten</h2><p id="fuelSummary">Wird geladen …</p></div></div>
                <ul id="fuelList" class="directory-list fuel-list"></ul>
                <form id="fuelAddForm" class="fleet-form fuel-add" hidden novalidate>
@@ -55,7 +65,7 @@
             </section>
 
             <!-- Heidelberg: Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
-            <section class="directory-card station-card" aria-labelledby="stationTitle" id="stationSection">
+            <section class="directory-card station-card" aria-labelledby="stationTitle" id="stationSection" data-fleet-panel="heidelberg">
                <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 id="stationTitle">Heidelberg</h2><p id="stationSummary">Wird geladen …</p></div><button type="button" id="stationAddOpen" class="button-secondary">+ Fahrzeug in Heidelberg</button></div>
                <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Heidelberg – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Heidelberg“ aus.</p>
                <h3 class="file-heading">Fahrzeuge</h3>
@@ -65,7 +75,7 @@
             </section>
 
             <!-- Reifenwechsel: Liste für die Werkstatt (ATU) – ein Link ohne Zugangsdaten -->
-            <section class="directory-card tyre-office" aria-labelledby="tyreTitle" id="tyreSection">
+            <section class="directory-card tyre-office" aria-labelledby="tyreTitle" id="tyreSection" data-fleet-panel="werkstatt">
                <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.500"/><path d="M12 3v5.500M12 15.500V21M3 12h5.500M15.500 12H21"/></svg></span><div><h2 id="tyreTitle">Reifenwechsel – Liste für die Werkstatt</h2><p id="tyreSummary">Wird geladen …</p></div><button type="button" id="tyreNewOpen" class="button-primary">Neue Liste erstellen</button></div>
                <p class="field-hint">Du schickst der Werkstatt (z. B. ATU) einen Link ohne Zugangsdaten. Sie sieht nur Kennzeichen, Modell und Kilometerstand und meldet je Fahrzeug: „ist jetzt bei uns“ (gelb – im Fuhrpark dann „Bei ATU / Werkstatt“) und „fertig – zurückgebracht“ (grün). Du siehst denselben Stand hier in drei Abschnitten, kannst Fahrzeuge dazunehmen und selbst umstellen. „Liste schließen“ macht den Link ungültig; unter „Frühere Listen“ lässt sich eine Liste wieder öffnen.</p>
                <div id="tyreCampaigns" class="tyre-campaigns"></div>
@@ -73,19 +83,19 @@
             </section>
 
             <!-- Fahrerakte: Meldungen des nächsten Fahrers über den Vorfahrer (nicht sauber, Tank leer, Schaden) – Update 42 -->
-            <section class="directory-card driver-file" aria-labelledby="driverFileTitle" id="driverFileSection">
+            <section class="directory-card driver-file" aria-labelledby="driverFileTitle" id="driverFileSection" data-fleet-panel="fahrerakte">
                <div class="directory-card-heading"><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span><div><h2 id="driverFileTitle">Fahrerakte – Meldungen über den Vorfahrer</h2><p id="driverFileSummary">Wird geladen …</p></div></div>
                <p class="field-hint">Meldet jemand bei der Übernahme, dass das Auto nicht sauber ist, der Tank leer ist oder ein neuer Schaden da ist, geht die Meldung mit Fotos sofort an den Vorfahrer und an dich. Hier bleibt sie in der Akte des Vorfahrers stehen – mit Anzahl, Datum und deinem Vermerk, wenn du ihn ermahnt hast.</p>
                <div id="driverFileCards" class="driver-file-grid"></div>
             </section>
 
             <!-- Schadenakte ohne Zuordnung (Update 50): archivierte Meldungen, die keinem Fahrer mehr angelastet werden -->
-            <details class="directory-card fold-card unassigned-file" id="unassignedSection" hidden>
+            <details class="directory-card fold-card unassigned-file" id="unassignedSection" data-fleet-panel="fahrerakte" hidden>
                <summary><span class="directory-step" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"/><path d="M8 7V4h8v3M4 12h16"/></svg></span><span><strong id="unassignedTitle">Schadenakte – ohne Zuordnung</strong><small id="unassignedSummary"></small></span></summary>
                <p class="field-hint">Meldungen, die du aus der Fahrerakte herausgenommen hast – weil der Schaden alt war oder der Fahrer nachgewiesen hat, dass er es nicht war. Sie bleiben hier beim Fahrzeug mit Fotos stehen und zählen für niemanden. Mit „Zurück in die Fahrerakte“ lässt sich das jederzeit umkehren.</p>
                <ul id="unassignedList" class="driver-file-entries"></ul>
             </details>
-            <details class="directory-card fold-card" id="retiredSection" hidden>
+            <details class="directory-card fold-card" id="retiredSection" data-fleet-panel="archiv" hidden>
                <summary><span>Nicht mehr im Fuhrpark</span><b id="retiredCount">0</b></summary>
                <p class="field-hint">Diese Fahrzeuge sind aus der Liste genommen – getauscht, zurückgegeben oder abgegeben. Ihre Fahrten, Schäden und der Verlauf bleiben gespeichert.</p>
                <ul id="retiredList" class="directory-list"></ul>

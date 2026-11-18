@@ -173,3 +173,10 @@ img.chart-preview-frame { height: auto; max-height: 80vh; object-fit: contain; }
 .chart-preview.is-text { padding: 12px 14px; }
 .chart-preview-text { margin: 0; white-space: pre-wrap; line-height: 1.5; }
 .chart-inline-entry { margin: 0; }
+
+/* R87: Suche und Zeitraum in der Patientenakte */
+.chart-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 10px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.chart-search { flex: 1 1 260px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.chart-years { flex: 0 1 auto; }
+.chart-month { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.chart-filter-reset { margin-left: auto; }

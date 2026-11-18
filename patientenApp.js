@@ -588,6 +588,14 @@
     let chartReported = null;      // von Dolmetschern gemeldete neue Termine
     let chartViews = [];           // Abrufe der Akte durch Dolmetscher (tt_document_access), neueste zuerst
     let chartFor = '';
+    // R87: in der Akte suchen und nach Zeitraum eingrenzen – gilt für Zeitleiste, Termine und alle Unterlagen-Reiter.
+    let chartYear = '';            // '' = alle Jahre
+    let chartMonth = '';           // '' = alle Monate des Jahres
+    let chartQuery = '';
+    let chartOlder = null;         // ältere Termine (vor den letzten 120 Tagen) der offenen Akte, aus tt_days per Suche
+    const chartDayOk = day => { const d = String(day || ''); if (!chartYear) return true; if (!d) return false; return d.slice(0, 4) === chartYear && (!chartMonth || d.slice(5, 7) === chartMonth); };
+    const chartTextOk = text => !chartQuery || lower(text).includes(lower(chartQuery));
+    const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
     // „Befunde“ und „Kosten“ kommen aus eingelesenen Papierakten – die Reiter erscheinen nur, wenn es dort etwas gibt.
     const CHART_TABS = [['uebersicht', 'Übersicht'], ['termine', 'Termine'], ['berichte', 'Dolmetscherberichte'], ['arzt', 'Krankenhausberichte'], ['bild', 'Bildgebung'], ['befunde', 'Befunde'], ['rezepte', 'Rezepte'], ['ueberweisung', 'Überweisungen'], ['kosten', 'Kosten'], ['sonstiges', 'Sonstiges']];
     const CHART_EMPTY = { berichte: 'Kein Bericht eines Dolmetschers nennt diesen Patienten.', arzt: 'Für diesen Patienten gibt es noch keinen Krankenhaus- oder Arztbericht.', bild: 'Keine Bildgebung (MRT, CT, Röntgen).', befunde: 'Keine Laborbefunde.',
@@ -634,9 +642,18 @@
         if ((chartTab === 'befunde' || chartTab === 'bild' || chartTab === 'kosten') && !parts[chartTab].length) chartTab = 'uebersicht';
         const today = isoDay(new Date());
         const visits = chartVisits || [];
-        const reported = chartReported || [];
-        const coming = [...visits.filter(visit => visit.date >= today).map(visit => `${visit.date} ${visitTime(visit.record)}`), ...reported.filter(item => item.date >= today).map(item => `${item.date} ${clean(item.time).slice(0, 5)}`)].sort()[0];
-        const counts = { termine: visits.length + reported.length, berichte: parts.berichte.length, arzt: parts.arzt.length, bild: parts.bild.length, befunde: parts.befunde.length, rezepte: parts.rezepte.length, ueberweisung: parts.ueberweisung.length, kosten: parts.kosten.length, sonstiges: parts.sonstiges.length };
+        const reportedAll = chartReported || [];
+        const visitsAll = visits;
+        const docText = doc => [docTitle(doc), doc.doctor, doc.note, doc.kind, isReport(doc) ? doc.body : '', doc.uploader_name].map(clean).join(' ');
+        const visitText = visit => [visit.record['Arzt Nr::Name'], visit.record.Termin_Ort, visit.record['Arzt Nr::Ort'], visit.record.Ort, visit.record['Übersetzer'], visit.record.Bemerkung, visit.record.Status].map(clean).join(' ');
+        const filtering = Boolean(chartYear || chartQuery);
+        const visitsShown = visitsAll.filter(visit => chartDayOk(visit.date) && chartTextOk(visitText(visit)));
+        const reported = reportedAll.filter(item => chartDayOk(item.date) && chartTextOk([item.place, item.city, item.doctor, item.description, item.reporter_name].map(clean).join(' ')));
+        const docOk = doc => chartDayOk(docDay(doc)) && chartTextOk(docText(doc));
+        const partsTotal = Object.fromEntries(Object.entries(parts).map(([key, docs]) => [key, docs.length]));
+        Object.keys(parts).forEach(key => { parts[key] = parts[key].filter(docOk); });
+        const coming = [...visits.filter(visit => visit.date >= today).map(visit => `${visit.date} ${visitTime(visit.record)}`), ...reportedAll.filter(item => item.date >= today).map(item => `${item.date} ${clean(item.time).slice(0, 5)}`)].sort()[0];
+        const counts = { termine: visitsAll.length + reportedAll.length, ...partsTotal };
 
         // Kopf
         const head = el('div', 'chart-head');
@@ -687,13 +704,13 @@
         if (chartTab === 'uebersicht') {
             // Alles in einer Zeitleiste, das Neueste oben: Termine, Berichte, Rezepte, Überweisungen.
             const events = [
-                ...visits.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
+                ...visitsShown.map(visit => ({ day: visit.date, kind: 'Termin', tab: 'termine', text: [visitTime(visit.record) ? `${visitTime(visit.record)} Uhr` : '', clean(visit.record['Arzt Nr::Name']), clean(visit.record['Übersetzer']) ? `mit ${clean(visit.record['Übersetzer'])}` : ''].filter(Boolean).join(' · ') })),
                 ...reported.map(item => ({ day: item.date, kind: 'Neuer Termin', tab: 'termine', text: [clean(item.time) ? `${clean(item.time).slice(0, 5)} Uhr` : '', clean(item.place), clean(item.description)].filter(Boolean).join(' · ') })),
-                ...[...patient.documents, ...reports].map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBild(doc) ? 'bild' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
+                ...[...patient.documents, ...reports].filter(docOk).map(doc => ({ day: docDay(doc), kind: docTitle(doc), tab: isReport(doc) ? 'berichte' : TYPE_TABS.arzt.test(doc) ? 'arzt' : isBild(doc) ? 'bild' : isBefund(doc) ? 'befunde' : TYPE_TABS.rezepte.test(doc) ? 'rezepte' : TYPE_TABS.ueberweisung.test(doc) ? 'ueberweisung' : isKosten(doc) ? 'kosten' : 'sonstiges',
                     text: [lower(docTitle(doc)).includes(lower(doc.doctor)) ? '' : clean(doc.doctor), isReport(doc) ? excerpt(doc.body, 90) : clean(doc.note), isImported(doc) ? 'aus der Papierakte' : `von ${clean(doc.uploader_name) || 'unbekannt'}`].filter(Boolean).join(' · '), status: doc.status, doc }))
             ].sort((left, right) => String(right.day).localeCompare(String(left.day)));
             if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
-            if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', 'In dieser Akte steht noch nichts.'));
+            if (!events.length && chartVisits != null) body.append(el('p', 'directory-empty', filtering ? 'Nichts passt zu Suche oder Zeitraum.' : 'In dieser Akte steht noch nichts.'));
             const line = el('ol', 'chart-timeline');
             let lastYear = '';
             events.forEach(event => {
@@ -751,9 +768,18 @@
             else if (chartVisits == null) body.append(el('p', 'field-hint', 'Termine werden geladen …'));
             else {
                 if (reported.length) { const node = el('ul', 'directory-list file-list'); node.append(...reported.map(reportedEntry)); body.append(el('h4', 'file-date', 'Von Dolmetschern gemeldete neue Termine'), node); }
-                const node = el('ul', 'directory-list file-list');
-                node.append(...(visits.length ? visits.map(visitEntry) : [el('li', 'directory-empty', `In den letzten ${DAY_RANGE} Tagen gibt es keine Termine für diesen Patienten.`)]));
-                body.append(el('h4', 'file-date', 'Termine aus dem Tagesplan'), node);
+                // Termine nach Monat gruppiert – so findet man auch weit Zurückliegendes schnell.
+                if (!visitsShown.length) body.append(el('h4', 'file-date', 'Termine aus dem Tagesplan'), el('p', 'directory-empty', filtering ? 'Kein Termin passt zu Suche oder Zeitraum.' : chartOlder == null ? `In den letzten ${DAY_RANGE} Tagen gibt es keine Termine für diesen Patienten – ältere werden geladen …` : 'Für diesen Patienten sind keine Termine gespeichert.'));
+                else {
+                    const byMonth = new Map();
+                    visitsShown.forEach(visit => { const key = visit.date.slice(0, 7); if (!byMonth.has(key)) byMonth.set(key, []); byMonth.get(key).push(visit); });
+                    [...byMonth.entries()].sort((left, right) => right[0].localeCompare(left[0])).forEach(([month, list]) => {
+                        const node = el('ul', 'directory-list file-list');
+                        node.append(...list.map(visitEntry));
+                        body.append(el('h4', 'file-date', `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)} · ${plural(list.length, 'Termin', 'Termine')}`), node);
+                    });
+                    if (chartOlder == null) body.append(el('p', 'field-hint', 'Ältere Termine werden geladen …'));
+                }
             }
         } else {
             // Unterlagen dieses Reiters – geordnet nach Datum, Fachrichtung oder Arzt.
@@ -773,13 +799,41 @@
                 body.append(tools);
             }
             const prefix = { rezepte: 'Rezept', ueberweisung: 'Überweisung', befunde: 'Befund', kosten: 'Kosten' }[chartTab] || '';
-            if (!docs.length) body.append(prefix ? el('p', 'directory-empty', CHART_EMPTY[chartTab]) : list([], CHART_EMPTY[chartTab]));
+            if (!docs.length) body.append(el('p', 'directory-empty', filtering ? 'Keine Unterlage passt zu Suche oder Zeitraum.' : CHART_EMPTY[chartTab]));
             else chartSections(docs, prefix).forEach(section => {
                 if (section.title) body.append(el('h4', 'file-date', section.title));
                 body.append(list(section.docs, ''));
             });
         }
-        box.replaceChildren(head, tabs, body);
+        // Suche und Zeitraum (R87): ein Suchfeld für die ganze Akte, Jahre aus dem, was es gibt, dazu der Monat.
+        const bar = el('div', 'chart-filter');
+        const search = el('input', 'chart-search');
+        search.type = 'search'; search.id = 'chartSearch'; search.autocomplete = 'off'; search.placeholder = 'In dieser Akte suchen – Arzt, Ort, Art der Unterlage, Text …'; search.value = chartQuery;
+        search.setAttribute('aria-label', 'In dieser Akte suchen');
+        let typing = null;
+        search.addEventListener('input', () => { window.clearTimeout(typing); typing = window.setTimeout(() => { chartQuery = search.value.trim(); renderChart(patient); updateSelection(); const again = $('chartSearch'); if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); } }, 220); });
+        const allDays = [...visitsAll.map(visit => visit.date), ...reportedAll.map(item => item.date), ...patient.documents.map(docDay), ...reports.map(docDay)].map(day => String(day || '')).filter(Boolean);
+        const years = [...new Set(allDays.map(day => day.slice(0, 4)))].sort((left, right) => right.localeCompare(left));
+        const range = el('div', 'akte-order chart-years');
+        range.setAttribute('role', 'group'); range.setAttribute('aria-label', 'Zeitraum');
+        const yearButton = (key, label) => { const choice = button('', label, () => { chartYear = key; chartMonth = ''; renderChart(patient); updateSelection(); }); choice.setAttribute('aria-pressed', String(chartYear === key)); choice.dataset.chartYear = key; return choice; };
+        range.append(yearButton('', 'Alle'), ...years.map(year => yearButton(year, year)));
+        bar.append(search, el('span', 'chart-tools-label', 'Zeitraum'), range);
+        if (chartYear) {
+            const months = [...new Set(allDays.filter(day => day.slice(0, 4) === chartYear).map(day => day.slice(5, 7)))].sort((left, right) => right.localeCompare(left));
+            const month = el('select', 'chart-month');
+            month.setAttribute('aria-label', 'Monat');
+            const any = el('option', null, 'Ganzes Jahr'); any.value = ''; month.append(any);
+            months.forEach(value => { const option = el('option', null, MONTHS[Number(value) - 1]); option.value = value; option.selected = value === chartMonth; month.append(option); });
+            month.addEventListener('change', () => { chartMonth = month.value; renderChart(patient); updateSelection(); });
+            bar.append(month);
+        }
+        if (filtering) {
+            const shown = chartTab === 'uebersicht' ? null : chartTab === 'termine' ? visitsShown.length + reported.length : parts[chartTab].length;
+            const total = chartTab === 'uebersicht' ? null : chartTab === 'termine' ? visitsAll.length + reportedAll.length : counts[chartTab];
+            bar.append(button('button-quiet chart-filter-reset', `Filter aufheben${shown == null ? '' : ` (${shown} von ${total})`}`, () => { chartYear = ''; chartMonth = ''; chartQuery = ''; renderChart(patient); updateSelection(); }));
+        }
+        box.replaceChildren(head, tabs, bar, body);
         box.hidden = false;
     }
     // Termine und gemeldete Termine der Akte laden (einmal je geöffneter Akte).
@@ -794,7 +848,21 @@
         chartVisits = loaded ? visitsFor(loaded, patient.nr) : [];
         chartReported = reported;
         chartViews = views;
+        chartOlder = null;
         if (openKey === patient.key) { renderChart(patient); updateSelection(); }
+        // Ältere Termine (vor den letzten 120 Tagen): nur die Tage, an denen dieser Patient vorkommt – die Datenbank sucht im Tagesstand.
+        if (patient.nr) {
+            const from = new Date(); from.setDate(from.getDate() - DAY_RANGE);
+            const numeric = /^\d+$/.test(patient.nr) ? `,records.cs.[{"Patient_Nr":${Number(patient.nr)}}]` : '';
+            const older = await Promise.resolve(client.from('tt_days').select('date, records').lt('date', isoDay(from)).or(`records.cs.[{"Patient_Nr":"${patient.nr}"}]${numeric}`).order('date', { ascending: false }).limit(400))
+                .then(result => result.error || !Array.isArray(result.data) ? [] : result.data, () => []);
+            if (chartFor !== patient.key) return;
+            chartOlder = visitsFor(older, patient.nr);
+            const known = new Set(chartVisits.map(visit => `${visit.date}|${visit.record?._id || visitTime(visit.record)}`));
+            chartOlder.forEach(visit => { const key = `${visit.date}|${visit.record?._id || visitTime(visit.record)}`; if (!known.has(key)) { chartVisits.push(visit); known.add(key); } });
+            chartVisits.sort((left, right) => right.date.localeCompare(left.date) || visitTime(left.record).localeCompare(visitTime(right.record)));
+            if (openKey === patient.key) { renderChart(patient); updateSelection(); }
+        }
     }
 
     async function renderFile() {
@@ -913,6 +981,7 @@
     }
 
     function openPatient(key) {
+        if (key !== openKey) { chartYear = ''; chartMonth = ''; chartQuery = ''; }
         const patient = patients.find(item => item.key === clean(key));
         if (!patient) { showToast('Zu diesem Patienten gibt es keine Unterlagen.', 'error'); return; }
         if (INBOX) { window.location.href = `patienten.html?akte=${encodeURIComponent(patient.key)}`; return; }

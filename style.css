@@ -2764,9 +2764,15 @@ button.second-add:hover { background: transparent; text-decoration: underline; }
 
 /* ===== 76. Tankkarten: eigene Ansicht, getrennt vom Fuhrpark ===== */
 .fleet-heading-fuel { display: none; }
-body[data-page="fahrzeugakte"]:not([data-view="tankkarten"]) #fuelSection { display: none; }
-body[data-view="tankkarten"] .fleet-heading-cars, body[data-view="tankkarten"] #fileApp > section:not(#fuelSection), body[data-view="tankkarten"] #retiredSection, body[data-view="tankkarten"] #enableNotifications { display: none !important; }
+body[data-view="tankkarten"] .fleet-heading-cars, body[data-view="tankkarten"] #enableNotifications { display: none !important; }
 body[data-view="tankkarten"] .fleet-heading-fuel { display: block; }
+/* R87: Unterreiter im Fuhrpark – nur der gewählte Bereich ist sichtbar */
+[data-tab-hidden] { display: none !important; }
+.fleet-tabs { grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: none; margin-bottom: 14px; }
+.fleet-tabs button { position: relative; min-height: 42px; padding: 6px 8px; font-size: .9rem; font-weight: 700; white-space: nowrap; }
+.fleet-tabs .count-badge { margin-left: 6px; }
+@media (max-width: 900px) { .fleet-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .fleet-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fleet-tabs button { font-size: .8rem; padding-inline: 4px; } }
 
 /* ===== 77. Meldungen von außen: wie eine Mitteilung auf dem Handy – ein Klick öffnet die Seite ===== */
 .toast.toast-link { cursor: pointer; }

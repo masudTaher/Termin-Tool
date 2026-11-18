@@ -12,7 +12,7 @@
          <div class="page-heading fleet-heading">
             <div><p class="page-kicker">ONLINE · DOLMETSCHER</p><h1>Kontrolle</h1><p>Wer war im Termin und hat keinen Bericht geschrieben? Wo fehlen Unterlagen? Wer hat sein Fahrzeug nicht zurückgegeben? Hier siehst du es auf einen Blick, erinnerst per Knopf und hältst fest, was geklärt ist.</p></div>
             <div class="fleet-heading-actions">
-               <label class="ctl-range"><span>Zeitraum</span><select id="ctlRange"><option value="14">letzte 14 Tage</option><option value="30" selected>letzte 30 Tage</option><option value="60">letzte 60 Tage</option><option value="90">letzte 90 Tage</option></select></label>
+               <label class="ctl-range"><span>Zeitraum</span><select id="ctlRange"><option value="14" selected>letzte 14 Tage</option><option value="30">letzte 30 Tage</option><option value="60">letzte 60 Tage</option><option value="90">letzte 90 Tage</option></select></label>
                <button type="button" id="ctlReload" class="button-secondary">Aktualisieren</button>
             </div>
          </div>
@@ -30,14 +30,14 @@
             <section class="directory-card ctl-panel" data-ctl-panel="berichte" aria-labelledby="ctlBerichteTitle">
                <div class="fleet-log-heading">
                   <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="ctlBerichteTitle">Termine ohne Bericht</h2><p id="ctlBerichteSummary">Wird geladen …</p></div></div>
-                  <div class="fleet-log-controls"><label class="ctl-check"><input type="checkbox" id="ctlShowDone"><span>Geklärte auch zeigen</span></label></div>
+                  <div class="fleet-log-controls"><button type="button" class="button-quiet" data-ctl-bulk="bericht">Ältere als geklärt markieren …</button><label class="ctl-check"><input type="checkbox" id="ctlShowDone"><span>Geklärte auch zeigen</span></label></div>
                </div>
                <p class="field-hint">Ein Termin gilt ab dem nächsten Morgen (8 Uhr) als „ohne Bericht“, wenn der Dolmetscher weder einen Bericht zum Termin noch einen Bericht über den Tag geschrieben hat. „Erinnern“ schickt eine Nachricht in seine App (und aufs Handy, wenn eingeschaltet). „Entschuldigt“ nimmt den Termin aus der Liste, bleibt aber in der Zuverlässigkeit sichtbar.</p>
                <div id="ctlBerichte" class="ctl-groups"></div>
             </section>
 
             <section class="directory-card ctl-panel" data-ctl-panel="unterlagen" aria-labelledby="ctlUnterlagenTitle" hidden>
-               <div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="ctlUnterlagenTitle">Termine ohne Unterlagen</h2><p id="ctlUnterlagenSummary">Wird geladen …</p></div></div>
+               <div class="fleet-log-heading"><div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="ctlUnterlagenTitle">Termine ohne Unterlagen</h2><p id="ctlUnterlagenSummary">Wird geladen …</p></div></div><div class="fleet-log-controls"><button type="button" class="button-quiet" data-ctl-bulk="unterlagen">Ältere als geklärt markieren …</button></div></div>
                <p class="field-hint">Nicht bei jedem Termin gibt der Arzt etwas mit. Darum ist das hier ein Hinweis, keine Mahnung: Frag nach, oder markiere den Termin mit „Nichts erwartet“, wenn es dort nichts gab.</p>
                <div id="ctlUnterlagen" class="ctl-groups"></div>
             </section>
@@ -64,6 +64,20 @@
             <label for="ctlExcuseNote">Grund (freiwillig)</label>
             <textarea id="ctlExcuseNote" rows="3" maxlength="300" placeholder="z. B. Termin ist ausgefallen · Bericht kam telefonisch · Auto stand schon auf dem Hof"></textarea>
             <div class="modal-buttons"><button type="button" class="button-secondary" id="ctlExcuseCancel">Abbrechen</button><button type="submit" class="button-primary" id="ctlExcuseSave">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <!-- Ältere Termine in einem Rutsch als geklärt markieren -->
+      <dialog id="ctlBulkDialog" class="confirm-dialog office-return" aria-labelledby="ctlBulkTitle">
+         <form id="ctlBulkForm" class="fleet-form" novalidate>
+            <h2 id="ctlBulkTitle">Ältere Termine als geklärt markieren</h2>
+            <p class="field-hint" id="ctlBulkInfo"></p>
+            <label for="ctlBulkDate">Alle offenen Termine bis einschließlich</label>
+            <input id="ctlBulkDate" type="date">
+            <label for="ctlBulkNote">Grund (freiwillig)</label>
+            <input id="ctlBulkNote" type="text" maxlength="120" placeholder="z. B. Altbestand vor Einführung der Kontrolle">
+            <p class="field-hint" id="ctlBulkCount"></p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="ctlBulkCancel">Abbrechen</button><button type="submit" class="button-primary" id="ctlBulkSave">Als geklärt markieren</button></div>
          </form>
       </dialog>
 

@@ -359,6 +359,38 @@
         if (ok) { $('ctlExcuseDialog').close(); showToast('Als geklärt vermerkt.', 'success'); }
     });
 
+    // Ältere Termine in einem Rutsch als geklärt markieren (z. B. Altbestand vor Einführung der Kontrolle)
+    let bulkKind = 'bericht';
+    const bulkCandidates = () => { const until = $('ctlBulkDate').value; return until ? openItems(bulkKind).filter(item => item.date <= until && !isSettled(followupOf(bulkKind, item.id))) : []; };
+    function openBulk(kind) {
+        if (!followupsReady) { showToast('Dafür fehlt noch das Datenbank-Update 54 (supabase/update-54.sql).', 'error'); return; }
+        bulkKind = kind;
+        $('ctlBulkInfo').textContent = kind === 'bericht' ? 'Nimmt alle älteren Termine ohne Bericht aus der Liste – sie bleiben in der Zuverlässigkeit als „geklärt“ sichtbar.' : 'Nimmt alle älteren Termine ohne Unterlagen aus der Liste.';
+        $('ctlBulkDate').value = shiftIso(TerminCloud.todayIso(), -7);
+        $('ctlBulkNote').value = '';
+        $('ctlBulkCount').textContent = `${bulkCandidates().length} Termine betroffen`;
+        $('ctlBulkDialog').showModal();
+    }
+    document.querySelectorAll('[data-ctl-bulk]').forEach(button => button.addEventListener('click', () => openBulk(button.dataset.ctlBulk)));
+    $('ctlBulkDate').addEventListener('change', () => { $('ctlBulkCount').textContent = `${bulkCandidates().length} Termine betroffen`; });
+    $('ctlBulkCancel').addEventListener('click', () => $('ctlBulkDialog').close());
+    $('ctlBulkForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const items = bulkCandidates();
+        if (!items.length) { showToast('Kein offener Termin bis zu diesem Datum.', 'info'); return; }
+        $('ctlBulkSave').disabled = true;
+        const now = new Date().toISOString();
+        const note = $('ctlBulkNote').value.trim().slice(0, 120) || 'Sammel-Abschluss';
+        const rows = items.map(item => { const existing = followupOf(bulkKind, item.id); return { kind: bulkKind, ref_id: item.id, profile_id: item.interpreter_id, profile_name: item.interpreter_name || nameOf(item.interpreter_id), status: 'entschuldigt', note, reminded_count: existing?.reminded_count || 0, reminded_at: existing?.reminded_at || null, resolved_at: now, resolved_by: profile.full_name || 'Einsatzleitung', updated_at: now }; });
+        const { data, error } = await client.from('tt_followups').upsert(rows, { onConflict: 'kind,ref_id' }).select();
+        $('ctlBulkSave').disabled = false;
+        if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
+        (data || []).forEach(item => followups.set(key(item.kind, item.ref_id), item));
+        $('ctlBulkDialog').close();
+        showToast(`${items.length} Termine als geklärt markiert.`, 'success');
+        render();
+    });
+
     // ---------- Bedienung ----------
     document.querySelectorAll('[data-ctl-tab]').forEach(button => button.addEventListener('click', () => { tab = button.dataset.ctlTab; render(); }));
     $('ctlShowDone').addEventListener('change', () => { showDone = $('ctlShowDone').checked; render(); });

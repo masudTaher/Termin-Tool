@@ -110,6 +110,9 @@
         // „Tankkarten“ ist eine eigene Ansicht der Fuhrpark-Seite (eigener Menüpunkt, getrennt von den Fahrzeugen).
         const fuelView = document.body.dataset.page === 'fahrzeugakte' && /[?&]ansicht=tankkarten(&|$)/.test(location.search);
         if (fuelView) { document.body.dataset.view = 'tankkarten'; document.title = 'Tankkarten · Medical Office Bonn'; }
+        // R87: Der Fuhrpark hat Unterreiter; ein Sprung mit ?ansicht=<Reiter> öffnet den passenden (die Seite selbst schaltet um).
+        const wantedView = document.body.dataset.page === 'fahrzeugakte' ? (location.search.match(/[?&]ansicht=([a-z]+)/) || [])[1] : '';
+        if (wantedView && wantedView !== 'tankkarten') document.body.dataset.view = wantedView;
         const current = fuelView ? 'tankkarten' : document.body.dataset.page || '';
         const nav = document.createElement('aside');
         nav.className = 'app-nav';
