@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Kontrolle · Medical Office Bonn</title>
+      <link rel="stylesheet" href="style.css">
+      <script src="appShell.js"></script>
+   </head>
+   <body data-page="kontrolle">
+      <main class="container">
+         <div class="page-heading fleet-heading">
+            <div><p class="page-kicker">ONLINE · DOLMETSCHER</p><h1>Kontrolle</h1><p>Wer war im Termin und hat keinen Bericht geschrieben? Wo fehlen Unterlagen? Wer hat sein Fahrzeug nicht zurückgegeben? Hier siehst du es auf einen Blick, erinnerst per Knopf und hältst fest, was geklärt ist.</p></div>
+            <div class="fleet-heading-actions">
+               <label class="ctl-range"><span>Zeitraum</span><select id="ctlRange"><option value="14">letzte 14 Tage</option><option value="30" selected>letzte 30 Tage</option><option value="60">letzte 60 Tage</option><option value="90">letzte 90 Tage</option></select></label>
+               <button type="button" id="ctlReload" class="button-secondary">Aktualisieren</button>
+            </div>
+         </div>
+         <p id="ctlStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+
+         <div id="ctlApp" hidden>
+            <!-- Kategorien als Reiter – nicht alles auf einer Seite -->
+            <div class="fleet-filter ctl-tabs" role="tablist" aria-label="Bereiche">
+               <button type="button" role="tab" class="overview-card overview-card-cancelled is-active" data-ctl-tab="berichte" aria-selected="true"><span class="overview-label">Berichte fehlen</span><strong id="ctlCountBerichte">0</strong><small>Termine ohne Dolmetscherbericht</small></button>
+               <button type="button" role="tab" class="overview-card overview-card-departed" data-ctl-tab="unterlagen" aria-selected="false"><span class="overview-label">Unterlagen fehlen</span><strong id="ctlCountUnterlagen">0</strong><small>Termine ohne Arztbericht, Rezept oder Überweisung</small></button>
+               <button type="button" role="tab" class="overview-card overview-card-alert" data-ctl-tab="fahrzeuge" aria-selected="false"><span class="overview-label">Autos nicht zurück</span><strong id="ctlCountFahrzeuge">0</strong><small>Übernahmen nach Dienstschluss noch offen</small></button>
+               <button type="button" role="tab" class="overview-card overview-card-done" data-ctl-tab="personen" aria-selected="false"><span class="overview-label">Zuverlässigkeit</span><strong id="ctlCountPersonen">0</strong><small>je Dolmetscher im Zeitraum</small></button>
+            </div>
+
+            <section class="directory-card ctl-panel" data-ctl-panel="berichte" aria-labelledby="ctlBerichteTitle">
+               <div class="fleet-log-heading">
+                  <div class="directory-card-heading"><span class="directory-step">1</span><div><h2 id="ctlBerichteTitle">Termine ohne Bericht</h2><p id="ctlBerichteSummary">Wird geladen …</p></div></div>
+                  <div class="fleet-log-controls"><label class="ctl-check"><input type="checkbox" id="ctlShowDone"><span>Geklärte auch zeigen</span></label></div>
+               </div>
+               <p class="field-hint">Ein Termin gilt ab dem nächsten Morgen (8 Uhr) als „ohne Bericht“, wenn der Dolmetscher weder einen Bericht zum Termin noch einen Bericht über den Tag geschrieben hat. „Erinnern“ schickt eine Nachricht in seine App (und aufs Handy, wenn eingeschaltet). „Entschuldigt“ nimmt den Termin aus der Liste, bleibt aber in der Zuverlässigkeit sichtbar.</p>
+               <div id="ctlBerichte" class="ctl-groups"></div>
+            </section>
+
+            <section class="directory-card ctl-panel" data-ctl-panel="unterlagen" aria-labelledby="ctlUnterlagenTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step">2</span><div><h2 id="ctlUnterlagenTitle">Termine ohne Unterlagen</h2><p id="ctlUnterlagenSummary">Wird geladen …</p></div></div>
+               <p class="field-hint">Nicht bei jedem Termin gibt der Arzt etwas mit. Darum ist das hier ein Hinweis, keine Mahnung: Frag nach, oder markiere den Termin mit „Nichts erwartet“, wenn es dort nichts gab.</p>
+               <div id="ctlUnterlagen" class="ctl-groups"></div>
+            </section>
+
+            <section class="directory-card ctl-panel" data-ctl-panel="fahrzeuge" aria-labelledby="ctlFahrzeugeTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step">3</span><div><h2 id="ctlFahrzeugeTitle">Fahrzeuge nicht zurückgegeben</h2><p id="ctlFahrzeugeSummary">Wird geladen …</p></div></div>
+               <p class="field-hint" id="ctlFahrzeugeHint">Übernahmen, die nach Dienstschluss noch laufen – ohne Notfall-Kennzeichen und ohne erlaubte Übernachtung. „Rückgabe eintragen“ öffnet den Fuhrpark; dort trägst du Kilometer, Tank und Parkort ein.</p>
+               <ul id="ctlFahrzeuge" class="directory-list"></ul>
+            </section>
+
+            <section class="directory-card ctl-panel" data-ctl-panel="personen" aria-labelledby="ctlPersonenTitle" hidden>
+               <div class="directory-card-heading"><span class="directory-step">4</span><div><h2 id="ctlPersonenTitle">Zuverlässigkeit je Dolmetscher</h2><p id="ctlPersonenSummary">Wird geladen …</p></div></div>
+               <p class="field-hint">Zählt im gewählten Zeitraum: Termine, fehlende Berichte (offen und entschuldigt), fehlende Unterlagen, Fahrzeuge nicht rechtzeitig zurück und gesendete Erinnerungen. Sortiert nach den meisten offenen Punkten.</p>
+               <div class="ctl-table-wrap"><table class="ctl-table" id="ctlPersonen"></table></div>
+            </section>
+         </div>
+      </main>
+
+      <!-- Entschuldigen / Grund festhalten -->
+      <dialog id="ctlExcuseDialog" class="confirm-dialog office-return" aria-labelledby="ctlExcuseTitle">
+         <form id="ctlExcuseForm" class="fleet-form" novalidate>
+            <h2 id="ctlExcuseTitle">Als geklärt markieren</h2>
+            <p class="field-hint" id="ctlExcuseInfo"></p>
+            <label for="ctlExcuseNote">Grund (freiwillig)</label>
+            <textarea id="ctlExcuseNote" rows="3" maxlength="300" placeholder="z. B. Termin ist ausgefallen · Bericht kam telefonisch · Auto stand schon auf dem Hof"></textarea>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="ctlExcuseCancel">Abbrechen</button><button type="submit" class="button-primary" id="ctlExcuseSave">Speichern</button></div>
+         </form>
+      </dialog>
+
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <script src="cloudConfig.js"></script>
+      <script src="cloudClient.js"></script>
+      <script src="cloudInbox.js"></script>
+      <script src="kontrolleApp.js"></script>
+   </body>
+</html>

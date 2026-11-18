@@ -45,6 +45,7 @@
 
     const icon = paths => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
     const ICONS = {
+        check: icon('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'),
         card: icon('<rect x="3" y="6" width="18" height="12.5" rx="2"/><path d="M3 10h18M7 14.5h4"/>'),
         swap: icon('<path d="M7 7h12l-3-3M17 17H5l3 3"/>'),
         gate: icon('<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-7h6v7"/><path d="M4 12h16"/>'),
@@ -95,6 +96,7 @@
             { page: 'aerzte', href: 'aerzte.html', label: 'Ärzte & Standorte', icon: ICONS.pin },
             { page: 'abrechnung', href: 'abrechnung.html', label: 'Abrechnung', icon: ICONS.euro },
             { page: 'fest', href: 'festangestellte.html', label: 'Festangestellte', icon: ICONS.clock },
+            { page: 'kontrolle', href: 'kontrolle.html', label: 'Kontrolle', icon: ICONS.check },
             { page: 'nachrichten', href: 'nachrichten.html', label: 'Nachrichten', icon: ICONS.message }
         ] },
         { group: 'Verwaltung', items: [

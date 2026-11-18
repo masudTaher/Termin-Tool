@@ -128,6 +128,13 @@
         if (selectedId && vehicles.some(vehicle => vehicle.id === selectedId)) await renderFile();
         else { selectedId = null; $('vehicleFile').hidden = true; $('fileBackdrop').hidden = true; document.documentElement.classList.remove('has-drawer'); }
         window.refreshCloudInbox?.();
+        // Sprung aus der Kontrolle (R86): fahrzeugakte.html?rueckgabe=<Übernahme> öffnet direkt „Rückgabe eintragen“.
+        const wantedReturn = new URLSearchParams(location.search).get('rueckgabe');
+        if (wantedReturn && !refresh.returnOpened) {
+            refresh.returnOpened = true;
+            const item = openHandovers.find(entry => entry.id === wantedReturn);
+            if (item) openOfficeReturn(item); else showToast('Diese Übernahme ist schon beendet – das Fahrzeug ist zurück.', 'info');
+        }
     }
 
     // ---------- Fotos ----------

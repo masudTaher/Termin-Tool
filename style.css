@@ -3251,3 +3251,29 @@ html[data-text="big"] { font-size: 112.5%; }
 .tyre-office-item[data-stage="fertig"] { background: #f4fbf7; }
 .tyre-closed-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 @media (max-width: 560px) { .tyre-office-tile { font-size: .72rem; padding: 6px 4px; } }
+
+/* ===== 106. Kontrolle (R86): fehlende Berichte, Unterlagen, Fahrzeuge nicht zurück ===== */
+.ctl-range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; font-weight: 600; }
+.ctl-range select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.ctl-tabs .overview-card { text-align: left; }
+.ctl-tabs .overview-card small { display: block; margin-top: 2px; }
+.ctl-check { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; font-weight: 600; cursor: pointer; }
+.ctl-check input { width: 18px; height: 18px; accent-color: var(--brand); }
+.ctl-groups { display: grid; gap: 14px; margin-top: 10px; }
+.ctl-group { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.ctl-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 8px; }
+.ctl-group-head strong { display: block; font-size: 1.05rem; }
+.ctl-group-head small { color: var(--muted); }
+.ctl-group-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ctl-item[data-settled="ja"] { opacity: .7; }
+.ctl-item > span > strong { margin-right: 8px; }
+.ctl-table-wrap { overflow-x: auto; margin-top: 8px; }
+.ctl-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.ctl-table th, .ctl-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.ctl-table th { color: var(--muted); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.ctl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ctl-table td.is-bad { color: var(--danger); font-weight: 700; }
+.ctl-table td.is-warn { color: var(--warn); font-weight: 700; }
+.ctl-table tr[data-open="ja"] td:first-child { font-weight: 700; }
+@media (max-width: 640px) { .ctl-tabs { grid-template-columns: 1fr 1fr; } }
+
