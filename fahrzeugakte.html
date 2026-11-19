@@ -10,7 +10,7 @@
    <body data-page="fahrzeugakte">
       <main class="container">
          <div class="page-heading fleet-heading">
-            <div class="fleet-heading-cars"><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fuhrpark und Schäden</h1><p>Die Bereiche findest du links im Menü unter „Fuhrpark“: Übersicht (offene Punkte), Fahrzeuge, Werkstatt, Fahrerakte, Heidelberg, Tankkarten und Archiv. Ein Tipp auf ein Auto zeigt Zustand, Schäden und Reparaturen.</p></div>
+            <div class="fleet-heading-cars"><p class="page-kicker">ONLINE · FUHRPARK</p><h1>Fuhrpark und Schäden</h1><p>Die Bereiche findest du links im Menü unter „Fuhrpark“: Übersicht (offene Punkte), Fahrzeuge, Werkstatt, Fahrerakte, Heidelberg, Düsseldorf, Tankkarten und Archiv. Ein Tipp auf ein Auto zeigt Zustand, Schäden und Reparaturen.</p></div>
             <div class="fleet-heading-fuel"><p class="page-kicker">ONLINE · TANKKARTEN</p><h1>Tankkarten</h1><p>Wer hat welche Karte? Ausgeben und zurücknehmen kann nur der Admin.</p></div>
             <div class="fleet-heading-actions"><button type="button" id="enableNotifications" class="button-secondary" hidden>Benachrichtigungen einschalten</button><button type="button" id="fileReload" class="button-secondary">Aktualisieren</button></div>
          </div>
@@ -24,6 +24,7 @@
                <button type="button" role="tab" data-fleet-tab="werkstatt" aria-selected="false">Werkstatt<b class="count-badge" data-tab-badge="werkstatt" hidden></b></button>
                <button type="button" role="tab" data-fleet-tab="fahrerakte" aria-selected="false">Fahrerakte<b class="count-badge" data-tab-badge="fahrerakte" hidden></b></button>
                <button type="button" role="tab" data-fleet-tab="heidelberg" aria-selected="false">Heidelberg<b class="count-badge" data-tab-badge="heidelberg" hidden></b></button>
+               <button type="button" role="tab" data-fleet-tab="duesseldorf" aria-selected="false">Düsseldorf<b class="count-badge" data-tab-badge="duesseldorf" hidden></b></button>
                <button type="button" role="tab" data-fleet-tab="tankkarten" aria-selected="false">Tankkarten<b class="count-badge" data-tab-badge="tankkarten" hidden></b></button>
                <button type="button" role="tab" data-fleet-tab="archiv" aria-selected="false">Archiv<b class="count-badge" data-tab-badge="archiv" hidden></b></button>
             </div>
@@ -65,13 +66,23 @@
             </section>
 
             <!-- Heidelberg: Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
-            <section class="directory-card station-card" aria-labelledby="stationTitle" id="stationSection" data-fleet-panel="heidelberg">
-               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 id="stationTitle">Heidelberg</h2><p id="stationSummary">Wird geladen …</p></div><button type="button" id="stationAddOpen" class="button-secondary">+ Fahrzeug in Heidelberg</button></div>
+            <section class="directory-card station-card" aria-label="Heidelberg" data-fleet-panel="heidelberg" data-station="Heidelberg">
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 class="station-title">Heidelberg</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Heidelberg</button></div>
                <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Heidelberg – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Heidelberg“ aus.</p>
                <h3 class="file-heading">Fahrzeuge</h3>
-               <ul id="stationVehicles" class="directory-list"></ul>
+               <ul class="station-vehicles directory-list"></ul>
                <h3 class="file-heading">Tankkarten</h3>
-               <ul id="stationCards" class="directory-list"></ul>
+               <ul class="station-cards directory-list"></ul>
+            </section>
+
+            <!-- Düsseldorf (R91): wie Heidelberg – Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
+            <section class="directory-card station-card" aria-label="Düsseldorf" data-fleet-panel="duesseldorf" data-station="Düsseldorf">
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">DÜ</span><div><h2 class="station-title">Düsseldorf</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Düsseldorf</button></div>
+               <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Düsseldorf – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Düsseldorf“ aus.</p>
+               <h3 class="file-heading">Fahrzeuge</h3>
+               <ul class="station-vehicles directory-list"></ul>
+               <h3 class="file-heading">Tankkarten</h3>
+               <ul class="station-cards directory-list"></ul>
             </section>
 
             <!-- Reifenwechsel: Liste für die Werkstatt (ATU) – ein Link ohne Zugangsdaten -->
@@ -251,9 +262,9 @@
             <label for="vehicleFormType">Art</label>
             <select id="vehicleFormType"><option value="Diplomatisch">Diplomatisch</option><option value="Mietwagen">Mietwagen</option></select>
             <label for="vehicleFormStation">Standort</label>
-            <select id="vehicleFormStation"><option value="Bonn">Bonn</option><option value="Heidelberg">Heidelberg (Kollegen)</option></select>
-            <label for="vehicleFormDriver" id="vehicleFormDriverLabel" hidden>Fester Fahrer in Heidelberg <span class="optional-label">optional</span></label>
-            <input id="vehicleFormDriver" type="text" maxlength="80" autocomplete="off" placeholder="Name des Kollegen" hidden>
+            <select id="vehicleFormStation"><option value="Bonn">Bonn</option><option value="Heidelberg">Heidelberg (Kollegen)</option><option value="Düsseldorf">Düsseldorf (Kollegen)</option></select>
+            <label for="vehicleFormDriver" id="vehicleFormDriverLabel">Fester Fahrer <span class="optional-label">optional</span></label>
+            <input id="vehicleFormDriver" type="text" maxlength="80" autocomplete="off" placeholder="Name, z. B. der Vizechef – das Auto ist dann nur für ihn">
             <label for="vehicleFormLabel">Hinweis <span class="optional-label">optional</span></label>
             <input id="vehicleFormLabel" type="text" maxlength="60" autocomplete="off" placeholder="Zum Beispiel: schwarz, 7 Sitze">
             <label for="vehicleFormMileage" id="vehicleFormMileageLabel">Kilometerstand <span class="optional-label">optional</span></label>

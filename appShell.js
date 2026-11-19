@@ -93,7 +93,8 @@
                 { view: 'fahrzeuge', label: 'Fahrzeuge', hint: 'Akte je Fahrzeug' },
                 { view: 'werkstatt', label: 'Werkstatt', hint: 'Reifen, ATU, Prüfpunkte' },
                 { view: 'fahrerakte', label: 'Fahrerakte', hint: 'Meldungen über Vorfahrer' },
-                { view: 'heidelberg', label: 'Heidelberg', hint: 'Fahrzeuge am Standort' },
+                { view: 'heidelberg', label: 'Heidelberg', hint: 'Fahrzeuge der Kollegen dort' },
+                { view: 'duesseldorf', label: 'Düsseldorf', hint: 'Fahrzeuge der Kollegen dort' },
                 { view: 'tankkarten', label: 'Tankkarten', hint: 'Wer hat welche Karte' },
                 { view: 'archiv', label: 'Archiv', hint: 'Abgegebene Fahrzeuge' }
             ] },

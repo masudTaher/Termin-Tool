@@ -2325,7 +2325,7 @@ if (!window.TerminContact) {
             setStatus(TerminCloud.germanError(vehicleResult.error || handoverResult.error), 'error');
             return;
         }
-        vehicles = vehicleResult.data.filter(vehicle => vehicle.station !== 'Heidelberg');   // Fahrzeuge der Kollegen in Heidelberg (Update 41) gehören nicht hierher
+        vehicles = vehicleResult.data.filter(vehicle => !['Heidelberg', 'Düsseldorf'].includes(vehicle.station));   // Fahrzeuge der Kollegen in Heidelberg/Düsseldorf (Update 41, 56) gehören nicht hierher
         openHandovers = handoverResult.data;
         // Mehrere offene Übernahmen (z. B. eine vom Büro im Live-Tracking eingetragene ohne Kilometer): Es gilt die mit Kilometerstand, sonst die neueste.
         myHandover = openHandovers.filter(item => item.driver_id === profile.id)
@@ -2343,7 +2343,7 @@ if (!window.TerminContact) {
             const sinceDay = myHandover.date === TerminCloud.todayIso() ? 'heute' : new Date(`${myHandover.date}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
             $('heroSince').textContent = `übernommen ${sinceDay} um ${String(myHandover.start_time).slice(0, 5)} Uhr${myHandover.emergency ? ' · Notdienst' : keepsOvernight(myHandover) ? ' · bleibt über Nacht' : ''}`;
             fillStateList($('vehicleState'), [
-                ['Letzter Fahrer', myHandover.previous_driver_name || 'unbekannt'],
+                ['Letzter Fahrer', myHandover.previous_driver_name || (/Schnellübernahme/.test(myHandover.note || '') ? 'du selbst' : 'unbekannt')],
                 ['Kilometer bei Übernahme', formatKm(myHandover.start_mileage)],
                 ['Tank', myVehicle?.fuel == null ? 'unbekannt' : FUEL[myVehicle.fuel]],
                 ['Parkort', myVehicle?.parking || 'unbekannt'],
@@ -2353,7 +2353,7 @@ if (!window.TerminContact) {
             const label = myVehicle ? vehicleLabel(myVehicle) : 'dein Fahrzeug';
             $('damageVehicleLabel').textContent = `${label} – schau zuerst, ob der Schaden schon markiert ist.`;
             $('damagePreviousRow').hidden = !myHandover.previous_driver_id;
-            $('damagePreviousName').textContent = myHandover.previous_driver_name || 'unbekannt';
+            $('damagePreviousName').textContent = myHandover.previous_driver_name || (/Schnellübernahme/.test(myHandover.note || '') ? 'du selbst' : 'unbekannt');
             $('alertVehicleLabel').textContent = `${label} – Warnleuchte oder Hinweis im Display.`;
             loadHeroDamages();
         } else {
@@ -2362,6 +2362,7 @@ if (!window.TerminContact) {
                 : fixedVehicle && free.includes(fixedVehicle) ? `Dein festes Fahrzeug ${fixedVehicle.plate} ist frei.`
                 : `${free.length} ${free.length === 1 ? 'Fahrzeug ist' : 'Fahrzeuge sind'} frei.`;
             $('startTake').disabled = !free.length;
+            renderQuickTake(fixedVehicle && free.includes(fixedVehicle) ? fixedVehicle : null);
         }
 
         // Ab 16 Uhr erinnern, wenn das Auto noch nicht zurückgegeben ist (außer im Notdienst oder „über Nacht behalten“).
@@ -2373,6 +2374,52 @@ if (!window.TerminContact) {
         // Unterseiten für Schaden, Meldung und Rückgabe gibt es nur mit Fahrzeug.
         if (NEEDS_VEHICLE.includes(currentView) && !myHandover) goTo('vehicle');
     }
+
+    // ---------- R91: Schnellübernahme des eigenen festen Fahrzeugs ----------
+    // Festangestellte haben ein eigenes Auto. War die Person selbst die letzte Fahrerin (keine andere dazwischen), reicht ein Tipp:
+    // Die Übernahme wird mit dem Kilometerstand der eigenen Rückgabe eingetragen; Tank und Parkort stehen ohnehin am Fahrzeug.
+    // Hat jemand anders dazwischen gefahren, geht es den normalen Weg (Zustand und Schäden prüfen).
+    let quickVehicle = null;
+    let quickCheck = 0;
+    async function renderQuickTake(vehicle) {
+        const box = $('quickTake');
+        if (!box) return;
+        quickVehicle = null;
+        box.hidden = true;
+        $('startTake').textContent = 'Fahrzeug übernehmen';
+        $('startTake').classList.add('button-primary'); $('startTake').classList.remove('button-secondary');
+        if (!vehicle || !isFest() || vehicle.mileage == null) return;
+        const run = ++quickCheck;
+        const { data, error } = await client.from('tt_handovers').select('id, driver_id, driver_name, end_time, end_date, date, end_mileage')
+            .eq('vehicle_id', vehicle.id).order('created_at', { ascending: false }).limit(1);
+        if (run !== quickCheck || error || myHandover) return;
+        const last = (data || [])[0];
+        if (!last || last.driver_id !== profile.id || !last.end_time) return;      // jemand anders war zuletzt dran – oder noch nie jemand
+        quickVehicle = vehicle;
+        $('quickTakePlate').textContent = `Weiter mit ${vehicle.plate}`;
+        const when = last.end_date || last.date;
+        const whenText = when === TerminCloud.todayIso() ? 'heute' : new Date(`${when}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        $('quickTakeInfo').textContent = [`zurückgegeben ${whenText} um ${String(last.end_time).slice(0, 5)} Uhr`, formatKm(vehicle.mileage), vehicle.fuel == null ? '' : `Tank ${FUEL[vehicle.fuel]}`, vehicle.parking ? `steht: ${vehicle.parking}` : ''].filter(Boolean).join(' · ');
+        box.hidden = false;
+        $('startTake').textContent = 'Anderes Fahrzeug oder mit Prüfung übernehmen';
+        $('startTake').classList.remove('button-primary'); $('startTake').classList.add('button-secondary');
+    }
+    $('quickTakeButton')?.addEventListener('click', async () => {
+        const vehicle = quickVehicle;
+        if (!vehicle) return;
+        const button = $('quickTakeButton');
+        button.disabled = true;
+        try {
+            const { error } = await client.rpc('tt_take_vehicle', { p_vehicle: vehicle.id, p_mileage: Number(vehicle.mileage), p_note: 'Im Portal übernommen – eigenes Fahrzeug, Schnellübernahme (letzter Fahrer)', p_emergency: false, p_start_note: '' });
+            if (error) { toast(`Nicht übernommen: ${TerminCloud.germanError(error)}`, 'error', '#quickTakeButton'); return; }
+            TerminCloud.callFunction?.({ action: 'vehicle', kind: 'take' })?.catch?.(() => null);
+            await loadFleet();
+            await showSuccess(`${vehicle.plate} übernommen`, 'Gute Fahrt!');
+            goTo('vehicle');
+        } finally {
+            button.disabled = false;
+        }
+    });
 
     // ---------- Mein Fahrzeug antippen: Standort und Details – auch nach der Übernahme ----------
     async function openCarDetails() {
@@ -2390,7 +2437,7 @@ if (!window.TerminContact) {
             ['Übernommen', `${sinceDay} um ${String(myHandover.start_time).slice(0, 5)} Uhr`],
             ['Kilometer bei Übernahme', formatKm(myHandover.start_mileage)],
             ['Tank bei Übernahme', vehicle?.fuel == null ? 'unbekannt' : FUEL[vehicle.fuel]],
-            ['Letzter Fahrer', myHandover.previous_driver_name || 'unbekannt'],
+            ['Letzter Fahrer', myHandover.previous_driver_name || (/Schnellübernahme/.test(myHandover.note || '') ? 'du selbst' : 'unbekannt')],
             ['Innen', cleanText(vehicle?.clean_inside)],
             ['Außen', cleanText(vehicle?.clean_outside)],
             ['Rückgabe', myHandover.emergency ? 'Notdienst – bleibt bei dir bis zur Rückgabe' : keepsOvernight(myHandover) ? 'bleibt über Nacht bei dir' : 'heute, wenn du fertig bist']

@@ -149,6 +149,11 @@
                   <svg class="empty-hero-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16.5V12l1.8-5a2 2 0 0 1 1.9-1.3h6.6A2 2 0 0 1 17.2 7L19 12v4.5"/><path d="M4 12h16"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/><path d="M9.3 16.5h5.4"/></svg>
                   <h2>Du hast gerade kein Fahrzeug</h2>
                   <p id="myVehicleInfo">Übernimm ein Auto, bevor du losfährst.</p>
+                  <!-- R91: Festangestellte mit eigenem Auto – warst du der letzte Fahrer, reicht ein Tipp. Kilometer, Tank und Parkort stammen aus deiner Rückgabe. -->
+                  <div id="quickTake" class="quick-take" hidden>
+                     <button type="button" class="button-primary big-button" id="quickTakeButton"><span id="quickTakePlate">Mein Auto übernehmen</span><small id="quickTakeInfo"></small></button>
+                     <p class="field-hint" id="quickTakeHint">Du warst der letzte Fahrer – Kilometer, Tank und Parkort werden von deiner Rückgabe übernommen. Zurückgeben geht wie immer mit allen Angaben.</p>
+                  </div>
                   <button type="button" class="button-primary big-button" id="startTake" data-go="take">Fahrzeug übernehmen</button>
                </section>
 

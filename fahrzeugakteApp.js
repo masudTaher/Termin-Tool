@@ -14,8 +14,10 @@
     let openHandovers = [];
     // ---------- Unterreiter (R87): Übersicht · Fahrzeuge · Werkstatt · Fahrerakte · Heidelberg · Tankkarten · Archiv ----------
     // Die Abschnitte bleiben alle im Dokument (die Renderer schreiben weiter hinein); sichtbar ist nur der gewählte Reiter.
-    const FLEET_TABS = ['uebersicht', 'fahrzeuge', 'werkstatt', 'fahrerakte', 'heidelberg', 'tankkarten', 'archiv'];
-    const FLEET_TAB_TITLE = { uebersicht: 'Fuhrpark', fahrzeuge: 'Fahrzeuge', werkstatt: 'Werkstatt', fahrerakte: 'Fahrerakte', heidelberg: 'Heidelberg', tankkarten: 'Tankkarten', archiv: 'Fuhrpark-Archiv' };
+    const REMOTE_STATIONS = ['Heidelberg', 'Düsseldorf'];   // Standorte der Kollegen (Update 41, 56) – nicht zur Übernahme in Bonn
+    const STATION_TAB = { Heidelberg: 'heidelberg', Düsseldorf: 'duesseldorf' };
+    const FLEET_TABS = ['uebersicht', 'fahrzeuge', 'werkstatt', 'fahrerakte', 'heidelberg', 'duesseldorf', 'tankkarten', 'archiv'];
+    const FLEET_TAB_TITLE = { uebersicht: 'Fuhrpark', fahrzeuge: 'Fahrzeuge', werkstatt: 'Werkstatt', fahrerakte: 'Fahrerakte', heidelberg: 'Heidelberg', duesseldorf: 'Düsseldorf', tankkarten: 'Tankkarten', archiv: 'Fuhrpark-Archiv' };
     let fleetTab = (() => {
         const wanted = new URLSearchParams(location.search).get('ansicht');
         if (FLEET_TABS.includes(wanted)) return wanted;
@@ -800,19 +802,21 @@
     }
 
     // ---------- Fahrzeugübersicht ----------
-    // Standort (Update 41): Heidelberger Fahrzeuge stehen in ihrem eigenen Abschnitt, nicht in der Bonner Übersicht.
-    const stationOf = vehicle => vehicle?.station === 'Heidelberg' ? 'Heidelberg' : 'Bonn';
-    const heidelberg = () => vehicles.filter(vehicle => stationOf(vehicle) === 'Heidelberg');
+    // Standort (Update 41, R91): Fahrzeuge der Kollegen in Heidelberg und Düsseldorf stehen in ihrem eigenen Bereich, nicht in der Bonner Übersicht.
+    const stationOf = vehicle => REMOTE_STATIONS.includes(vehicle?.station) ? vehicle.station : 'Bonn';
+    const atStation = station => vehicles.filter(vehicle => stationOf(vehicle) === station);
     function renderStation() {
-        const section = $('stationSection');
-        if (!section) return;
-        const cars = heidelberg().sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
-        const cards = fuelCards.filter(card => !card.holder_id && card.holder_name === 'Heidelberg');
-        setFleetBadge('heidelberg', cars.length);
-        $('stationSummary').textContent = cars.length || cards.length
-            ? `${cars.length} ${cars.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · ${cards.length} ${cards.length === 1 ? 'Tankkarte' : 'Tankkarten'} bei den Kollegen in Heidelberg`
-            : 'Noch nichts eingetragen. Lege die Fahrzeuge der Heidelberger Kollegen an und gib ihre Tankkarten unter „Tankkarten“ an „Heidelberg“ aus.';
-        $('stationVehicles').replaceChildren(...(cars.length ? cars.map(vehicle => {
+        document.querySelectorAll('[data-station]').forEach(section => renderStationPanel(section, section.dataset.station));
+    }
+    function renderStationPanel(section, station) {
+        const pick = name => section.querySelector(`.station-${name}`);
+        const cars = atStation(station).sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
+        const cards = fuelCards.filter(card => !card.holder_id && card.holder_name === station);
+        setFleetBadge(STATION_TAB[station], cars.length);
+        pick('summary').textContent = cars.length || cards.length
+            ? `${cars.length} ${cars.length === 1 ? 'Fahrzeug' : 'Fahrzeuge'} · ${cards.length} ${cards.length === 1 ? 'Tankkarte' : 'Tankkarten'} bei den Kollegen in ${station}`
+            : `Noch nichts eingetragen. Lege die Fahrzeuge der Kollegen in ${station} an und gib ihre Tankkarten unter „Tankkarten“ an „${station}“ aus.`;
+        pick('vehicles').replaceChildren(...(cars.length ? cars.map(vehicle => {
             const row = el('li', 'vehicle-entry file-entry station-vehicle');
             const meta = el('span');
             meta.append(el('strong', null, vehicle.plate), el('small', null, [[vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · '), vehicle.driver_note ? `Fahrer: ${vehicle.driver_note}` : 'fester Fahrer nicht eingetragen', vehicle.mileage != null ? formatKm(vehicle.mileage) : '', vehicle.parking || '', vehicle.label || ''].filter(Boolean).join(' · ')));
@@ -824,16 +828,16 @@
             open.type = 'button';
             open.addEventListener('click', () => selectVehicle(vehicle.id));
             actions.append(edit, open);
-            row.append(pill(vehicle.service_status ? 'in Arbeit' : 'bekannt', vehicle.service_status ? 'Werkstatt' : 'Heidelberg'), meta, actions);
+            row.append(pill(vehicle.service_status ? 'in Arbeit' : 'bekannt', vehicle.service_status ? 'Werkstatt' : station), meta, actions);
             return row;
-        }) : [el('li', 'directory-empty', 'Noch kein Fahrzeug für Heidelberg angelegt.')]));
-        $('stationCards').replaceChildren(...(cards.length ? cards.map(card => {
+        }) : [el('li', 'directory-empty', `Noch kein Fahrzeug für ${station} angelegt.`)]));
+        pick('cards').replaceChildren(...(cards.length ? cards.map(card => {
             const row = el('li', 'vehicle-entry file-entry');
             const meta = el('span');
-            meta.append(el('strong', null, `Tankkarte ${card.number}`), el('small', null, [`in Heidelberg seit ${formatDateTime(card.assigned_at)}`, card.note || ''].filter(Boolean).join(' · ')));
-            row.append(pill('in Arbeit', 'Heidelberg'), meta);
+            meta.append(el('strong', null, `Tankkarte ${card.number}`), el('small', null, [`in ${station} seit ${formatDateTime(card.assigned_at)}`, card.note || ''].filter(Boolean).join(' · ')));
+            row.append(pill('in Arbeit', station), meta);
             return row;
-        }) : [el('li', 'directory-empty', 'Keine Tankkarte in Heidelberg. Unter „Tankkarten“ bei „Ausgeben an …“ „Heidelberg (Kollegen)“ wählen.')]));
+        }) : [el('li', 'directory-empty', `Keine Tankkarte in ${station}. Unter „Tankkarten“ bei „Ausgeben an …“ „${station} (Kollegen)“ wählen.`)]));
     }
     function renderGrid() {
         const grid = $('vehicleGrid');
@@ -1296,14 +1300,16 @@
         if ($('vehicleFormModel').value === 'Mercedes V-Klasse') $('vehicleFormBody').value = 'Bus';
         if (other) $('vehicleFormBrand').focus();
     });
+    // R91: Der feste Fahrer lässt sich für jeden Standort gleich beim Anlegen eintragen (z. B. der Vizechef in Bonn).
+    // Ein Konto verknüpft man danach in der Akte unter „Reserviert für“ – dann sieht die Person ihr Auto in der App.
     function syncStationFields() {
-        const hd = $('vehicleFormStation').value === 'Heidelberg';
-        $('vehicleFormDriver').hidden = !hd;
-        $('vehicleFormDriverLabel').hidden = !hd;
+        const station = $('vehicleFormStation').value;
+        $('vehicleFormDriverLabel').firstChild.textContent = station === 'Bonn' ? 'Fester Fahrer ' : `Fester Fahrer in ${station} `;
+        $('vehicleFormDriver').placeholder = station === 'Bonn' ? 'Name, z. B. der Vizechef – das Auto ist dann nur für ihn' : 'Name des Kollegen';
     }
     $('vehicleFormStation').addEventListener('change', syncStationFields);
     $('vehicleAddOpen').addEventListener('click', () => openVehicleDialog(null));
-    $('stationAddOpen')?.addEventListener('click', () => { openVehicleDialog.preset = 'Heidelberg'; openVehicleDialog(null); });
+    document.querySelectorAll('.station-add').forEach(button => button.addEventListener('click', () => { openVehicleDialog.preset = button.closest('[data-station]')?.dataset.station || 'Heidelberg'; openVehicleDialog(null); }));
     $('vehicleEditOpen').addEventListener('click', () => openVehicleDialog(vehicles.find(vehicle => vehicle.id === selectedId) || null));
     $('vehicleFormCancel').addEventListener('click', () => $('vehicleDialog').close());
     $('vehicleForm').addEventListener('submit', async event => {
@@ -1318,7 +1324,7 @@
         const vehicle = editVehicleId ? vehicles.find(item => item.id === editVehicleId) : null;
         const twin = allVehicles.find(item => item.plate_key === key && item.id !== editVehicleId);
         if (twin && (twin.active || editVehicleId)) { showToast(`Das Kennzeichen ${twin.plate} gibt es schon${twin.active ? ' im Fuhrpark' : ' (unter „Nicht mehr im Fuhrpark“)'}.`, 'error', { target: '#vehicleFormPlate' }); return; }
-        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim(), station: $('vehicleFormStation').value, driver_note: $('vehicleFormStation').value === 'Heidelberg' ? $('vehicleFormDriver').value.trim() : (vehicle?.station !== 'Heidelberg' && vehicle?.driver_note || '') };
+        const row = { plate, plate_key: key, brand, body: $('vehicleFormBody').value, type: $('vehicleFormType').value, label: $('vehicleFormLabel').value.trim(), station: $('vehicleFormStation').value, driver_note: $('vehicleFormDriver').value.trim() };
         const state = mileageText ? { mileage: Number(mileageText), state_updated_at: new Date().toISOString(), state_updated_by: profile.full_name || '' } : {};
         const submit = $('vehicleFormSubmit');
         submit.disabled = true;
@@ -1329,7 +1335,7 @@
         let result = await save(row);
         // Ohne Update 41 kennt die Datenbank Standort und Fahrer noch nicht.
         if (result.error && /station|driver_note/i.test(result.error.message || '')) {
-            if (row.station === 'Heidelberg') { submit.disabled = false; showToast('Für den Standort Heidelberg fehlt noch das Datenbank-Update 41.', 'error'); return; }
+            if (row.station !== 'Bonn') { submit.disabled = false; showToast(`Für den Standort ${row.station} fehlt noch das Datenbank-Update ${row.station === 'Heidelberg' ? '41' : '56'}.`, 'error'); return; }
             const { station, driver_note, ...plain } = row;
             result = await save(plain);
         }
@@ -1594,7 +1600,7 @@
             const row = el('li', 'vehicle-entry file-entry fuel-entry');
             const meta = el('span');
             meta.append(el('strong', null, `Tankkarte ${card.number}`),
-                el('small', null, given(card) ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'}${!card.holder_id ? (card.holder_name === 'Heidelberg' ? ' (Kollegen)' : ' (ohne Konto)') : ''} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
+                el('small', null, given(card) ? `bei ${card.holder_name || profileName(card.holder_id) || 'unbekannt'}${!card.holder_id ? (REMOTE_STATIONS.includes(card.holder_name) ? ' (Kollegen)' : ' (ohne Konto)') : ''} seit ${formatDateTime(card.assigned_at)}` : 'liegt im Büro'));
             if (card.note) meta.append(el('small', null, card.note));
             const actions = el('span', 'vehicle-entry-actions');
             if (admin && given(card)) {
@@ -1609,17 +1615,18 @@
                     list.id = 'fuelPeopleList';
                     document.body.append(list);
                 }
-                $('fuelPeopleList').replaceChildren(el('option', null, 'Heidelberg (Kollegen)'), ...people.map(person => el('option', null, person.full_name)));
+                $('fuelPeopleList').replaceChildren(...REMOTE_STATIONS.map(station => el('option', null, `${station} (Kollegen)`)), ...people.map(person => el('option', null, person.full_name)));
                 const nameInput = el('input', 'fuel-name-input');
                 nameInput.type = 'text'; nameInput.maxLength = 80; nameInput.placeholder = 'Ausgeben an: Name tippen oder wählen …'; nameInput.autocomplete = 'off'; nameInput.setAttribute('list', 'fuelPeopleList');
-                nameInput.title = 'Jeder Name ist möglich – auch ohne Konto. Namen mit Konto und „Heidelberg (Kollegen)“ stehen zur Auswahl.';
+                nameInput.title = 'Jeder Name ist möglich – auch ohne Konto. Namen mit Konto sowie „Heidelberg (Kollegen)“ und „Düsseldorf (Kollegen)“ stehen zur Auswahl.';
                 nameInput.setAttribute('aria-label', `Tankkarte ${card.number} ausgeben an`);
                 const give = el('button', 'button-secondary fleet-end-button', 'Ausgeben');
                 give.type = 'button';
                 const giveNow = () => {
                     const name = nameInput.value.trim().replace(/\s+/g, ' ');
                     if (!name) { showToast('Bitte trag ein, wer die Karte bekommt – Name tippen oder aus der Liste wählen.', 'error', { target: nameInput }); return; }
-                    if (/^heidelberg\b/i.test(name)) { setFuelCard(card, null, give, 'Heidelberg'); return; }
+                    const station = REMOTE_STATIONS.find(item => new RegExp(`^${item.replace('ü', '(ü|ue)')}\\b`, 'i').test(name));
+                    if (station) { setFuelCard(card, null, give, station); return; }
                     // Steht der Name genau so in der Liste der Konten, wird die Karte dem Konto zugeordnet – sonst dem freien Namen.
                     const known = people.find(person => person.full_name.trim().toLocaleLowerCase('de-DE') === name.toLocaleLowerCase('de-DE'));
                     if (known) { setFuelCard(card, known.id, give); return; }
@@ -1638,7 +1645,7 @@
                 });
                 actions.append(nameInput, give, remove);
             }
-            row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id || card.holder_name !== 'Heidelberg' ? 'ausgegeben' : 'Heidelberg') : 'im Büro'), meta, actions);
+            row.append(pill(given(card) ? 'in Arbeit' : 'erledigt', given(card) ? (card.holder_id || !REMOTE_STATIONS.includes(card.holder_name) ? 'ausgegeben' : card.holder_name) : 'im Büro'), meta, actions);
             return row;
         }));
         $('fuelLog').replaceChildren(...fuelLog.map(item => {
@@ -1653,14 +1660,14 @@
         let { error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId, p_place: place });
         // Ohne Update 41 gibt es die Funktion nur mit zwei Parametern.
         if (error && /could not find the function|p_place/i.test(error.message || '')) {
-            if (place) { button.disabled = false; showToast('Für „Heidelberg“ als Inhaber fehlt noch das Datenbank-Update 41.', 'error'); return; }
+            if (place) { button.disabled = false; showToast(`Für „${place}“ als Inhaber fehlt noch das Datenbank-Update 41.`, 'error'); return; }
             ({ error } = await client.rpc('tt_fuel_card_set', { p_card: card.id, p_profile: profileId }));
         }
         button.disabled = false;
         // Ohne Update 47 nimmt die Datenbank nur „Heidelberg“ als Namen ohne Konto an.
         if (error && /Unbekannter Standort/i.test(error.message || '')) { showToast('Für Namen ohne Konto fehlt noch das Datenbank-Update 47.', 'error'); return; }
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
-        showToast(place === 'Heidelberg' ? `Tankkarte ${card.number} ist jetzt bei den Kollegen in Heidelberg` : place ? `Tankkarte ${card.number} ausgegeben an ${place} (ohne Konto)` : profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
+        showToast(REMOTE_STATIONS.includes(place) ? `Tankkarte ${card.number} ist jetzt bei den Kollegen in ${place}` : place ? `Tankkarte ${card.number} ausgegeben an ${place} (ohne Konto)` : profileId ? `Tankkarte ${card.number} ausgegeben an ${profileName(profileId)}` : `Tankkarte ${card.number} ist wieder im Büro`, 'success');
         await refresh();
     }
 
@@ -2136,7 +2143,7 @@
             const box = el('input');
             box.type = 'checkbox';
             box.value = vehicle.id;
-            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) !== 'Bonn' ? stationOf(vehicle) : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
             row.append(label);
             return row;
         }));
@@ -2185,7 +2192,7 @@
             box.type = 'checkbox';
             box.value = vehicle.id;
             box.checked = vehicle.type !== 'Mietwagen' && stationOf(vehicle) === 'Bonn';
-            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) === 'Heidelberg' ? 'Heidelberg' : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
+            label.append(box, el('span', null, `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type, stationOf(vehicle) !== 'Bonn' ? stationOf(vehicle) : '', vehicle.tyres ? TYRES[vehicle.tyres] : '', vehicle.atu_note ? `Extras: ${vehicle.atu_note}` : ''].filter(Boolean).join(' · ')}${vehicle.service_status ? ` · ${vehicle.service_status === 'gesperrt' ? 'gesperrt' : 'Werkstatt'}` : ''}`));
             row.append(label);
             return row;
         }));

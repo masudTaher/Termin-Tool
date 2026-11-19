@@ -1107,6 +1107,11 @@ a.overview-card { text-decoration: none; }
 .start-notices .notice-soft, :root[data-theme="dark"] .start-notices .notice-soft { border-color: color-mix(in srgb, var(--brand) 30%, var(--line)); border-left-color: var(--brand); background: var(--brand-soft); }
 
 .empty-hero { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 20px 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-sm); text-align: center; }
+/* R91: Schnellübernahme des eigenen Fahrzeugs */
+.quick-take { display: flex; width: 100%; flex-direction: column; gap: 6px; margin: 4px 0 2px; }
+.quick-take .big-button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 64px; padding-block: 10px; }
+.quick-take .big-button small { font-size: .78rem; font-weight: 500; opacity: .88; }
+.quick-take .field-hint { margin: 0; }
 .empty-hero-icon { width: 64px; height: 64px; padding: 14px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .empty-hero h2 { font-size: 1.2rem; }
 .empty-hero p { margin-bottom: 8px; color: var(--muted); font-size: .92rem; }
