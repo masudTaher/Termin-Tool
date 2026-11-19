@@ -2331,7 +2331,8 @@ if (!window.TerminContact) {
         myHandover = openHandovers.filter(item => item.driver_id === profile.id)
             .sort((left, right) => (Number(right.start_mileage != null) - Number(left.start_mileage != null)) || String(right.created_at || '').localeCompare(String(left.created_at || '')))[0] || null;
         const myVehicle = myHandover ? vehicleById(myHandover.vehicle_id) : null;
-        const fixedVehicle = vehicles.find(vehicle => vehicle.assigned_to === profile.id) || null;
+        // Eigenes Auto: fest reserviert (assigned_to) oder Stammfahrzeug (preferred_driver, R93 – nicht reserviert, steht nur oben).
+        const fixedVehicle = vehicles.find(vehicle => vehicle.assigned_to === profile.id) || vehicles.find(vehicle => vehicle.preferred_driver === profile.id) || null;
         const free = freeVehicles();
 
         $('noVehicle').hidden = Boolean(myHandover);
@@ -2359,7 +2360,8 @@ if (!window.TerminContact) {
         } else {
             $('myVehicleInfo').textContent = !vehicles.length ? 'Es sind noch keine Fahrzeuge angelegt.'
                 : !free.length ? 'Im Moment ist kein Fahrzeug frei.'
-                : fixedVehicle && free.includes(fixedVehicle) ? `Dein festes Fahrzeug ${fixedVehicle.plate} ist frei.`
+                : fixedVehicle && free.includes(fixedVehicle) ? `${fixedVehicle.assigned_to === profile.id ? 'Dein festes Fahrzeug' : 'Dein Stammfahrzeug'} ${fixedVehicle.plate} ist frei.`
+                : fixedVehicle && openHandovers.some(item => item.vehicle_id === fixedVehicle.id) ? `Dein Stammfahrzeug ${fixedVehicle.plate} ist gerade bei ${openHandovers.find(item => item.vehicle_id === fixedVehicle.id)?.driver_name || 'jemand anderem'} – ${free.length} ${free.length === 1 ? 'anderes Fahrzeug ist' : 'andere Fahrzeuge sind'} frei.`
                 : `${free.length} ${free.length === 1 ? 'Fahrzeug ist' : 'Fahrzeuge sind'} frei.`;
             $('startTake').disabled = !free.length;
             renderQuickTake(fixedVehicle && free.includes(fixedVehicle) ? fixedVehicle : null);
@@ -2397,6 +2399,7 @@ if (!window.TerminContact) {
         if (!last || last.driver_id !== profile.id || !last.end_time) return;      // jemand anders war zuletzt dran – oder noch nie jemand
         quickVehicle = vehicle;
         $('quickTakePlate').textContent = `Weiter mit ${vehicle.plate}`;
+        $('quickTakeHint').textContent = `${vehicle.assigned_to === profile.id ? 'Dein festes Fahrzeug' : 'Dein Stammfahrzeug'} – du warst der letzte Fahrer. Kilometer, Tank und Parkort werden von deiner Rückgabe übernommen. Zurückgeben geht wie immer mit allen Angaben.`;
         const when = last.end_date || last.date;
         const whenText = when === TerminCloud.todayIso() ? 'heute' : new Date(`${when}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
         $('quickTakeInfo').textContent = [`zurückgegeben ${whenText} um ${String(last.end_time).slice(0, 5)} Uhr`, formatKm(vehicle.mileage), vehicle.fuel == null ? '' : `Tank ${FUEL[vehicle.fuel]}`, vehicle.parking ? `steht: ${vehicle.parking}` : ''].filter(Boolean).join(' · ');
@@ -2522,7 +2525,7 @@ if (!window.TerminContact) {
     function freeVehicles() {
         const taken = new Set(openHandovers.map(item => item.vehicle_id));
         // Das eigene feste Fahrzeug steht oben, danach diplomatische Fahrzeuge, dann Mietwagen.
-        const rank = vehicle => vehicle.assigned_to === profile.id ? 0 : vehicle.type === 'Diplomatisch' ? 1 : vehicle.type === 'Mietwagen' ? 2 : 3;
+        const rank = vehicle => vehicle.assigned_to === profile.id ? 0 : vehicle.preferred_driver === profile.id ? 0 : vehicle.type === 'Diplomatisch' ? 1 : vehicle.type === 'Mietwagen' ? 2 : 3;
         // Fest reservierte Fahrzeuge sieht nur die Person, für die sie reserviert sind – mit Namen ohne Konto (driver_note, Update 47) niemand.
         const mine = vehicle => vehicle.assigned_to ? vehicle.assigned_to === profile.id : !String(vehicle.driver_note || '').trim();
         // Fahrzeuge in der Werkstatt oder gesperrte werden gar nicht erst angeboten.
@@ -2698,18 +2701,19 @@ if (!window.TerminContact) {
             main.append(el('strong', '', vehicle.plate), el('span', '', [vehicle.brand, vehicle.body].filter(Boolean).join(' · ') || 'Fahrzeug'));
             const chips = el('span', 'car-card-chips');
             if (vehicle.assigned_to === profile.id) chips.append(el('em', 'chip chip-brand', 'Dein festes Fahrzeug'));
+            else if (vehicle.preferred_driver === profile.id) chips.append(el('em', 'chip chip-brand', 'Dein Stammfahrzeug'));
             if (vehicle.type) chips.append(el('em', 'chip', vehicle.type === 'Diplomatisch' ? 'Diplomatisch' : vehicle.type));
             if (vehicle.fuel != null) chips.append(el('em', 'chip', `Tank ${FUEL[vehicle.fuel]}`));
             if (vehicle.parking) chips.append(el('em', 'chip', `Steht: ${vehicle.parking}`));
             card.append(main, chips, el('span', 'car-card-arrow', '›'));
             card.dataset.search = `${vehicle.plate} ${vehicle.brand} ${vehicle.body}`.toLocaleLowerCase('de-DE').replace(/[\s-]/g, '');
             card.dataset.type = takeTypeOf(vehicle);
-            if (vehicle.assigned_to === profile.id) card.dataset.own = '1';
+            if (vehicle.assigned_to === profile.id || vehicle.preferred_driver === profile.id) card.dataset.own = '1';
             card.addEventListener('click', () => chooseTakeVehicle(vehicle));
             list.append(card);
         });
         // Art wählen: nur wenn es von beiden Arten freie Autos gibt und die Liste sonst lang wäre.
-        const others = free.filter(vehicle => vehicle.assigned_to !== profile.id);
+        const others = free.filter(vehicle => vehicle.assigned_to !== profile.id && vehicle.preferred_driver !== profile.id);
         const counts = Object.fromEntries(TAKE_TYPES.map(type => [type, others.filter(vehicle => takeTypeOf(vehicle) === type).length]));
         takeChoice = TAKE_TYPES.every(type => counts[type] > 0) && others.length >= TAKE_TYPE_FROM;
         let remembered = '';

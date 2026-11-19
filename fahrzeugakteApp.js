@@ -683,7 +683,8 @@
 
     // Wer / wo / seit wann – der wichtigste Text einer Zeile.
     function whoLines(vehicle, facts) {
-        const reserved = reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}` : '';
+        const reserved = reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}`
+            : vehicle.preferred_driver ? `Stammfahrzeug von ${profileName(vehicle.preferred_driver) || '–'}` : '';
         if (facts.holder) {
             return [
                 `${facts.holder.driver_name}${facts.holder.emergency ? ' · Notdienst' : TerminCloud.keepsOvernight(facts.holder) ? ' · über Nacht (früher Termin)' : ''}`,
@@ -1036,7 +1037,7 @@
         $('vehicleFile').hidden = false;
         const holder = openHandovers.find(item => item.vehicle_id === vehicle.id);
         $('fileTitle').textContent = vehicleLabel(vehicle);
-        $('fileSubtitle').textContent = [vehicle.type, reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : TerminCloud.keepsOvernight(holder) ? ' (über Nacht, früher Termin)' : ''}` : 'frei'].filter(Boolean).join(' · ');
+        $('fileSubtitle').textContent = [vehicle.type, reservedName(vehicle) ? `Reserviert für ${reservedName(vehicle)}${vehicle.assigned_to ? '' : ' (ohne Konto)'}` : vehicle.preferred_driver ? `Stammfahrzeug von ${profileName(vehicle.preferred_driver) || '–'} (nicht reserviert)` : 'nicht reserviert', holder ? `gerade bei ${holder.driver_name}${holder.emergency ? ' (Notdienst)' : TerminCloud.keepsOvernight(holder) ? ' (über Nacht, früher Termin)' : ''}` : 'frei'].filter(Boolean).join(' · ');
         fillArt($('fileArt'), vehicle);
         $('fileBadges').replaceChildren(...vehicleBadges(vehicle, vehicleFacts(vehicle)).children);
         $('filePhotoRemove').hidden = !vehicle.photo_path;
@@ -1121,6 +1122,13 @@
         }));
         const ownName = !vehicle.assigned_to && String(vehicle.driver_note || '').trim();
         assigned.value = vehicle.assigned_to || (ownName ? OTHER_NAME : '');
+        // R93: Stammfahrer – Festangestellte zuerst, dann alle anderen aktiven Konten.
+        const preferred = $('filePreferred');
+        if (preferred) {
+            const people = profiles.filter(item => item.active).sort((left, right) => Number(right.employment === 'fest') - Number(left.employment === 'fest') || String(left.full_name).localeCompare(String(right.full_name), 'de'));
+            preferred.replaceChildren(...[{ id: '', full_name: 'Kein Stammfahrer' }, ...people].map(item => { const option = el('option', null, item.id ? `${item.full_name}${item.employment === 'fest' ? ' (fest)' : ''}` : item.full_name); option.value = item.id; return option; }));
+            preferred.value = vehicle.preferred_driver || '';
+        }
         $('fileAssignedNameBox').hidden = !ownName;
         $('fileAssignedName').value = ownName || '';
         $('fileMileage').value = '';
@@ -1223,6 +1231,13 @@
         const { error } = await client.from('tt_vehicles').update({ assigned_to: value || null, driver_note: '' }).eq('id', selectedId);
         if (error) { showToast(TerminCloud.germanError(error), 'error'); return; }
         showToast(value ? `Reserviert für ${profileName(value)}` : 'Reservierung aufgehoben', 'success');
+        await refresh();
+    });
+    $('filePreferred')?.addEventListener('change', async () => {
+        const value = $('filePreferred').value;
+        const { error } = await client.from('tt_vehicles').update({ preferred_driver: value || null }).eq('id', selectedId);
+        if (error) { showToast(/preferred_driver/i.test(error.message || '') ? 'Für das Stammfahrzeug fehlt noch das Datenbank-Update 57 (supabase/update-57.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        showToast(value ? `Stammfahrzeug von ${profileName(value)} – nicht reserviert` : 'Stammfahrer entfernt', 'success');
         await refresh();
     });
     async function saveAssignedName() {
