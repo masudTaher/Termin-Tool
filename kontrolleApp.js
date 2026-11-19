@@ -69,10 +69,17 @@
         if (record && CANCELLED.test(String(record.Status || ''))) return false;
         return true;
     };
-    // R90: Zu Physiotherapie und Visiten wird kein Bericht geschrieben – solche Termine stehen nicht als „fehlend“ in der Liste.
+    // R90/R92: Zu Physiotherapie, Visiten und nichtärztlichen Terminen wird kein Bericht geschrieben – solche Termine stehen nicht als „fehlend“ in der Liste.
     // Erkannt am Titel des Auftrags, am Arzt/Praxis-Namen im Auftrag und an den Feldern des Tagesplans (nicht an der Bemerkung:
     // dort steht „KG“ für Kostengarantie, und „Rezept Physiotherapie“ in einem Hinweis wäre ein Fehlalarm).
-    const NO_REPORT = /physiotherap|physio\b|krankengymnast|visite/i;
+    // R92: Dazu kommen alle nichtärztlichen Termine – Visum, Bank, Flughafen, Behörden – sowie Novum 2, Unireha, Logopädie, Ergotherapie.
+    // Neue Begriffe einfach hier ergänzen (Groß-/Kleinschreibung egal).
+    const NO_REPORT = new RegExp([
+        'physiotherap', 'physio\\b', 'krankengymnast', 'visite', 'ergotherap', 'lo[gk]op[äa]e?d',           // Therapie und Visiten
+        'novum\\s*(2|ii)\\b', 'novum\\b', 'uni[\\s-]?reha',                                                    // Einrichtungen ohne Bericht
+        'visum', 'visa\\b', '\\bbank\\b', 'commerzbank', 'sparkasse', 'volksbank', 'flughafen', 'airport', 'bahnhof',   // nichtärztlich
+        'beh[öo]e?rde', 'ausl[äa]e?nderamt', 'rathaus', 'b[üu]e?rgeramt', 'konsulat', 'botschaft', '\\bhotel\\b', 'wohnung', 'einkauf', 'einwohnermelde'
+    ].join('|'), 'i');
     const noReportExpected = assignment => {
         const record = recordOf(assignment) || {};
         const message = String(assignment.message || '');
