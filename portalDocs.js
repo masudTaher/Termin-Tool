@@ -855,10 +855,13 @@ window.PortalDocs = (function () {
         return date ? `${NEXT_PREFIX}${dayText(date)}${time ? `, ${time} Uhr` : ''}` : '';
     };
 
-    // Zur Wahl stehen die Aufträge der letzten sieben Tage: zuerst die abgeschlossenen, dann die von heute, die noch laufen.
+    // Zur Wahl stehen die Aufträge der letzten 14 Tage OHNE Bericht (R94): zuerst die abgeschlossenen, dann die von heute, die noch laufen.
+    // Termine, zu denen schon ein Bericht geschrieben ist, stehen hier nicht mehr – ändern geht unter „Unterlagen“ → „Bearbeiten“.
+    // Termine ohne Berichtspflicht (Physiotherapie, Transport, Behörden … – berichtRegeln.js) stehen hier gar nicht erst.
+    const noReportNeeded = job => Boolean(window.BerichtRegeln?.noReportExpected(job));
     function reportJobs() {
-        const from = core.isoDate(new Date(Date.now() - 7 * 86400000));
-        return core.jobs().filter(job => !job.cancelled && job.response !== 'abgesagt' && job.date <= today() && job.date >= from && (jobDone(job) || job.date === today()))
+        const from = core.isoDate(new Date(Date.now() - 14 * 86400000));
+        return core.jobs().filter(job => !job.cancelled && job.response !== 'abgesagt' && job.date <= today() && job.date >= from && (jobDone(job) || job.date === today()) && !reportOf(job.id) && !noReportNeeded(job))
             .sort((left, right) => (Number(jobDone(right)) - Number(jobDone(left))) || `${right.date} ${right.time}`.localeCompare(`${left.date} ${left.time}`));
     }
 
@@ -924,7 +927,7 @@ window.PortalDocs = (function () {
         if (direct) { openReportFor(direct); return; }
         renderReportPick();
         // Genau ein abgeschlossener Termin ohne Bericht: direkt öffnen – das spart einen Tipp.
-        const open = reportJobs().filter(job => jobDone(job) && !reportOf(job.id));
+        const open = reportJobs().filter(job => jobDone(job));
         if (open.length === 1 && reportJobs().length === 1) openReportFor(open[0]);
     }
     $('reportOther').addEventListener('click', renderReportPick);
@@ -983,5 +986,5 @@ window.PortalDocs = (function () {
         // Bericht zu einem bestimmten Auftrag schreiben (z. B. nach einer Berichtsanfrage der PR, Update 51)
         reportFor: assignmentId => { reportJobId = assignmentId; core.goTo('docReport'); }, startRetake: request => { pending = { retake: request }; core.goTo('docNew'); }, openReport: () => openReport(), state: () => ({ documents, draft }),
         // Erledigte Termine eines Tages, zu denen noch kein Bericht geschrieben ist (ausgefallene zählen nicht).
-        missingReports: date => core.jobs().filter(job => job.date === date && !job.cancelled && job.response !== 'abgesagt' && jobDone(job) && !job.storno_at && !['storniert', 'alleine'].includes(job.work_status) && !reportOf(job.id)).length };
+        missingReports: date => core.jobs().filter(job => job.date === date && !job.cancelled && job.response !== 'abgesagt' && jobDone(job) && !job.storno_at && !['storniert', 'alleine'].includes(job.work_status) && !reportOf(job.id) && !noReportNeeded(job)).length };
 })();

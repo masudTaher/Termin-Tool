@@ -128,6 +128,11 @@
             <datalist id="docEditSpecialtyList"></datalist>
             <label for="docEditHeading">Überschrift in der Akte <span class="optional-label">optional</span></label>
             <input id="docEditHeading" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Arztbericht · Prof. Dr. Goldbach · Neurochirurgie">
+            <!-- R94: Text eines Dolmetscherberichts und Begleitperson korrigieren -->
+            <label for="docEditBody" id="docEditBodyLabel" hidden>Text des Berichts</label>
+            <textarea id="docEditBody" rows="8" maxlength="6000" hidden></textarea>
+            <label for="docEditCompanion" id="docEditCompanionLabel" hidden>Bericht für Begleitperson <span class="optional-label">leer = Patient selbst</span></label>
+            <input id="docEditCompanion" type="text" maxlength="80" autocomplete="off" placeholder="Name der Begleitperson" hidden>
             <label for="docEditNote">Hinweis <span class="optional-label">optional</span></label>
             <input id="docEditNote" type="text" maxlength="300" autocomplete="off">
             <label for="docEditStatus">Stand</label>
@@ -157,6 +162,22 @@
       <script src="cloudClient.js"></script>
       <script src="photoRequest.js"></script>
       <script src="cloudInbox.js"></script>
+      <!-- R94: Datei neu hochladen (neu gescannt), wenn die Aufnahme nicht lesbar ist -->
+      <dialog id="docReplaceDialog" class="confirm-dialog absence-dialog" aria-labelledby="docReplaceTitle">
+         <form id="docReplaceForm" class="fleet-form" novalidate>
+            <h2 id="docReplaceTitle">Datei neu hochladen</h2>
+            <p class="field-hint" id="docReplaceInfo"></p>
+            <label for="docReplaceFile">Neue Datei – PDF oder Fotos/Scans (JPG, PNG)</label>
+            <input id="docReplaceFile" type="file" accept="application/pdf,image/jpeg,image/png" multiple>
+            <p class="field-hint">Ein PDF wird so übernommen, wie es ist. Mehrere Bilder werden in der gewählten Reihenfolge zu einem PDF zusammengefasst. Die bisherige Datei bleibt erhalten – „Original wiederherstellen“ holt sie zurück.</p>
+            <p class="field-hint" id="docReplaceList"></p>
+            <p id="docReplaceStatus" class="workflow-status" role="status" aria-live="polite" hidden></p>
+            <div class="modal-buttons absence-dialog-buttons">
+               <button type="button" class="button-secondary" id="docReplaceCancel">Abbrechen</button>
+               <button type="submit" class="button-primary" id="docReplaceSave">Hochladen und ersetzen</button>
+            </div>
+         </form>
+      </dialog>
       <script src="docPdf.js"></script>
       <script src="arztVerzeichnis.js"></script>
       <script src="akteLogic.js"></script>

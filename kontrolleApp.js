@@ -69,26 +69,9 @@
         if (record && CANCELLED.test(String(record.Status || ''))) return false;
         return true;
     };
-    // R90/R92: Zu Physiotherapie, Visiten und nichtärztlichen Terminen wird kein Bericht geschrieben – solche Termine stehen nicht als „fehlend“ in der Liste.
-    // Erkannt am Titel des Auftrags, am Arzt/Praxis-Namen im Auftrag und an den Feldern des Tagesplans (nicht an der Bemerkung:
-    // dort steht „KG“ für Kostengarantie, und „Rezept Physiotherapie“ in einem Hinweis wäre ein Fehlalarm).
-    // R92: Dazu kommen alle nichtärztlichen Termine – Visum, Bank, Flughafen, Behörden – sowie Novum 2, Unireha, Logopädie, Ergotherapie.
-    // Neue Begriffe einfach hier ergänzen (Groß-/Kleinschreibung egal).
-    const NO_REPORT = new RegExp([
-        'physiotherap', 'physio\\b', 'krankengymnast', 'visite', 'ergotherap', 'lo[gk]op[äa]e?d',           // Therapie und Visiten
-        'novum\\s*(2|ii)\\b', 'novum\\b', 'uni[\\s-]?reha',                                                    // Einrichtungen ohne Bericht
-        'visum', 'visa\\b', '\\bbank\\b', 'commerzbank', 'sparkasse', 'volksbank', 'flughafen', 'airport', 'bahnhof',   // nichtärztlich
-        'beh[öo]e?rde', 'ausl[äa]e?nderamt', 'rathaus', 'b[üu]e?rgeramt', 'konsulat', 'botschaft', '\\bhotel\\b', 'wohnung', 'einkauf', 'einwohnermelde'
-    ].join('|'), 'i');
-    const noReportExpected = assignment => {
-        const record = recordOf(assignment) || {};
-        const message = String(assignment.message || '');
-        const doctorLine = (message.match(/^Name:\s*(.+)$/m) || [])[1] || '';
-        const specialtyLine = (message.match(/^Fachrichtung:\s*(.+)$/m) || [])[1] || '';
-        const titleLine = (message.match(/^\*?Termin[^:]*:\s*(.+?)\*?$/m) || [])[1] || '';
-        return [assignment.title, doctorLine, specialtyLine, titleLine, record['Arzt Nr::Name'], record['Arzt / Abteilung'], record['Wofür'], record['Arzt Nr::Fachrichtung'], record.Fachrichtung]
-            .some(value => NO_REPORT.test(String(value || '')));
-    };
+    // R90–R94: Zu Physiotherapie, Visiten, Transport, Behörden usw. wird kein Bericht geschrieben – die Regel steht in berichtRegeln.js
+    // (gilt genauso in der Dolmetscher-App). Solche Termine stehen nicht als „fehlend“ in der Liste.
+    const noReportExpected = assignment => Boolean(window.BerichtRegeln?.noReportExpected(assignment, recordOf(assignment)));
     const hasReport = assignment => documents.some(doc => doc.kind === REPORT_KIND && (doc.assignment_id === assignment.id
         || (doc.appointment_id && doc.appointment_id === assignment.appointment_id)
         || (!doc.assignment_id && !doc.appointment_id && doc.uploader_id === assignment.interpreter_id && doc.date === assignment.date)));
@@ -143,10 +126,12 @@
             if (item.kind === 'bericht' || item.kind === 'unterlagen') {
                 const assignment = assignments.find(entry => entry.id === item.ref_id);
                 if (assignment && (item.kind === 'bericht' ? hasReport(assignment) : hasPapers(assignment))) done.push(item);
+                // R94: Termine, zu denen kein Bericht nötig ist (Transport, Visum, Physio …) – frühere Einträge werden geschlossen.
+                else if (assignment && noReportExpected(assignment)) done.push(Object.assign(item, { _noReport: true }));
             } else if (item.kind === 'fahrzeug' && !handovers.some(entry => entry.id === item.ref_id)) done.push(item);
         });
         for (const item of done) {
-            const changes = { status: 'erledigt', resolved_at: new Date().toISOString(), resolved_by: 'automatisch – nachgeholt', updated_at: new Date().toISOString() };
+            const changes = { status: 'erledigt', resolved_at: new Date().toISOString(), resolved_by: item._noReport ? 'automatisch – kein Bericht nötig' : 'automatisch – nachgeholt', updated_at: new Date().toISOString() };
             const { error } = await client.from('tt_followups').update(changes).eq('id', item.id);
             if (!error) followups.set(key(item.kind, item.ref_id), { ...item, ...changes });
         }

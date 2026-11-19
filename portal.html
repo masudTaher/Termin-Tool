@@ -606,9 +606,9 @@
                <button type="button" class="back-button" data-go="docs">← Zurück</button>
                <h2 id="reportTitle" class="wizard-title">Bericht über Termin</h2>
                <div id="reportPick">
-                  <p class="wizard-hint">Zu welchem Termin schreibst du? Tippe ihn an – Patient, Patientennummer und Arzt werden übernommen.</p>
+                  <p class="wizard-hint">Hier stehen deine Termine der letzten 14 Tage, zu denen noch kein Bericht geschrieben ist (ohne Physiotherapie, Transport, Behörden und Ähnliches – dazu ist kein Bericht nötig). Tippe einen an – Patient, Patientennummer und Arzt werden übernommen. Schon geschriebene Berichte änderst du unten in der Liste über „Bearbeiten“.</p>
                   <div id="reportJobList" class="car-list"></div>
-                  <p id="reportNoJobs" class="directory-empty" hidden>Du hast in den letzten sieben Tagen keinen Termin, zu dem ein Bericht fehlt. Ein Bericht gehört immer zu einem Auftrag aus der App.</p>
+                  <p id="reportNoJobs" class="directory-empty" hidden>Zu allen Terminen der letzten 14 Tage ist ein Bericht geschrieben – nichts offen. Ein Bericht gehört immer zu einem Auftrag aus der App.</p>
                </div>
                <form id="reportForm" class="fleet-form" novalidate hidden>
                   <dl id="reportFacts" class="vehicle-state report-facts"></dl>
@@ -945,6 +945,7 @@
       <script src="docWord.js"></script>
       <script src="contactParse.js"></script>
       <script src="portalRecord.js"></script>
+      <script src="berichtRegeln.js"></script>
       <script src="portalApp.js"></script>
       <script src="portalDocs.js"></script>
       <script src="portalAppointments.js"></script>

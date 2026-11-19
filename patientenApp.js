@@ -445,10 +445,88 @@
         // Fotografierte Unterlagen nachträglich aufbereiten (zuschneiden, gerade rücken, weißes Papier) – das Original bleibt erhalten.
         if (window.ScanFix && !fullText && doc.file_path && !doc.replaced_by && doc.original_path) actions.append(button('button-quiet doc-restore', 'Original wiederherstellen', node => restoreOriginal(doc, node)));
         else if (canFix(doc)) actions.append(button('button-quiet doc-fix', 'Scan verbessern', () => ScanFix.open(doc, { profile, fileName: fileName(doc), onDone: refresh })));
+        // R94: Nicht lesbar? Das Büro lädt selbst eine neue Datei hoch (neu gescannt) – die bisherige bleibt als Original erhalten.
+        if (!isReport(doc) || doc.file_path) actions.append(button('button-quiet doc-replace', doc.file_path ? 'Neu hochladen' : 'Datei hochladen', () => openReplace(doc)));
         actions.append(button('button-quiet', 'Korrigieren', () => editDocument(doc)), button('button-quiet-danger', 'Löschen', node => deleteDocument(doc, node)));
         row.append(check, meta, actions);
         return row;
     }
+
+    // ---------- R94: Datei ersetzen – neu gescannt oder fotografiert, vom PC oder Handy ----------
+    let replaceDoc = null;
+    function openReplace(doc) {
+        const dialog = $('docReplaceDialog');
+        if (!dialog) return;
+        replaceDoc = doc;
+        $('docReplaceInfo').textContent = [docTitle(doc), patientLabel(doc), doc.date ? `Termin ${formatDay(docDay(doc))}` : '', doc.pages ? plural(doc.pages, 'Seite', 'Seiten') : ''].filter(Boolean).join(' · ');
+        $('docReplaceFile').value = '';
+        $('docReplaceList').textContent = '';
+        dialogStatus('docReplaceStatus', '');
+        $('docReplaceSave').disabled = false;
+        dialog.showModal();
+    }
+    $('docReplaceCancel')?.addEventListener('click', () => $('docReplaceDialog').close());
+    $('docReplaceFile')?.addEventListener('change', () => {
+        const files = [...($('docReplaceFile').files || [])];
+        $('docReplaceList').textContent = files.length ? files.map((file, index) => `${files.length > 1 ? `${index + 1}. ` : ''}${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`).join(' · ') : '';
+    });
+    $('docReplaceForm')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const doc = replaceDoc;
+        const files = [...($('docReplaceFile').files || [])];
+        if (!doc) return;
+        if (!files.length) { dialogStatus('docReplaceStatus', 'Bitte wähle zuerst eine Datei aus.', 'error'); return; }
+        const pdfs = files.filter(file => /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name));
+        const images = files.filter(file => /^image\/(jpeg|png)$/i.test(file.type));
+        if (pdfs.length > 1 || (pdfs.length && images.length) || pdfs.length + images.length !== files.length) { dialogStatus('docReplaceStatus', 'Bitte entweder genau ein PDF oder nur Bilder (JPG/PNG) auswählen.', 'error'); return; }
+        const button = $('docReplaceSave');
+        button.disabled = true;
+        try {
+            let blob = null; let pages = 0;
+            if (pdfs.length) {
+                blob = pdfs[0];
+                dialogStatus('docReplaceStatus', 'Das PDF wird geprüft …');
+                try { await DocPdf.ready?.(); const parsed = await window.PDFLib.PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true }); pages = parsed.getPageCount(); } catch (error) { pages = doc.pages || 1; }
+            } else {
+                dialogStatus('docReplaceStatus', `${plural(images.length, 'Bild wird', 'Bilder werden')} zu einem PDF zusammengefasst …`);
+                blob = await DocPdf.build({
+                    pages: images.map(file => ({ blob: file })),
+                    title: `${docTitle(doc)} · ${[clean(doc.patient_nr), clean(doc.patient_name)].filter(Boolean).join(' ')}`,
+                    subject: [doc.date ? `vom ${formatDay(docDay(doc))}` : '', clean(doc.doctor)].filter(Boolean).join(' · '),
+                    author: profile.full_name || '', keywords: [clean(doc.patient_nr), clean(doc.patient_name), doc.kind, 'neu hochgeladen'].filter(Boolean)
+                });
+                pages = images.length;
+            }
+            if (blob.size > 20 * 1024 * 1024) throw new Error('Die Datei ist zu groß (über 20 MB). Bitte in geringerer Auflösung scannen.');
+            dialogStatus('docReplaceStatus', 'Die Datei wird hochgeladen …');
+            const old = clean(doc.file_path);
+            const folder = old.includes('/') ? old.slice(0, old.lastIndexOf('/') + 1) : `${profile.id}/`;
+            const base = (old ? old.slice(folder.length).replace(/\.[a-z0-9]+$/i, '').replace(/-(verbessert|neu)-[a-z0-9]+$/i, '') : fileName(doc).replace(/\.[a-z0-9]+$/i, '')).slice(0, 120) || 'unterlage';
+            const path = `${folder}${base}-neu-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}.pdf`;
+            const upload = await client.storage.from(BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: false });
+            if (upload.error) throw upload.error;
+            // Das bisherige Original bleibt erreichbar („Original wiederherstellen“); eine frühere Ersatz-/verbesserte Fassung wird aufgeräumt.
+            const changes = { file_path: path, file_bytes: blob.size, pages, original_path: clean(doc.original_path) || old || null, enhanced_at: null, replaced_by: null };
+            if (fullText) changes.text_content = '';
+            let query = client.from('tt_documents').update(changes).eq('id', doc.id);
+            if (old) query = query.eq('file_path', old);
+            let { data, error } = await query.select('id');
+            if (error && /original_path|enhanced_at|text_content|file_bytes/i.test(error.message || '')) {
+                const { original_path, enhanced_at, text_content, file_bytes, ...rest } = changes;
+                ({ data, error } = await client.from('tt_documents').update(rest).eq('id', doc.id).select('id'));
+            }
+            if (error || !data?.length) { await client.storage.from(BUCKET).remove([path]); throw error || new Error('Die Unterlage wurde inzwischen geändert. Bitte die Seite aktualisieren und noch einmal versuchen.'); }
+            if (old && clean(doc.original_path) && clean(doc.original_path) !== old) await client.storage.from(BUCKET).remove([old]);
+            $('docReplaceDialog').close();
+            showToast(`Neue Datei gespeichert – ${plural(pages, 'Seite', 'Seiten')}`, 'success');
+            await refresh();
+            window.refreshCloudInbox?.();
+        } catch (error) {
+            dialogStatus('docReplaceStatus', TerminCloud.germanError(error), 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
 
     const fillList = (id, nodes, emptyText) => $(id).replaceChildren(...(nodes.length ? nodes : [el('li', 'directory-empty', emptyText)]));
 
@@ -1200,6 +1278,11 @@
         $('docEditDate').value = clean(doc.date).slice(0, 10);
         $('docEditDoctor').value = clean(doc.doctor);
         $('docEditNote').value = clean(doc.note);
+        // R94: Text eines Dolmetscherberichts und die Begleitperson lassen sich im Büro korrigieren.
+        const editableReport = isReport(doc) && !isImported(doc);
+        ['docEditBody', 'docEditBodyLabel', 'docEditCompanion', 'docEditCompanionLabel'].forEach(id => { const node = $(id); if (node) node.hidden = !editableReport; });
+        if ($('docEditBody')) $('docEditBody').value = editableReport ? String(doc.body || '') : '';
+        if ($('docEditCompanion')) $('docEditCompanion').value = editableReport ? clean(doc.companion_name) : '';
         $('docEditStatus').value = DOC_STATUS[doc.status] ? doc.status : 'neu';
         dialogStatus('docEditStatusLine', '');
         $('docEditDialog').showModal();
@@ -1214,6 +1297,13 @@
             kind: $('docEditKind').value, patient_nr: clean($('docEditNr').value), patient_name: clean($('docEditName').value).replace(/\s+/g, ' '),
             date: $('docEditDate').value || null, doctor: clean($('docEditDoctor').value), note: clean($('docEditNote').value), status
         };
+        if (isReport(doc) && !isImported(doc) && $('docEditBody')) {
+            const body = $('docEditBody').value.trim();
+            if (body.length < 20) { dialogStatus('docEditStatusLine', 'Der Bericht ist sehr kurz – bitte mindestens ein paar Sätze stehen lassen.', 'error'); return; }
+            if (body !== String(doc.body || '')) { changes.body = body; changes.edited_at = new Date().toISOString(); }
+            const companion = clean($('docEditCompanion').value).replace(/\s+/g, ' ');
+            if (companion !== clean(doc.companion_name)) changes.companion_name = companion;
+        }
         if (!fullText) {
             // Überschrift: leer oder unverändert die selbst entstandene → sie folgt der neuen Art, dem Arzt und der Fachrichtung.
             const typed = clean($('docEditHeading').value);
@@ -1226,7 +1316,9 @@
         else if (status === 'geprüft') Object.assign(changes, { checked_at: doc.checked_at || new Date().toISOString(), checked_by: doc.checked_by || profile.full_name || '', forwarded_at: null, forwarded_to: '', forwarded_by: '' });
         else if (status === 'weitergeleitet' && !doc.forwarded_at) Object.assign(changes, { forwarded_at: new Date().toISOString(), forwarded_by: profile.full_name || '' });
         $('docEditSave').disabled = true;
-        const { data, error } = await client.from('tt_documents').update(changes).eq('id', doc.id).select();
+        let { data, error } = await client.from('tt_documents').update(changes).eq('id', doc.id).select();
+        // Ohne Update 55/25 kennt die Datenbank companion_name bzw. edited_at noch nicht – dann ohne diese Felder speichern.
+        if (error && /companion_name|edited_at/i.test(error.message || '')) { const { companion_name, edited_at, ...rest } = changes; ({ data, error } = await client.from('tt_documents').update(rest).eq('id', doc.id).select()); }
         $('docEditSave').disabled = false;
         if (error || !data?.length) { dialogStatus('docEditStatusLine', error ? TerminCloud.germanError(error) : 'Die Unterlage gibt es nicht mehr.', 'error'); return; }
         $('docEditDialog').close();
