@@ -1165,6 +1165,11 @@ if (!window.TerminContact) {
         const parsed = parseJobMessage(item.message);
         if (!parsed) { body.append(el('p', 'job-message', item.message || '')); return body; }
         const { facts, notices, sections, cost } = parsed;
+        // R100: Die Uhrzeit wurde nach dem ersten Senden geändert – groß und rot, damit niemand zur alten Zeit fährt.
+        if (facts['UHRZEIT GEÄNDERT']) {
+            const change = facts['UHRZEIT GEÄNDERT'].match(/vorher (\d{1,2}:\d{2}) Uhr, jetzt (\d{1,2}:\d{2}) Uhr/);
+            body.append(el('p', 'job-time-changed', change ? `Uhrzeit geändert: jetzt ${change[2]} Uhr (vorher ${change[1]} Uhr) – bitte noch einmal zusagen.` : `Uhrzeit geändert: ${facts['UHRZEIT GEÄNDERT']}`));
+        }
         const patient = facts['Patient/in'] || facts['Hauptpatient/in'];
         if (patient) {
             const block = el('div', 'job-section job-section-patient');
@@ -1717,6 +1722,14 @@ if (!window.TerminContact) {
         content.append(el('span', 'job-section-title', 'Im Team – ihr seid zu zweit'), el('strong', 'job-team-name', team.partner));
         if (team.partnerRole) content.append(el('span', 'job-chip', team.partnerRole));
         if (team.partnerCar) content.append(el('span', 'job-chip', `Fahrzeug ${team.partnerCar}`));
+        // R100: Hin- oder Rückfahrt allein – groß und deutlich, damit niemand den ganzen Termin fährt.
+        const only = /^Nur (Rückfahrt|Hinfahrt)/.test(team.ownRole || '');
+        if (only) {
+            const at = (team.ownRole.match(/um (\d{1,2}:\d{2}) Uhr/) || [])[1];
+            content.append(el('p', 'job-team-only', /Rückfahrt/.test(team.ownRole)
+                ? `Du bringst den Patienten nur zurück${at ? ` – Abholung um ${at} Uhr` : ''}.`
+                : `Du bringst den Patienten nur hin – zurück holt ihn ${team.partner}${at ? ` um ${at} Uhr` : ''}.`));
+        }
         if (team.ownRole) content.append(el('p', 'job-team-own', `Deine Aufgabe: ${team.ownRole}${team.ownCar ? ` · dein Fahrzeug ${team.ownCar}` : ''}`));
         if (team.phone) content.append(jobField(`Telefon ${team.partner.split(' ')[0]}`, team.phone));
         block.append(content);

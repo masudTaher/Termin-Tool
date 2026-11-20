@@ -184,8 +184,14 @@
       <label><input type="radio" name="secondRole" value="Transport" checked><span>Transport (fährt)</span></label>
       <label><input type="radio" name="secondRole" value="Dolmetschen"><span>Dolmetschen</span></label>
       <label><input type="radio" name="secondRole" value="Zweites Fahrzeug"><span>Zweites Fahrzeug</span></label>
+      <label><input type="radio" name="secondRole" value="Rückfahrt"><span>Nur Rückfahrt</span></label>
     </div>
     <p class="field-hint" id="secondDialogRoleHint"></p>
+    <div id="secondDialogTimeBox" hidden>
+      <label for="secondDialogTime">Rückfahrt um (Abholung beim Arzt / in der Praxis)</label>
+      <input id="secondDialogTime" type="time" step="300">
+      <p class="field-hint">Die erste Person bringt den Patienten hin (Hinfahrt). Die zweite holt ihn zu dieser Uhrzeit ab und bringt ihn zurück – in ihrer App steht der Auftrag mit dieser Uhrzeit und „Du bringst den Patienten nur zurück“.</p>
+    </div>
     <label for="secondDialogCar">Fahrzeug der zweiten Person <span class="optional-label">optional</span></label>
     <select id="secondDialogCar"></select>
     <p class="field-hint">Beide bekommen den Auftrag in ihre App und sehen dort, wer mit ihnen im Auftrag ist und wer welche Aufgabe hat.</p>

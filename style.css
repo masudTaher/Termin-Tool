@@ -3365,3 +3365,14 @@ html[data-text="big"] { font-size: 112.5%; }
 [dir="rtl"] .scan-cam, [dir="rtl"] .scan-review, [dir="rtl"] .scan-adjust, [dir="rtl"] .scan-fix, [dir="rtl"] .car-sketch, [dir="rtl"] .toast-region { direction: ltr; }
 [dir="rtl"] .scan-cam *, [dir="rtl"] .scan-review *, [dir="rtl"] .scan-adjust * { text-align: center; }
 @media (max-width: 520px) { .portal-header .lang-switch-button { min-width: 27px; min-height: 26px; padding: 0 5px; font-size: .64rem; } .portal-header .lang-switch { gap: 1px; } }
+
+/* R100: Sperre beim Senden – welche Seite hat was, und wie geht es weiter */
+.doc-gate { max-width: 520px; }
+.doc-gate-list { display: flex; flex-direction: column; gap: 10px; margin: 12px 0 4px; padding: 0; list-style: none; max-height: 56vh; overflow-y: auto; }
+.doc-gate-list li { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--danger-soft, #fbd5d5); border-radius: 12px; background: var(--surface-soft); }
+.doc-gate-list strong { color: var(--danger, #b42318); }
+.doc-gate-how { color: var(--muted); font-size: .9rem; line-height: 1.4; }
+.doc-gate-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.doc-gate-actions .button-primary, .doc-gate-actions .button-secondary { min-height: 38px; padding: 6px 12px; font-size: .9rem; }
+.job-team-only { margin: 6px 0 2px; padding: 8px 12px; border-radius: 10px; background: var(--brand); color: #fff; font-weight: 800; line-height: 1.35; }
+.job-time-changed { margin: 0 0 10px; padding: 9px 12px; border-radius: 10px; background: var(--danger, #b42318); color: #fff; font-weight: 800; line-height: 1.35; }

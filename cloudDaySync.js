@@ -660,6 +660,11 @@
         const restart = previous && 'started_at' in previous && previous.interpreter_id !== target.id
             ? { started_at: null, finished_at: null, reminded_at: null, reminder_count: 0 } : {};
         if (restart.reminder_count === 0) { delete record.Portal_Start; delete record.Portal_Ende; }
+        // R100: Dieselbe Person, andere Uhrzeit – der Auftrag sagt es ihr deutlich („Uhrzeit geändert: vorher … jetzt …“),
+        // und die Mitteilung aufs Handy heißt so. Die Zusage wird neu erbeten (response: offen).
+        const oldTime = previous && !previous.cancelled && previous.interpreter_id === target.id ? String(previous.time || '').slice(0, 5) : '';
+        const timeChanged = Boolean(oldTime && time && oldTime !== time);
+        const changeLine = timeChanged ? `\n*UHRZEIT GEÄNDERT: vorher ${oldTime} Uhr, jetzt ${time} Uhr*` : '';
         // Bemerkung und Anhang: neu aus dem Fenster oder wie zuletzt am Termin gespeichert.
         const note = extra ? extra.note : String(record._hinweis || '');
         let attachment = { path: record._anhang || null, name: record._anhangName || '' };
@@ -680,7 +685,7 @@
             ...restart,
             appointment_id: record._id, date, time, interpreter_id: target.id, interpreter_name: target.full_name,
             title: [time ? `${time} Uhr` : '', doctorName, place].filter(Boolean).join(' · '),
-            message: createWhatsAppAppointmentMessage(record, true) + teamBlock(record, false),
+            message: createWhatsAppAppointmentMessage(record, true).replace(/^(\*?DOLMETSCHAUFTRAG\*?)/, `$1${changeLine}`) + teamBlock(record, false),
             response: 'offen', response_note: '', responded_at: null, cancelled: false,
             work_status: String(record.Status || 'offen'), sent_at: new Date().toISOString(), sent_by: profile.full_name || ''
         };
@@ -707,7 +712,8 @@
         const second = record._zweit ? await sendSecond(record) : '';
         showToast(`Auftrag an ${target.full_name}${second === 'gesendet' || second === 'gleich' ? ` und ${record._zweit}` : ''} gesendet${note && attachment.path ? ' – mit Bemerkung und Anhang' : note ? ' – mit Bemerkung' : attachment.path ? ' – mit Anhang' : ''}`, 'success');
         // Zusätzlich als Mitteilung aufs Handy (falls eingerichtet und von der Person eingeschaltet).
-        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), time ? `${time} Uhr` : '', doctorName, place, note ? `Hinweis: ${note}` : '', attachment.path ? 'mit Anhang' : ''].filter(Boolean).join(' · ').slice(0, 280) });
+        TerminCloud.callFunction?.({ action: 'notify', audience: 'einzeln', recipientIds: [target.id], title: timeChanged ? `Uhrzeit geändert: jetzt ${time} Uhr` : 'Neuer Auftrag', body: [date.split('-').reverse().join('.'), timeChanged ? `vorher ${oldTime} Uhr, jetzt ${time} Uhr` : (time ? `${time} Uhr` : ''), doctorName, place, note ? `Hinweis: ${note}` : '', attachment.path ? 'mit Anhang' : '', timeChanged ? 'Bitte noch einmal zusagen.' : ''].filter(Boolean).join(' · ').slice(0, 280) });
+        if (timeChanged) showToast(`${target.full_name} bekommt den Auftrag mit dem Hinweis „Uhrzeit geändert: vorher ${oldTime} Uhr, jetzt ${time} Uhr“ – die Zusage wird neu erbeten.`, 'info', { duration: 9000 });
         syncDay();
     };
 
@@ -715,11 +721,15 @@
     // Der Abschnitt „IM TEAM“ steht am Ende des Auftrags: Die App zeigt daraus, wer mit im Auftrag ist und wer welche Aufgabe hat.
     function teamBlock(record, forSecond) {
         if (!record._zweit) return '';
-        const role2 = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug'].includes(record._zweitAufgabe) ? record._zweitAufgabe : 'Transport';
-        const role1 = role2 === 'Transport' ? 'Dolmetschen' : role2 === 'Dolmetschen' ? 'Transport' : 'Zweites Fahrzeug';
-        const label = role => role === 'Transport' ? 'Transport (fahren)' : role === 'Zweites Fahrzeug' ? 'Fahren mit eigenem Fahrzeug' : role;
+        const role2 = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug', 'Rückfahrt'].includes(record._zweitAufgabe) ? record._zweitAufgabe : 'Transport';
+        const role1 = role2 === 'Transport' ? 'Dolmetschen' : role2 === 'Dolmetschen' ? 'Transport' : role2 === 'Rückfahrt' ? 'Hinfahrt' : 'Zweites Fahrzeug';
         const first = getAppointmentInterpreterName(record);
         const partner = forSecond ? first : record._zweit;
+        // R100: Hin- und Rückfahrt getrennt – die zweite Person holt den Patienten zur eingetragenen Uhrzeit ab.
+        const back = String(record._zweitZeit || '').slice(0, 5);
+        const label = role => role === 'Transport' ? 'Transport (fahren)' : role === 'Zweites Fahrzeug' ? 'Fahren mit eigenem Fahrzeug'
+            : role === 'Rückfahrt' ? `Nur Rückfahrt – Patient${back ? ` um ${back} Uhr` : ''} abholen und zurückbringen`
+            : role === 'Hinfahrt' ? `Nur Hinfahrt – Patient hinbringen (zurück holt ihn ${record._zweit}${back ? ` um ${back} Uhr` : ''})` : role;
         const person = profiles.find(item => item.active && sameName(item.full_name, partner));
         const car = forSecond ? String(record.Fahrzeug || '') : String(record._zweitAuto || '');
         const ownCar = forSecond ? String(record._zweitAuto || '') : String(record.Fahrzeug || '');
@@ -741,7 +751,8 @@
         const target = profiles.find(item => item.active && sameName(item.full_name, record._zweit));
         if (!target) { showToast(`${record._zweit} (2. Person) hat kein freigeschaltetes Portal-Konto – an sie geht kein Auftrag. Konten schaltest du auf der Seite „Team“ frei.`, 'error', { duration: 12000 }); return ''; }
         const date = currentDate();
-        const time = String(record.Termin_Uhrzeit || '').slice(0, 5);
+        // R100: Bei „Nur Rückfahrt“ ist die Uhrzeit der zweiten Person die Abholzeit – so steht der Auftrag in ihrer App richtig.
+        const time = (record._zweitAufgabe === 'Rückfahrt' && record._zweitZeit ? String(record._zweitZeit) : String(record.Termin_Uhrzeit || '')).slice(0, 5);
         const oneLine = value => window.TerminContact ? TerminContact.singleLine(value) : String(value || '').trim();
         const doctorName = oneLine(record['Arzt Nr::Name']);
         const place = oneLine(getAppointmentLocation(record));

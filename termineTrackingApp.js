@@ -317,7 +317,7 @@ function renderTrackingTable(data) {
                     + (cloudReady && group !== 'erledigt' ? `<span class="assign-tools"><button type="button" class="assign-remind" data-index="${index}" title="Den Dolmetscher an diesen Auftrag erinnern (Mitteilung aufs Handy und Nachricht im Portal)">Erinnern</button><button type="button" class="assign-withdraw" data-index="${index}" title="Den gesendeten Auftrag wieder zurückziehen – er verschwindet im Portal">Zurückziehen</button></span>` : '') : '')
                 // Zweite Person im Auftrag – oder der Knopf, um eine einzutragen.
                 + (termin._fmExport && termin._fmExport === getAppointmentInterpreterName(termin) ? `<span class="fm-mark" title="Dieser Name steht in der Datei für FileMaker (erstellt ${escapeHtml(termin._fmExportAt || '')})">FileMaker-Datei ✓</span>` : '')
-                + (termin._zweit ? `<button type="button" class="second-line" data-index="${index}" title="Zweite Person im Auftrag – ändern oder entfernen"><span class="second-mark" aria-hidden="true">+</span><b>${escapeHtml(termin._zweit)}</b><span class="second-role">${escapeHtml(termin._zweitAufgabe || 'Transport')}${termin._zweitAuto ? ` · ${escapeHtml(termin._zweitAuto)}` : ''}</span>${termin._zweitAntwort ? `<span class="response-pill" data-response="${escapeHtml(String(termin._zweitAntwort).split(' – ')[0])}">${escapeHtml(termin._zweitAntwort)}</span>` : ''}</button>` : '')
+                + (termin._zweit ? `<button type="button" class="second-line" data-index="${index}" title="Zweite Person im Auftrag – ändern oder entfernen"><span class="second-mark" aria-hidden="true">+</span><b>${escapeHtml(termin._zweit)}</b><span class="second-role">${escapeHtml(secondRoleLabel(termin))}${termin._zweitAuto ? ` · ${escapeHtml(termin._zweitAuto)}` : ''}</span>${termin._zweitAntwort ? `<span class="response-pill" data-response="${escapeHtml(String(termin._zweitAntwort).split(' – ')[0])}">${escapeHtml(termin._zweitAntwort)}</span>` : ''}</button>` : '')
                 + (termin._zweit ? '' : `<button type="button" class="second-add" data-index="${index}" title="Zweite Person für diesen Auftrag: zum Beispiel eine Person fährt und eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen">+ zweite Person</button>`),
             `<div class="status-cell"><select data-index="${index}" class="status-select" aria-label="Status für Termin ${index + 1}">${statusOptions.map(([value, label]) => `<option value="${value}" ${selectedStatus === value ? 'selected' : ''}>${label}</option>`).join('')}</select>${quickStatus}</div>`
                 + (termin.Losgefahren_um || termin.Beendet_um ? `<span class="status-times">${[termin.Losgefahren_um ? `los ${escapeHtml(termin.Losgefahren_um)}` : '', termin.Beendet_um ? `fertig ${escapeHtml(termin.Beendet_um)}` : ''].filter(Boolean).join(' · ')}</span>` : '')
@@ -1572,14 +1572,20 @@ function setSpecial(index, amount, reason) {
 // ---------- Zweite Person im Auftrag: eine Person fährt, eine dolmetscht – oder ein Auftrag mit zwei Fahrzeugen ----------
 // Am Termin gespeichert (nicht in der Excel-Liste): _zweit (Name), _zweitAufgabe, _zweitAuto, _id2 (eigener Auftrag im Portal),
 // _zweitAntwort (Rückmeldung aus dem Portal). Die erste Person bleibt die im Feld „Dolmetscher“.
-const SECOND_ROLES = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug'];
+const SECOND_ROLES = ['Transport', 'Dolmetschen', 'Zweites Fahrzeug', 'Rückfahrt'];   // R100: Rückfahrt = zweite Person holt den Patienten ab (Uhrzeit in _zweitZeit)
 let secondDialogIndex = null;
 
-function secondRoleHint(role, first, second) {
+function secondRoleHint(role, first, second, time) {
     const a = first || 'Die erste Person', b = second || 'die zweite Person';
     return role === 'Dolmetschen' ? `${b} dolmetscht, ${a} fährt (Transport).`
         : role === 'Zweites Fahrzeug' ? `${a} und ${b} fahren jeweils mit einem eigenen Fahrzeug.`
+        : role === 'Rückfahrt' ? `${a} bringt den Patienten hin (Hinfahrt). ${b} holt ihn ${time ? `um ${time} Uhr ` : ''}ab und bringt ihn zurück (Rückfahrt).`
             : `${b} fährt (Transport), ${a} dolmetscht.`;
+}
+// Anzeige der Aufgabe der zweiten Person in der Tabelle (R100: mit Uhrzeit der Rückfahrt).
+function secondRoleLabel(termin) {
+    const role = termin._zweitAufgabe || 'Transport';
+    return role === 'Rückfahrt' ? `Rückfahrt${termin._zweitZeit ? ` ${termin._zweitZeit} Uhr` : ''}` : role;
 }
 
 function openSecondDialog(index) {
@@ -1601,8 +1607,11 @@ function openSecondDialog(index) {
         + (chosen && !plates.some(vehicle => vehicle.plate === chosen) ? `<option value="${escapeHtml(chosen)}" selected>${escapeHtml(chosen)}</option>` : '')
         + plates.map(vehicle => `<option value="${escapeHtml(vehicle.plate)}" ${vehicle.plate === chosen ? 'selected' : ''}>${escapeHtml(getFleetVehicleLabel(vehicle))}</option>`).join('');
     document.getElementById('secondDialogRemove').hidden = !termin._zweit;
+    document.getElementById('secondDialogTime').value = termin._zweitZeit || '';
     const showHint = () => {
-        document.getElementById('secondDialogRoleHint').textContent = secondRoleHint(dialog.querySelector('input[name="secondRole"]:checked')?.value, first, document.getElementById('secondDialogName').value.trim());
+        const picked = dialog.querySelector('input[name="secondRole"]:checked')?.value;
+        document.getElementById('secondDialogTimeBox').hidden = picked !== 'Rückfahrt';
+        document.getElementById('secondDialogRoleHint').textContent = secondRoleHint(picked, first, document.getElementById('secondDialogName').value.trim(), document.getElementById('secondDialogTime').value);
     };
     dialog.oninput = showHint;
     showHint();
@@ -1610,23 +1619,25 @@ function openSecondDialog(index) {
     document.getElementById('secondDialogName').focus();
 }
 
-function setSecond(index, name, role, car) {
+function setSecond(index, name, role, car, time = '') {
     const termin = trackingData[index];
     if (!termin) return;
     const clean = String(name || '').trim().replace(/\s+/g, ' ');
-    const before = { name: termin._zweit || '', role: termin._zweitAufgabe || '', car: termin._zweitAuto || '' };
-    if (before.name === clean && (!clean || (before.role === role && before.car === car))) return;
+    const when = role === 'Rückfahrt' ? String(time || '').slice(0, 5) : '';
+    const before = { name: termin._zweit || '', role: termin._zweitAufgabe || '', car: termin._zweitAuto || '', time: termin._zweitZeit || '' };
+    if (before.name === clean && (!clean || (before.role === role && before.car === car && before.time === when))) return;
     recordTrackingUndo(clean ? 'Zweite Person geändert' : 'Zweite Person entfernt');
     if (clean) {
         if (before.name.toLocaleLowerCase('de') !== clean.toLocaleLowerCase('de')) delete termin._zweitAntwort;
         termin._zweit = clean;
         termin._zweitAufgabe = SECOND_ROLES.includes(role) ? role : 'Transport';
         if (car) termin._zweitAuto = car; else delete termin._zweitAuto;
+        if (when) termin._zweitZeit = when; else delete termin._zweitZeit;
         if (!termin._id2) termin._id2 = crypto.randomUUID();
         if (typeof addInterpreterName === 'function') addInterpreterName(clean);
     } else {
         // _id2 bleibt: Daran erkennt der Abgleich den schon gesendeten Auftrag der zweiten Person und zieht ihn zurück.
-        delete termin._zweit; delete termin._zweitAufgabe; delete termin._zweitAuto; delete termin._zweitAntwort;
+        delete termin._zweit; delete termin._zweitAufgabe; delete termin._zweitAuto; delete termin._zweitZeit; delete termin._zweitAntwort;
     }
     persistTerminRecords(trackingData, 'tracking');
     renderTrackingTable(trackingData);
@@ -1634,7 +1645,7 @@ function setSecond(index, name, role, car) {
     if (away) showToast(`Achtung: ${away.name} ist an diesem Tag abwesend – ${away.reason}. Der Name wurde trotzdem eingetragen.`, 'error', { duration: 12000 });
     // Ist der Auftrag der ersten Person schon im Portal, geht die Änderung sofort hinaus (beide sehen, wer mit ihnen im Auftrag ist).
     if (typeof window.syncSecondAssignment === 'function' && termin['Rückmeldung']) window.syncSecondAssignment(index);
-    else showToast(clean ? `${clean} als zweite Person eingetragen (${termin._zweitAufgabe}).${typeof window.syncSecondAssignment === 'function' ? ' Mit „Auftrag“ geht er an beide.' : ''}` : 'Zweite Person entfernt', 'success');
+    else showToast(clean ? `${clean} als zweite Person eingetragen (${secondRoleLabel(termin)}).${typeof window.syncSecondAssignment === 'function' ? ' Mit „Auftrag“ geht er an beide.' : ''}` : 'Zweite Person entfernt', 'success');
 }
 
 (function bindSecondDialog() {
@@ -1648,8 +1659,11 @@ function setSecond(index, name, role, car) {
         const name = document.getElementById('secondDialogName').value.trim().replace(/\s+/g, ' ');
         if (!name) { showToast('Bitte trag den Namen der zweiten Person ein.', 'error', { target: '#secondDialogName' }); return; }
         if (termin && name.toLocaleLowerCase('de') === getAppointmentInterpreterName(termin).toLocaleLowerCase('de')) { showToast('Das ist schon die erste Person in diesem Auftrag. Bitte wähle eine andere Person.', 'error', { target: '#secondDialogName' }); return; }
+        const role = dialog.querySelector('input[name="secondRole"]:checked')?.value || 'Transport';
+        const time = document.getElementById('secondDialogTime').value;
+        if (role === 'Rückfahrt' && !time) { showToast('Bitte trag ein, um wie viel Uhr die zweite Person den Patienten abholt.', 'error', { target: '#secondDialogTime' }); return; }
         dialog.close();
-        setSecond(secondDialogIndex, name, dialog.querySelector('input[name="secondRole"]:checked')?.value || 'Transport', document.getElementById('secondDialogCar').value);
+        setSecond(secondDialogIndex, name, role, document.getElementById('secondDialogCar').value, time);
     });
 })();
 

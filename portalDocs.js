@@ -96,7 +96,7 @@ window.PortalDocs = (function () {
             if (item.file_path) {
                 const view = el('button', 'button-quiet', 'Ansehen');
                 view.type = 'button';
-                view.addEventListener('click', () => viewFile(item));
+                view.addEventListener('click', () => viewFile(item, view));
                 side.append(view);
             }
             if (isReport && item.body) {
@@ -187,10 +187,17 @@ window.PortalDocs = (function () {
         }
     }
 
-    async function viewFile(item) {
-        const { data, error } = await client.storage.from('dokumente').createSignedUrl(item.file_path, 300);
-        if (error || !data?.signedUrl) { toast('Das PDF konnte nicht geöffnet werden.', 'error'); return; }
-        window.open(data.signedUrl, '_blank', 'noopener');
+    // R100: Der neue Tab entsteht sofort beim Tippen – nach dem Warten auf den Link blockiert das Handy (iPhone, installierte App)
+    // window.open still und leise. Geht kein Fenster auf, öffnet ein Tipp auf die Meldung die Datei im selben Fenster.
+    async function viewFile(item, button) {
+        const tab = window.open('', '_blank');
+        if (button) button.disabled = true;
+        try {
+            const { data, error } = await client.storage.from('dokumente').createSignedUrl(item.file_path, 600);
+            if (error || !data?.signedUrl) { tab?.close(); toast(/not found|does not exist/i.test(error?.message || '') ? 'Die Datei wurde im Speicher nicht gefunden. Bitte sag der Einsatzleitung Bescheid.' : 'Das PDF konnte nicht geöffnet werden.', 'error'); return; }
+            if (tab && !tab.closed) { tab.opener = null; tab.location.replace(data.signedUrl); }
+            else toast('Der Browser hat das neue Fenster blockiert.', 'info', null, { label: 'Öffnen', run: () => { window.location.href = data.signedUrl; } });
+        } finally { if (button) button.disabled = false; }
     }
 
     // Löschen geht, solange das Büro die Unterlage noch nicht geprüft hat. Zweiter Tipp bestätigt.
@@ -394,6 +401,7 @@ window.PortalDocs = (function () {
         replaceId = null;
         if (!replacing && draft.pages.length >= MAX_PAGES) { toast(`Mehr als ${MAX_PAGES} Seiten passen nicht in ein PDF. Bitte sende den Rest als zweite Unterlage.`, 'error'); return null; }
         const page = replacing || { id: ++pageCounter };
+        if (replacing) page.retakes = (page.retakes || 0) + 1;      // R100: zählt die neuen Aufnahmen dieser Seite
         page.file = file;
         page.settings = null;
         applyResult(page, result, settings);
@@ -687,9 +695,68 @@ window.PortalDocs = (function () {
         renderCheck();
     });
 
+    // R100: Vor dem Senden muss jede Seite in Ordnung sein – zugeschnitten und lesbar. Sonst zeigt ein Fenster, welche Seite
+    // was hat, und führt direkt zum Ansehen (Ecken anpassen) oder Neu aufnehmen. „Weich“ (lesbar, nicht knackig) und ein
+    // zweites Mal „unscharf“ nach einer neuen Aufnahme dürfen mit „Trotzdem senden“ durch – das Büro sieht den Hinweis.
+    const HARD_ISSUES = ['rand', 'unscharf', 'dunkel', 'hell', 'kontrast', 'klein'];
+    function sendBlockers() {
+        const hard = [], soft = [];
+        (draft?.pages || []).forEach((page, index) => page.issues.forEach(issue => {
+            const text = `Seite ${index + 1} ${ISSUE_SHORT[issue.code] || 'bitte prüfen'}.`;
+            const blocks = HARD_ISSUES.includes(issue.code) && !(issue.code === 'unscharf' && page.retakes >= 1);
+            (blocks ? hard : soft).push({ page, index, code: issue.code, text });
+        }));
+        return { hard, soft };
+    }
+    function explainBlockers({ hard, soft }) {
+        return new Promise(resolve => {
+            const dialog = el('dialog', 'confirm-dialog doc-gate');
+            const all = hard.concat(soft);
+            dialog.append(el('h2', '', hard.length ? 'Noch nicht senden – bitte zuerst korrigieren' : 'Bitte kurz prüfen'));
+            dialog.append(el('p', 'field-hint', hard.length ? 'Das Büro braucht jede Seite zugeschnitten und gut lesbar. So geht es weiter:' : 'Die Seiten sind lesbar, aber nicht ganz knackig. Du kannst neu aufnehmen oder trotzdem senden.'));
+            const list = el('ul', 'doc-gate-list');
+            all.forEach(entry => {
+                const row = el('li', '');
+                row.append(el('strong', '', entry.text));
+                const how = entry.code === 'rand' ? 'Tippe auf „Ansehen“ und ziehe die vier Ecken auf das Blatt – oder fotografiere die Seite neu, so dass der Tisch ringsum zu sehen ist.'
+                    : entry.code === 'unscharf' || entry.code === 'weich' ? 'Handy ruhig halten, auf das Blatt tippen (Fokus) und neu aufnehmen – bei Tageslicht am besten.'
+                    : entry.code === 'dunkel' ? 'Mehr Licht: Lampe an oder ans Fenster – dann neu aufnehmen.'
+                    : entry.code === 'hell' ? 'Blitz aus, nicht gegen das Licht – dann neu aufnehmen.'
+                    : entry.code === 'klein' ? 'Näher herangehen, das Blatt soll das Bild füllen.' : 'Bei besserem Licht neu aufnehmen.';
+                row.append(el('span', 'doc-gate-how', how));
+                const actions = el('div', 'doc-gate-actions');
+                const view = el('button', 'button-secondary', entry.code === 'rand' ? 'Ansehen · Ecken anpassen' : 'Ansehen'); view.type = 'button';
+                view.addEventListener('click', () => { dialog.close(); resolve({ action: 'review', page: entry.page }); });
+                const retake = el('button', 'button-primary', 'Neu aufnehmen'); retake.type = 'button';
+                retake.addEventListener('click', () => { dialog.close(); resolve({ action: 'retake', page: entry.page }); });
+                actions.append(view, retake);
+                row.append(actions);
+                list.append(row);
+            });
+            dialog.append(list);
+            const buttons = el('div', 'modal-buttons');
+            if (!hard.length) { const go = el('button', 'button-secondary', 'Trotzdem senden'); go.type = 'button'; go.addEventListener('click', () => { dialog.close(); resolve({ action: 'send' }); }); buttons.append(go); }
+            const back = el('button', hard.length ? 'button-secondary' : 'button-quiet', 'Zu den Seiten'); back.type = 'button'; back.addEventListener('click', () => { dialog.close(); resolve({ action: 'pages' }); });
+            buttons.append(back);
+            dialog.append(buttons);
+            dialog.addEventListener('close', () => { dialog.remove(); resolve({ action: 'pages' }); });
+            document.body.append(dialog);
+            dialog.showModal();
+        });
+    }
+
     async function send() {
         if (sending || !draft?.pages.length) return;
         const session = draft;
+        // Erst prüfen: Ist jede Seite in Ordnung?
+        const blockers = sendBlockers();
+        if (blockers.hard.length || blockers.soft.length) {
+            const answer = await explainBlockers(blockers);
+            if (draft !== session) return;
+            if (answer.action === 'review') { wizard.show(3); openReview(answer.page); return; }
+            if (answer.action === 'retake') { wizard.show(3); replaceId = answer.page.id; openCamera(); return; }
+            if (answer.action !== 'send') { wizard.show(3); return; }
+        }
         const profile = core.profile();
         const source = draft.source;
         sending = true;
