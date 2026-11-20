@@ -129,16 +129,22 @@ const TerminCloud = (() => {
         // Neue Termine, die Dolmetscher gemeldet haben (Seite „Neue Termine“). Fehlt die Tabelle noch, zählt es als 0.
         const newAppointments = await client.from('tt_new_appointments').select('id').eq('status', 'neu');
         // Ungelesene Chat-Nachrichten der Dolmetscher (Seite „Nachrichten“). Fehlt die Tabelle noch, zählt es als 0.
-        const unreadChat = await client.from('tt_chat').select('id, urgent, kind, sender_name, thread_id, body, created_at').eq('from_staff', false).is('read_at', null);
+        let unreadChat = await client.from('tt_chat').select('id, urgent, kind, sender_name, thread_id, body, created_at, ref_id').eq('from_staff', false).is('read_at', null);
+        if (unreadChat.error && /ref_id/i.test(unreadChat.error.message || '')) unreadChat = await client.from('tt_chat').select('id, urgent, kind, sender_name, thread_id, body, created_at').eq('from_staff', false).is('read_at', null);
         // Korrekturen der Dolmetscher (zurückgenommen, geändert, gelöscht), die noch niemand gesehen hat (Update 37). Fehlt die Tabelle: 0.
         const corrections = await client.from('tt_corrections').select('id').is('seen_at', null);
         // Meldungen über einen Vorfahrer (Fahrerakte) und Meldungen des Arztes an die Einsatzleitung (Update 42). Fehlt die Tabelle: 0.
-        const [driverNotes, doctorNotes, extraDays] = await Promise.all([
-            client.from('tt_driver_notes').select('id, handover_id').is('office_seen_at', null),
+        let [driverNotes, doctorNotes, extraDays] = await Promise.all([
+            client.from('tt_driver_notes').select('id, handover_id, reply_at, decision, driver_name, plate, kind').is('office_seen_at', null),
             client.from('tt_doctor_feedback').select('id').is('seen_at', null),
             client.from('tt_extra_days').select('id').eq('status', 'gemeldet')     // gemeldete Arbeitstage (Update 43)
         ]);
+        // Ohne Update 58 fehlen reply_at/decision – dann ohne diese Spalten.
+        if (driverNotes.error && /reply_at|decision|driver_name/i.test(driverNotes.error.message || '')) driverNotes = await client.from('tt_driver_notes').select('id, handover_id').is('office_seen_at', null);
         const openDriverNotes = driverNotes.error ? 0 : driverNotes.data.length;
+        // R97: Was beim Start als Pop-up erscheint – Stellungnahmen der Fahrer und Tankkarten-Rückmeldungen, jeweils anklickbar.
+        const replies = driverNotes.error ? [] : driverNotes.data.filter(item => item.reply_at && !item.decision).map(item => ({ id: item.id, name: item.driver_name || 'Fahrer', plate: item.plate || '', kind: item.kind || '' }));
+        const fuelReturns = unreadChat.error ? [] : unreadChat.data.filter(item => item.kind === 'tankkarte' || /^TANKKARTE\b/.test(String(item.body || ''))).map(item => ({ id: item.id, threadId: item.thread_id, name: item.sender_name || 'Dolmetscher', text: String(item.body || '').slice(0, 200), at: item.created_at, refId: item.ref_id || null }));
         // Ein Übernahme-Hinweis, der schon als Meldung an den Vorfahrer ging, zählt nur einmal.
         const notedHandovers = new Set(driverNotes.error ? [] : driverNotes.data.map(item => item.handover_id));
         // Auf die Freischaltung warten nur Konten, die noch nie freigeschaltet waren – gesperrte Konten zählen nicht.
@@ -153,7 +159,7 @@ const TerminCloud = (() => {
             chat: unreadChat.error ? 0 : unreadChat.data.length,
             // Eilmeldungen (Update 49): ungelesene Hilfe-/Korrektur-Anfragen – rotes Band in allen Büro-Seiten
             urgent: unreadChat.error ? [] : unreadChat.data.filter(item => item.urgent).map(item => ({ id: item.id, kind: item.kind || '', name: item.sender_name || 'Dolmetscher', threadId: item.thread_id, text: String(item.body || '').split('\n')[0].slice(0, 160), at: item.created_at })),
-            corrections: corrections.error ? 0 : corrections.data.length };
+            corrections: corrections.error ? 0 : corrections.data.length, replies, fuelReturns };
     }
 
     // ---------- Server-Funktion (Mitteilungen aufs Handy, Passwort neu vergeben) ----------

@@ -565,7 +565,64 @@ if (!window.TerminContact) {
         const text = el('span', 'fuel-card-text');
         text.append(el('strong', '', `${fuelCards.length === 1 ? 'Tankkarte' : 'Tankkarten'} ${numbers}`),
             el('small', '', `${fuelCards.length === 1 ? 'ist' : 'sind'} bei dir${since ? ` (seit ${since})` : ''}. Bitte gib sie nach dem Einsatz im Büro zurück.`));
-        banner.replaceChildren(icon, text);
+        // R97: Karte schon abgegeben? Dem Büro Bescheid sagen – es nimmt die Karte dann von deinem Namen.
+        const back = el('button', 'button-secondary fuel-card-return', fuelCards.length === 1 ? 'Karte abgegeben – Büro informieren' : 'Karten abgegeben – Büro informieren');
+        back.type = 'button';
+        back.addEventListener('click', () => openFuelReturn());
+        banner.replaceChildren(icon, text, back);
+    }
+    // R97: Rückmeldung „Tankkarte abgegeben“ – wo und an wen; geht als Nachricht (kind tankkarte) an die Einsatzleitung.
+    async function openFuelReturn() {
+        if (!fuelCards.length) return;
+        const where = await askChoice('Wo hast du die Tankkarte abgegeben?', [['buero', 'Im Büro abgegeben'], ['pforte', 'An der Pforte abgegeben'], ['kollege', 'Einem Kollegen gegeben'], ['auto', 'Im Auto gelassen']]);
+        if (!where) return;
+        let detail = '';
+        if (where === 'kollege') { detail = ((await askText('Welchem Kollegen hast du die Karte gegeben?', 'Name des Kollegen')) || '').trim(); if (!detail) return; }
+        const WHERE_TEXT = { buero: 'im Büro abgegeben', pforte: 'an der Pforte abgegeben', kollege: `an ${detail} weitergegeben`, auto: 'im Auto gelassen' };
+        const numbers = fuelCards.map(card => card.number).join(', ');
+        const body = `TANKKARTE ${numbers} ${WHERE_TEXT[where]} – bitte von meinem Namen nehmen.`;
+        try {
+            const row = { thread_id: profile.id, sender_id: profile.id, sender_name: profile.full_name || '', from_staff: false, body };
+            let result = await client.from('tt_chat').insert({ ...row, kind: 'tankkarte', ref_id: fuelCards[0].id }).select('id').single();
+            // Ohne Update 59 kennt die Datenbank die Art noch nicht – dann als normale Nachricht.
+            if (result.error && /kind|ref_id|check/i.test(result.error.message || '')) result = await client.from('tt_chat').insert(row).select('id').single();
+            if (result.error) throw result.error;
+            TerminCloud.callFunction?.({ action: 'chat', chatId: result.data?.id })?.catch?.(() => null);
+            toast('Danke – die Einsatzleitung nimmt die Karte von deinem Namen.', 'success');
+        } catch (error) { toast(`Nicht gesendet: ${TerminCloud.germanError(error)}`, 'error'); }
+    }
+    // Kurze Texteingabe in einem Dialog: Ergebnis ist der Text oder null.
+    function askText(title, placeholder) {
+        return new Promise(resolve => {
+            const dialog = el('dialog', 'confirm-dialog');
+            const form = el('form', 'fleet-form'); form.noValidate = true;
+            const input = el('input', ''); input.type = 'text'; input.maxLength = 80; input.placeholder = placeholder || ''; input.setAttribute('aria-label', title);
+            const cancel = el('button', 'button-secondary', 'Abbrechen'); cancel.type = 'button'; cancel.addEventListener('click', () => { dialog.close(); resolve(null); });
+            const ok = el('button', 'button-primary', 'Weiter'); ok.type = 'submit';
+            const buttons = el('div', 'modal-buttons'); buttons.append(cancel, ok);
+            form.append(el('h2', '', title), input, buttons);
+            form.addEventListener('submit', event => { event.preventDefault(); const value = input.value.trim(); if (!value) { input.focus(); return; } dialog.close(); resolve(value); });
+            dialog.append(form);
+            dialog.addEventListener('close', () => { dialog.remove(); resolve(null); });
+            document.body.append(dialog);
+            dialog.showModal();
+            input.focus();
+        });
+    }
+    // Kleine Auswahl in einem Dialog: Ergebnis ist der gewählte Wert oder null.
+    function askChoice(title, entries) {
+        return new Promise(resolve => {
+            const dialog = el('dialog', 'confirm-dialog');
+            const heading = el('h2', '', title);
+            const list = el('div', 'choice-list');
+            entries.forEach(([value, text]) => { const button = el('button', 'choice-button', text); button.type = 'button'; button.addEventListener('click', () => { dialog.close(); resolve(value); }); list.append(button); });
+            const cancel = el('button', 'button-secondary', 'Abbrechen'); cancel.type = 'button'; cancel.addEventListener('click', () => { dialog.close(); resolve(null); });
+            const buttons = el('div', 'modal-buttons'); buttons.append(cancel);
+            dialog.append(heading, list, buttons);
+            dialog.addEventListener('close', () => { dialog.remove(); resolve(null); });
+            document.body.append(dialog);
+            dialog.showModal();
+        });
     }
 
     // Einmaliger Hinweis auf der Startseite, solange Mitteilungen möglich, aber noch aus sind.
@@ -2582,6 +2639,15 @@ if (!window.TerminContact) {
         const { data, error } = await client.from('tt_driver_notes').select('*').eq('driver_id', profile.id).order('created_at', { ascending: false }).limit(30);
         driverNoteData = error ? [] : (data || []);
         box.hidden = !driverNoteData.length;
+        // R96: Deine Akte auf einen Blick – was zählt (vom Büro bestätigt), was noch geprüft wird, was verworfen wurde.
+        const mine = $('driverFileSummary');
+        if (mine) {
+            const confirmed = driverNoteData.filter(item => item.decision === 'bestaetigt').length;
+            const dismissed = driverNoteData.filter(item => item.decision === 'verworfen' || item.archived_at).length;
+            const pending = driverNoteData.length - confirmed - dismissed;
+            mine.hidden = !driverNoteData.length;
+            mine.textContent = `Deine Akte: ${confirmed} ${confirmed === 1 ? 'bestätigte Meldung' : 'bestätigte Meldungen'} · ${pending} in Prüfung · ${dismissed} nicht dir zugeordnet`;
+        }
         const list = $('driverNotesList');
         list.replaceChildren(...driverNoteData.map(item => {
             const entry = el('li', 'directory-entry damage-entry driver-note');
@@ -2602,12 +2668,74 @@ if (!window.TerminContact) {
                 });
                 main.append(row);
             }
+            // R96: Stellungnahme des Fahrers – Text und Fotos; danach entscheidet die Einsatzleitung.
+            const decided = item.decision === 'bestaetigt' || item.decision === 'verworfen' || Boolean(item.archived_at);
+            if (item.reply || (Array.isArray(item.reply_photo_paths) && item.reply_photo_paths.length)) {
+                const mineBox = el('div', 'driver-note-reply');
+                mineBox.append(el('strong', '', `Deine Stellungnahme${item.reply_at ? ` (${new Date(item.reply_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })})` : ''}`));
+                if (item.reply) mineBox.append(el('p', 'driver-note-text', `„${item.reply}“`));
+                const replyPhotos = Array.isArray(item.reply_photo_paths) ? item.reply_photo_paths : [];
+                if (replyPhotos.length) {
+                    const row = el('div', 'driver-note-photos');
+                    replyPhotos.forEach((path, index) => {
+                        const open = el('button', 'button-secondary', replyPhotos.length > 1 ? `Dein Foto ${index + 1}` : 'Dein Foto');
+                        open.type = 'button';
+                        open.addEventListener('click', async () => { const url = await TerminCloud.photoUrl(path); if (!url) { toast('Das Foto konnte nicht geladen werden.', 'error'); return; } window.ScanCam?.look ? ScanCam.look({ url, title: 'Dein Foto' }) : window.open(url, '_blank', 'noopener'); });
+                        row.append(open);
+                    });
+                    mineBox.append(row);
+                }
+                main.append(mineBox);
+            }
+            if (!decided) {
+                const form = el('form', 'driver-note-form');
+                form.noValidate = true;
+                const text = el('textarea', '');
+                text.rows = 2; text.maxLength = 2000; text.placeholder = item.reply ? 'Stellungnahme ergänzen oder ändern …' : 'Deine Sicht: Was war los? (freiwillig – z. B. „Der Kratzer war schon da, siehe mein Foto von der Übernahme“)';
+                text.value = item.reply || '';
+                text.setAttribute('aria-label', 'Stellungnahme');
+                const fileLabel = el('label', 'button-secondary driver-note-file');
+                const fileInput = el('input', 'visually-hidden'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.multiple = true;
+                const fileText = el('span', '', 'Fotos anhängen');
+                fileLabel.append(fileText, fileInput);
+                fileInput.addEventListener('change', () => { const n = fileInput.files?.length || 0; fileText.textContent = n ? `${n} ${n === 1 ? 'Foto' : 'Fotos'} gewählt` : 'Fotos anhängen'; });
+                const send = el('button', 'button-primary', item.reply ? 'Stellungnahme aktualisieren' : 'Stellungnahme senden');
+                send.type = 'submit';
+                const row = el('div', 'driver-note-form-row'); row.append(fileLabel, send);
+                form.append(text, row);
+                form.addEventListener('submit', async event => {
+                    event.preventDefault();
+                    const body = text.value.trim();
+                    const files = [...(fileInput.files || [])].slice(0, 5);
+                    if (!body && !files.length) { toast('Bitte schreib kurz deine Sicht oder häng ein Foto an.', 'error'); text.focus(); return; }
+                    send.disabled = true;
+                    try {
+                        const paths = Array.isArray(item.reply_photo_paths) ? [...item.reply_photo_paths] : [];
+                        for (const file of files) paths.push(await TerminCloud.uploadPhoto(file, profile.id));
+                        const { error: replyError } = await client.from('tt_driver_notes').update({ reply: body, reply_photo_paths: paths, reply_at: new Date().toISOString(), seen_at: item.seen_at || new Date().toISOString() }).eq('id', item.id);
+                        if (replyError) throw replyError;
+                        toast('Deine Stellungnahme ist bei der Einsatzleitung.', 'success');
+                        await loadDriverNotes();
+                        renderHome();
+                    } catch (error) {
+                        send.disabled = false;
+                        toast(`Nicht gesendet: ${TerminCloud.germanError(error)}`, 'error');
+                    }
+                });
+                main.append(form);
+            }
             entry.append(main);
-            if (item.archived_at) {
-                // Update 50: Das Büro hat die Meldung geprüft und dir nicht zugeordnet – sie zählt nicht für dich.
+            if (item.decision === 'bestaetigt') {
+                entry.dataset.seen = 'ja';
+                entry.append(el('span', 'status-pill driver-note-confirmed', `vom Büro bestätigt – zählt in deiner Akte${item.decision_note ? ` („${item.decision_note}“)` : ''}`));
+            } else if (item.archived_at || item.decision === 'verworfen') {
+                // Update 50/58: Das Büro hat die Meldung geprüft und dir nicht zugeordnet – sie zählt nicht für dich.
                 entry.dataset.seen = 'ja';
                 entry.dataset.cleared = 'ja';
-                entry.append(el('span', 'status-pill driver-note-cleared', 'geprüft – nicht dir zugeordnet'));
+                entry.append(el('span', 'status-pill driver-note-cleared', `geprüft – nicht dir zugeordnet${item.decision_note ? ` („${item.decision_note}“)` : ''}`));
+            } else if (item.reply_at) {
+                entry.dataset.seen = 'ja';
+                entry.append(el('span', 'status-pill', 'Stellungnahme gesendet – das Büro prüft'));
             } else if (!item.seen_at) {
                 const seen = el('button', 'button-primary driver-note-seen', 'Gesehen');
                 seen.type = 'button';

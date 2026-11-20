@@ -152,6 +152,7 @@
         setBadge('termine', counts.appointments || 0);
         setBadge('nachrichten', counts.chat || 0);
         renderUrgent(Array.isArray(counts.urgent) ? counts.urgent : []);
+        const popupShown = TerminCloud.isStaff(profile) ? renderStartPopup(counts, profile) : false;
         refreshUsage(false);
         if (TerminCloud.isStaff(profile)) autoDoctors();
 
@@ -181,13 +182,92 @@
             const waitingTotal = ['payroll', 'damages', 'alerts', 'requests', 'accounts', 'fest', 'appointments', 'chat'].reduce((sum, key) => sum + (Number(counts[key]) || 0), 0) + (Number(counts.reports ?? counts.documents) || 0) + (Number(counts.prescriptions) || 0);
             if (waitingTotal > 0) navigator.setAppBadge?.(waitingTotal)?.catch?.(() => null); else navigator.clearAppBadge?.()?.catch?.(() => null);
         } catch (error) { /* nicht jeder Browser kann das */ }
-        messages.forEach(([message, href]) => {
+        // Zeigt das Pop-up beim Start schon alles, braucht es die einzelnen Hinweise oben nicht noch einmal.
+        (popupShown ? [] : messages).forEach(([message, href]) => {
             // Wie eine Mitteilung auf dem Handy: erscheint oben, bleibt kurz stehen, ein Klick öffnet die Seite.
             if (typeof showToast === 'function') showToast(message, 'info', { duration: 9000, keep: true, href });
             if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
                 try { new Notification('Medical Office Bonn', { body: message }); } catch (error) { /* manche Browser erlauben das nur mit Service Worker */ }
             }
         });
+    }
+
+    // ---------- R97: Pop-up beim Start – was wartet, direkt anklickbar ----------
+    // Erscheint auf der Startseite, sobald etwas Neues da ist (je Stand einmal; „Später“ legt es für diese Sitzung weg).
+    const POPUP_KEY = 'office.startPopup.seen';
+    function renderStartPopup(counts, profile) {
+        if (document.body.dataset.page !== 'start') return false;
+        if (document.querySelector('dialog[open]')) return false;
+        const items = [];
+        const add = (key, title, text, href, action) => items.push({ key, title, text, href, action });
+        (counts.urgent || []).forEach(item => add(`urgent:${item.id}`, `EILMELDUNG · ${item.name}`, item.text, `nachrichten.html?an=${encodeURIComponent(item.threadId)}`));
+        (counts.fuelReturns || []).forEach(item => add(`fuel:${item.id}`, `Tankkarte abgegeben · ${item.name}`, item.text, `nachrichten.html?an=${encodeURIComponent(item.threadId)}`,
+            TerminCloud.isAdmin(profile) && item.refId ? { label: 'Karte ins Büro zurücknehmen', run: () => takeBackFuelCard(item) } : null));
+        (counts.replies || []).forEach(item => add(`reply:${item.id}`, `Stellungnahme · ${item.name}`, `Zur Meldung „${{ unsauber: 'nicht sauber', tank: 'Tank fast leer', schaden: 'neuer Schaden', hinweis: 'Hinweis' }[item.kind] || 'Hinweis'}“ ${item.plate ? `am ${item.plate} ` : ''}– bitte bestätigen oder verwerfen.`, 'fahrzeugakte.html?ansicht=fahrerakte'));
+        if ((counts.driverNotes || 0) > (counts.replies || []).length) add(`notes:${counts.driverNotes}`, 'Meldungen über Vorfahrer', `${counts.driverNotes - (counts.replies || []).length} neu (nicht sauber, Tank leer oder Schaden)`, 'fahrzeugakte.html?ansicht=fahrerakte');
+        if (counts.damages) add(`damages:${counts.damages}`, 'Schäden', `${counts.damages} ${counts.damages === 1 ? 'offener Schaden' : 'offene Schäden'}`, 'fahrzeugakte.html?ansicht=uebersicht');
+        if (counts.requests) add(`requests:${counts.requests}`, 'Angeforderte Fotos', `${counts.requests} ${counts.requests === 1 ? 'Foto ist' : 'Fotos sind'} da`, 'fahrzeugakte.html?ansicht=uebersicht');
+        if (counts.accounts) add(`accounts:${counts.accounts}`, 'Konten', `${counts.accounts} ${counts.accounts === 1 ? 'wartet' : 'warten'}: Anmeldung oder Passwort`, 'team.html');
+        if (counts.documents) add(`documents:${counts.documents}`, 'Neue Unterlagen', `${counts.documents} neu (Berichte, Rezepte, Überweisungen)`, (counts.prescriptions || 0) ? 'neueRezepte.html' : 'neueBerichte.html');
+        if (counts.appointments) add(`appointments:${counts.appointments}`, 'Neue Termine', `${counts.appointments} von Dolmetschern gemeldet`, 'neueTermine.html');
+        const otherChat = (counts.chat || 0) - (counts.fuelReturns || []).length - (counts.urgent || []).length;
+        if (otherChat > 0) add(`chat:${otherChat}`, 'Nachrichten', `${otherChat} ungelesen`, 'nachrichten.html');
+        if (counts.payroll) add(`payroll:${counts.payroll}`, 'Abrechnung', `${counts.payroll} offen (Belege, Einwände, Arbeitstage)`, 'abrechnung.html');
+        if (counts.fest) add(`fest:${counts.fest}`, 'Festangestellte', `${counts.fest} offen (Urlaub, Krank, Überstunden, Belege)`, 'festangestellte.html');
+        const existing = document.getElementById('startPopup');
+        if (!items.length) { existing?.remove(); return false; }
+        const stamp = items.map(item => item.key).join('|');
+        let seen = '';
+        try { seen = sessionStorage.getItem(POPUP_KEY) || ''; } catch (error) { /* dann jedes Mal */ }
+        if (seen === stamp) return false;
+        if (existing) existing.remove();
+        const dialog = document.createElement('dialog');
+        dialog.id = 'startPopup';
+        dialog.className = 'confirm-dialog start-popup';
+        dialog.setAttribute('aria-labelledby', 'startPopupTitle');
+        const title = document.createElement('h2'); title.id = 'startPopupTitle'; title.textContent = `Was wartet (${items.length})`;
+        const hint = document.createElement('p'); hint.className = 'field-hint'; hint.textContent = 'Ein Klick öffnet die Stelle direkt. „Später“ legt die Liste bis zur nächsten Änderung weg.';
+        const list = document.createElement('ul'); list.className = 'start-popup-list';
+        items.slice(0, 12).forEach(item => {
+            const row = document.createElement('li');
+            row.dataset.key = item.key.split(':')[0];
+            row.dataset.fullKey = item.key;
+            const link = document.createElement('a'); link.href = item.href; link.className = 'start-popup-link';
+            const strong = document.createElement('strong'); strong.textContent = item.title;
+            const small = document.createElement('span'); small.textContent = item.text;
+            link.append(strong, small);
+            row.append(link);
+            if (item.action) {
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'button-primary start-popup-action'; button.textContent = item.action.label;
+                button.addEventListener('click', async () => { button.disabled = true; const ok = await item.action.run(); if (ok) row.remove(); else button.disabled = false; if (!list.children.length) dialog.close(); });
+                row.append(button);
+            }
+            list.append(row);
+        });
+        const buttons = document.createElement('div'); buttons.className = 'modal-buttons';
+        const later = document.createElement('button'); later.type = 'button'; later.className = 'button-secondary'; later.textContent = 'Später';
+        later.addEventListener('click', () => dialog.close());
+        buttons.append(later);
+        dialog.append(title, hint, list, buttons);
+        dialog.addEventListener('close', () => {
+            // Gemerkt wird der Stand der noch offenen Punkte – was hier erledigt wurde, zählt nicht mehr dazu.
+            const left = items.filter(item => [...list.children].some(row => row.dataset.fullKey === item.key)).map(item => item.key).join('|');
+            try { sessionStorage.setItem(POPUP_KEY, left); } catch (error) { /* dann beim nächsten Mal wieder */ }
+            dialog.remove();
+        });
+        document.body.append(dialog);
+        dialog.showModal();
+        return true;
+    }
+    // Tankkarte vom Dolmetscher nehmen (Admin): zurück ins Büro, Nachricht als gelesen vermerken.
+    async function takeBackFuelCard(item) {
+        const client = TerminCloud.client;
+        const { error } = await client.rpc('tt_fuel_card_set', { p_card: item.refId, p_profile: null, p_place: '' });
+        if (error) { if (typeof showToast === 'function') showToast(TerminCloud.germanError(error), 'error'); return false; }
+        await client.from('tt_chat').update({ read_at: new Date().toISOString() }).eq('id', item.id);
+        if (typeof showToast === 'function') showToast(`Tankkarte ist wieder im Büro – ${item.name} steht nicht mehr als Inhaber.`, 'success');
+        window.setTimeout(refreshCloudInbox, 500);
+        return true;
     }
 
     window.refreshCloudInbox = refreshCloudInbox;

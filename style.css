@@ -2940,6 +2940,29 @@ dialog.office-return .office-return-send input { width: 20px; height: 20px; marg
 .driver-note-main { display: grid; gap: 4px; flex: 1 1 260px; min-width: 0; }
 .driver-note-meta, .driver-file-meta { color: var(--muted); font-size: .86rem; }
 .driver-note-text, .driver-file-text { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+/* R96: Stellungnahme des Fahrers und Entscheidung */
+.driver-note-reply, .driver-file-reply { display: grid; gap: 6px; margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--brand); border-radius: 0 10px 10px 0; background: var(--brand-soft); }
+.driver-note-reply strong, .driver-file-reply strong { font-size: .82rem; color: var(--brand-dark); }
+.driver-note-form { display: grid; gap: 8px; width: 100%; margin-top: 10px; }
+.driver-note-form textarea { width: 100%; min-height: 56px; }
+.driver-note-form-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.driver-note-file { cursor: pointer; }
+/* R97: Pop-up beim Start (Büro) und Tankkarte zurückmelden (App) */
+.start-popup { width: min(94vw, 560px); }
+.start-popup-list { display: grid; gap: 8px; margin: 12px 0 4px; padding: 0; list-style: none; max-height: min(60vh, 520px); overflow: auto; }
+.start-popup-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.start-popup-list li[data-key="urgent"] { border-color: #d64545; background: color-mix(in srgb, #d64545 10%, var(--surface)); }
+.start-popup-list li[data-key="fuel"], .start-popup-list li[data-key="reply"] { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); }
+.start-popup-link { display: grid; flex: 1 1 220px; gap: 2px; color: inherit; text-decoration: none; }
+.start-popup-link strong { font-size: .95rem; }
+.start-popup-link span { color: var(--muted); font-size: .84rem; }
+.start-popup-action { flex: 0 0 auto; }
+.fuel-card-banner { flex-wrap: wrap; }
+.fuel-card-return { margin-left: auto; }
+.driver-file-mine { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--surface-hover); font-weight: 650; }
+.status-pill.driver-note-confirmed { background: var(--warn-soft); color: var(--ink); }
+.driver-file-pending { color: var(--warn); font-weight: 650; }
+.driver-file-entry[data-decision="verworfen"] { opacity: .72; }
 .driver-note-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .driver-note-photos .button-secondary { min-height: 36px; padding: 4px 12px; }
 .driver-note-seen { min-height: 44px; }

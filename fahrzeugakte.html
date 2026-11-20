@@ -67,7 +67,7 @@
 
             <!-- Heidelberg: Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
             <section class="directory-card station-card" aria-label="Heidelberg" data-fleet-panel="heidelberg" data-station="Heidelberg">
-               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 class="station-title">Heidelberg</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Heidelberg</button></div>
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">HD</span><div><h2 class="station-title">Heidelberg</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Heidelberg</button><button type="button" class="station-take button-secondary">Aus unserer Liste übernehmen</button></div>
                <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Heidelberg – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Heidelberg“ aus.</p>
                <h3 class="file-heading">Fahrzeuge</h3>
                <ul class="station-vehicles directory-list"></ul>
@@ -77,7 +77,7 @@
 
             <!-- Düsseldorf (R91): wie Heidelberg – Fahrzeuge und Tankkarten der Kollegen dort – nur zur Übersicht, nicht zur Übernahme in Bonn -->
             <section class="directory-card station-card" aria-label="Düsseldorf" data-fleet-panel="duesseldorf" data-station="Düsseldorf">
-               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">DÜ</span><div><h2 class="station-title">Düsseldorf</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Düsseldorf</button></div>
+               <div class="directory-card-heading"><span class="directory-step" aria-hidden="true">DÜ</span><div><h2 class="station-title">Düsseldorf</h2><p class="station-summary">Wird geladen …</p></div><button type="button" class="station-add button-secondary">+ Fahrzeug in Düsseldorf</button><button type="button" class="station-take button-secondary">Aus unserer Liste übernehmen</button></div>
                <p class="field-hint">Die festen Fahrzeuge und Tankkarten der Kollegen in Düsseldorf – zur Übersicht. Sie erscheinen den Dolmetschern in Bonn nicht zur Übernahme. Tankkarten gibst du unter „Tankkarten“ an „Düsseldorf“ aus.</p>
                <h3 class="file-heading">Fahrzeuge</h3>
                <ul class="station-vehicles directory-list"></ul>
@@ -205,6 +205,44 @@
             <textarea id="admonishNote" rows="3" maxlength="400"></textarea>
             <p class="field-hint">Der Vermerk steht nur in der Fahrerakte der Einsatzleitung. Der Fahrer sieht ihn nicht.</p>
             <div class="modal-buttons"><button type="button" class="button-secondary" id="admonishCancel">Abbrechen</button><button type="submit" class="button-primary" id="admonishSave">Ermahnung vermerken</button></div>
+         </form>
+      </dialog>
+      <!-- R98: Fahrzeug zwischen Bonn und einem Standort bewegen – zurück zu uns, übernehmen, tauschen -->
+      <dialog id="stationMoveDialog" class="confirm-dialog office-return" aria-labelledby="stationMoveTitle">
+         <form id="stationMoveForm" class="fleet-form" novalidate>
+            <h2 id="stationMoveTitle">Fahrzeug bewegen</h2>
+            <p class="field-hint" id="stationMoveInfo"></p>
+            <span class="field-label" id="stationMoveKindLabel">Was passiert?</span>
+            <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="stationMoveKindLabel" id="stationMoveKinds">
+               <label><input type="radio" name="stationMoveKind" value="zurueck"><span>Zurück zu uns – das Auto steht jetzt in Bonn</span></label>
+               <label><input type="radio" name="stationMoveKind" value="tausch"><span>Tausch mit unserer Flotte – ein Auto von uns geht dafür zu den Kollegen</span></label>
+               <label><input type="radio" name="stationMoveKind" value="extern"><span>Tausch bei ATU / Vermieter – neues Kennzeichen eintragen</span></label>
+            </div>
+            <div id="stationMovePartnerBox">
+               <label for="stationMovePartner" id="stationMovePartnerLabel">Unser Auto, das zu den Kollegen geht</label>
+               <select id="stationMovePartner"></select>
+               <p class="field-hint" id="stationMovePartnerHint">Nur freie Fahrzeuge aus Bonn (nicht unterwegs, nicht in der Werkstatt, nicht reserviert).</p>
+            </div>
+            <div id="stationMoveDriverBox">
+               <label for="stationMoveDriver">Fester Fahrer bei den Kollegen <span class="optional-label">optional</span></label>
+               <input id="stationMoveDriver" type="text" maxlength="80" autocomplete="off" placeholder="Name des Kollegen">
+            </div>
+            <label for="stationMoveNote">Vermerk <span class="optional-label">optional</span></label>
+            <input id="stationMoveNote" type="text" maxlength="400" autocomplete="off" placeholder="z. B. „Tausch am 20.11., Kollege Ali hat das Auto mitgenommen“">
+            <p class="field-hint" id="stationMoveHint"></p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="stationMoveCancel">Abbrechen</button><button type="submit" class="button-primary" id="stationMoveSave">Eintragen</button></div>
+         </form>
+      </dialog>
+      <!-- R96: Entscheidung zu einer Meldung – zählt in der Fahrerakte oder nicht -->
+      <dialog id="decisionDialog" class="confirm-dialog office-return" aria-labelledby="decisionTitle">
+         <form id="decisionForm" class="fleet-form" novalidate>
+            <h2 id="decisionTitle">Meldung bestätigen</h2>
+            <p class="field-hint" id="decisionInfo"></p>
+            <p class="field-hint" id="decisionReply"></p>
+            <label for="decisionNote">Begründung für den Fahrer <span class="optional-label">optional</span></label>
+            <textarea id="decisionNote" rows="3" maxlength="400" placeholder="z. B. „Fotos von der Übernahme zeigen den Kratzer nicht“ oder „Schaden war laut Vorfahrer schon da“"></textarea>
+            <p class="field-hint" id="decisionHint"></p>
+            <div class="modal-buttons"><button type="button" class="button-secondary" id="decisionCancel">Abbrechen</button><button type="submit" class="button-primary" id="decisionSave">Bestätigen</button></div>
          </form>
       </dialog>
       <dialog id="archiveNoteDialog" class="confirm-dialog office-return" aria-labelledby="archiveNoteTitle">

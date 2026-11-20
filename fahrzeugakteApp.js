@@ -58,7 +58,7 @@
     let vehicleEvents = [];         // Verlauf: Tausch, Rückgabe, Aufnahme (Update 44)
     let swapReady = false;          // Update 44 vorhanden (tt_vehicle_events, tt_vehicle_swap, Reifen, Extras für ATU)
     const TYRES = { sommer: 'Sommerreifen', winter: 'Winterreifen', ganzjahr: 'Ganzjahresreifen' };
-    const SWAP_KIND = { tausch: 'Getauscht', ersetzt: 'Ersetzt', rueckgabe: 'Zurückgegeben', sonstiges: 'Aus dem Fuhrpark genommen', aufnahme: 'Aufgenommen', wieder: 'Wieder aufgenommen' };
+    const SWAP_KIND = { tausch: 'Getauscht', ersetzt: 'Ersetzt', rueckgabe: 'Zurückgegeben', sonstiges: 'Aus dem Fuhrpark genommen', aufnahme: 'Aufgenommen', wieder: 'Wieder aufgenommen', standort: 'Standort gewechselt' };
     const tyreText = vehicle => vehicle?.tyres ? `${TYRES[vehicle.tyres] || vehicle.tyres}${vehicle.tyres_since ? ` seit ${formatDate(vehicle.tyres_since)}` : ''}` : '';
     let selectedId = null;
     let fileTab = 'current';
@@ -828,7 +828,11 @@
             const open = el('button', 'button-secondary fleet-end-button', 'Akte');
             open.type = 'button';
             open.addEventListener('click', () => selectVehicle(vehicle.id));
-            actions.append(edit, open);
+            // R98: zurück zu uns, Tausch mit unserer Flotte oder Tausch gegen ein neues Kennzeichen
+            const move = el('button', 'button-primary fleet-end-button station-move', 'Zurückgeben / Tausch');
+            move.type = 'button';
+            move.addEventListener('click', () => openStationMove(vehicle, 'zurueck'));
+            actions.append(move, edit, open);
             row.append(pill(vehicle.service_status ? 'in Arbeit' : 'bekannt', vehicle.service_status ? 'Werkstatt' : station), meta, actions);
             return row;
         }) : [el('li', 'directory-empty', `Noch kein Fahrzeug für ${station} angelegt.`)]));
@@ -1325,6 +1329,71 @@
     $('vehicleFormStation').addEventListener('change', syncStationFields);
     $('vehicleAddOpen').addEventListener('click', () => openVehicleDialog(null));
     document.querySelectorAll('.station-add').forEach(button => button.addEventListener('click', () => { openVehicleDialog.preset = button.closest('[data-station]')?.dataset.station || 'Heidelberg'; openVehicleDialog(null); }));
+    document.querySelectorAll('.station-take').forEach(button => button.addEventListener('click', () => openStationMove(null, 'uebernahme', button.closest('[data-station]')?.dataset.station || 'Heidelberg')));
+
+    // ---------- R98: Fahrzeug zwischen Bonn und einem Standort bewegen ----------
+    // vehicle: das Standort-Fahrzeug (zurück / Tausch) – oder null bei „Aus unserer Liste übernehmen“ (dann station = Ziel).
+    let moveVehicle = null, moveStation = '';
+    const freeBonn = except => vehicles.filter(item => stationOf(item) === 'Bonn' && item.id !== except?.id && !vehicleFacts(item).holder && !item.service_status && !reservedName(item))
+        .sort((left, right) => String(left.plate).localeCompare(String(right.plate), 'de', { numeric: true }));
+    function openStationMove(vehicle, kind, station) {
+        moveVehicle = vehicle;
+        moveStation = vehicle ? stationOf(vehicle) : station;
+        const take = kind === 'uebernahme';
+        $('stationMoveTitle').textContent = take ? `Fahrzeug aus unserer Liste nach ${moveStation}` : `${vehicle.plate} – zurückgeben oder tauschen`;
+        $('stationMoveInfo').textContent = take ? `Ein freies Auto aus Bonn geht zu den Kollegen in ${moveStation}. Es verschwindet aus unserer Liste und steht ab sofort unter „${moveStation}“.`
+            : `${vehicle.plate} · ${[vehicle.brand, vehicle.body, vehicle.type].filter(Boolean).join(' · ')} · steht bei den Kollegen in ${moveStation}${vehicle.driver_note ? ` (Fahrer: ${vehicle.driver_note})` : ''}.`;
+        $('stationMoveKinds').hidden = take;
+        document.querySelectorAll('input[name="stationMoveKind"]').forEach(input => { input.checked = input.value === (take ? 'tausch' : 'zurueck'); });
+        const partner = $('stationMovePartner');
+        partner.replaceChildren(...freeBonn(vehicle).map(item => { const option = el('option', null, `${item.plate} · ${[item.brand, item.body, item.type].filter(Boolean).join(' · ')}${item.mileage != null ? ` · ${formatKm(item.mileage)}` : ''}`); option.value = item.id; return option; }));
+        if (!partner.options.length) partner.append(Object.assign(el('option', null, 'Kein freies Fahrzeug in Bonn'), { value: '' }));
+        $('stationMovePartnerLabel').textContent = take ? `Unser Auto, das nach ${moveStation} geht` : 'Unser Auto, das zu den Kollegen geht';
+        $('stationMoveDriver').value = take ? '' : (vehicle.driver_note || '');
+        $('stationMoveNote').value = '';
+        syncStationMove();
+        $('stationMoveDialog').showModal();
+    }
+    const stationMoveKind = () => $('stationMoveKinds').hidden ? 'uebernahme' : (document.querySelector('input[name="stationMoveKind"]:checked')?.value || 'zurueck');
+    function syncStationMove() {
+        const kind = stationMoveKind();
+        $('stationMovePartnerBox').hidden = !(kind === 'tausch' || kind === 'uebernahme');
+        $('stationMoveDriverBox').hidden = !(kind === 'tausch' || kind === 'uebernahme');
+        $('stationMoveHint').textContent = kind === 'zurueck' ? `${moveVehicle?.plate || 'Das Auto'} steht danach in Bonn, ohne festen Fahrer, und kann sofort übernommen werden. Der Wechsel steht im Verlauf beider Seiten.`
+            : kind === 'tausch' ? `${moveVehicle?.plate || 'Das Auto'} kommt zu uns nach Bonn; das gewählte Auto geht nach ${moveStation} und bekommt den festen Fahrer. Beide Wechsel stehen im Verlauf.`
+            : kind === 'extern' ? 'Öffnet den Tausch-Dialog: Dort trägst du das neue Kennzeichen ein (ATU, Vermieter). Das neue Auto bleibt am Standort der Kollegen, das alte geht ins Archiv.'
+            : `Das gewählte Auto steht danach unter „${moveStation}“ und ist in Bonn nicht mehr zu übernehmen.`;
+        $('stationMoveSave').textContent = kind === 'zurueck' ? 'Zurück zu uns eintragen' : kind === 'tausch' ? 'Tausch eintragen' : kind === 'extern' ? 'Weiter zum Tausch-Dialog' : `Nach ${moveStation} übernehmen`;
+    }
+    document.querySelectorAll('input[name="stationMoveKind"]').forEach(input => input.addEventListener('change', syncStationMove));
+    $('stationMoveCancel')?.addEventListener('click', () => $('stationMoveDialog').close());
+    $('stationMoveForm')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const kind = stationMoveKind();
+        if (kind === 'extern') {
+            $('stationMoveDialog').close(); openSwap(moveVehicle);
+            // Beim Tausch über ATU/Vermieter ist „getauscht gegen ein anderes Fahrzeug“ gemeint – vorwählen.
+            const swapKind = document.querySelector('input[name="swapKind"][value="tausch"]'); if (swapKind && !swapKind.disabled) { swapKind.checked = true; swapKind.dispatchEvent(new Event('change', { bubbles: true })); }
+            return;
+        }
+        const partnerId = $('stationMovePartner').value;
+        if ((kind === 'tausch' || kind === 'uebernahme') && !partnerId) { showToast('Bitte wähle ein freies Fahrzeug aus Bonn.', 'error', { target: '#stationMovePartner' }); return; }
+        const note = $('stationMoveNote').value.trim();
+        const driver = $('stationMoveDriver').value.trim();
+        const button = $('stationMoveSave');
+        button.disabled = true;
+        // zurueck: A (Standort) → Bonn · tausch: A → Bonn, Partner (Bonn) → Standort · uebernahme: Partner (Bonn) → Standort
+        const args = kind === 'uebernahme'
+            ? { p_vehicle: partnerId, p_to_station: moveStation, p_note: note, p_partner: null, p_driver_note: driver }
+            : { p_vehicle: moveVehicle.id, p_to_station: 'Bonn', p_note: note, p_partner: kind === 'tausch' ? partnerId : null, p_driver_note: driver };
+        const { data, error } = await client.rpc('tt_vehicle_move', args);
+        button.disabled = false;
+        if (error) { showToast(/tt_vehicle_move/.test(error.message || '') ? 'Dafür fehlt noch das Datenbank-Update 60 (supabase/update-60.sql).' : TerminCloud.germanError(error), 'error'); return; }
+        $('stationMoveDialog').close();
+        const partnerPlate = vehicles.find(item => item.id === partnerId)?.plate || '';
+        showToast(kind === 'zurueck' ? `${data?.plate || moveVehicle.plate} steht jetzt bei uns in Bonn.` : kind === 'tausch' ? `Getauscht: ${moveVehicle.plate} ist jetzt in Bonn, ${partnerPlate} bei den Kollegen in ${moveStation}.` : `${partnerPlate} steht jetzt bei den Kollegen in ${moveStation}.`, 'success');
+        await refresh();
+    });
     $('vehicleEditOpen').addEventListener('click', () => openVehicleDialog(vehicles.find(vehicle => vehicle.id === selectedId) || null));
     $('vehicleFormCancel').addEventListener('click', () => $('vehicleDialog').close());
     $('vehicleForm').addEventListener('submit', async event => {
@@ -1802,6 +1871,29 @@
     }
     const markDriverNoteSeen = (item, button) => saveDriverNote(item, { office_seen_at: new Date().toISOString(), office_seen_by: officeName() }, button);
     let admonishItem = null;
+    // R96: Entscheidung – bestätigt (zählt in der Fahrerakte, der Fahrer sieht das) oder verworfen (zählt nicht).
+    let decisionItem = null, decisionValue = '';
+    function openDecision(item, value) {
+        decisionItem = item; decisionValue = value;
+        $('decisionTitle').textContent = value === 'bestaetigt' ? 'Meldung bestätigen – zählt in der Fahrerakte' : 'Meldung verwerfen – zählt nicht';
+        $('decisionInfo').textContent = `${item.driver_name || 'Fahrer'} · ${item.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} vom ${formatDateTime(item.created_at)}${item.text ? ` – „${item.text}“` : ''}`;
+        $('decisionReply').textContent = item.reply ? `Stellungnahme des Fahrers: „${item.reply}“` : 'Der Fahrer hat (noch) keine Stellungnahme abgegeben.';
+        $('decisionNote').value = item.decision_note || '';
+        $('decisionHint').textContent = value === 'bestaetigt' ? 'Der Fahrer sieht „vom Büro bestätigt – zählt in deiner Akte“ und kann danach nichts mehr ändern.' : 'Der Fahrer sieht „geprüft – nicht dir zugeordnet“. Die Meldung bleibt beim Fahrzeug sichtbar.';
+        $('decisionSave').textContent = value === 'bestaetigt' ? 'Bestätigen' : 'Verwerfen';
+        $('decisionSave').className = value === 'bestaetigt' ? 'button-primary' : 'button-secondary';
+        $('decisionDialog').showModal();
+    }
+    $('decisionCancel')?.addEventListener('click', () => $('decisionDialog').close());
+    $('decisionForm')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!decisionItem) return;
+        const now = new Date().toISOString();
+        const ok = await saveDriverNote(decisionItem, { decision: decisionValue, decided_at: now, decided_by: officeName(), decision_note: $('decisionNote').value.trim(), office_seen_at: decisionItem.office_seen_at || now, office_seen_by: decisionItem.office_seen_by || officeName() }, $('decisionSave'));
+        if (!ok) return;
+        $('decisionDialog').close();
+        showToast(decisionValue === 'bestaetigt' ? `Bestätigt – zählt in der Akte von ${decisionItem.driver_name || 'dem Fahrer'}.` : `Verworfen – zählt nicht für ${decisionItem.driver_name || 'den Fahrer'}.`, 'success');
+    });
     function openAdmonish(item) {
         admonishItem = item;
         $('admonishInfo').textContent = `${item.driver_name || 'Fahrer'} · ${item.plate || 'Fahrzeug'} · ${DRIVER_NOTE_KIND[item.kind] || 'Hinweis'} vom ${formatDateTime(item.created_at)}`;
@@ -1921,18 +2013,25 @@
         groups.forEach(group => {
             const unseen = group.items.filter(item => !item.office_seen_at).length;
             const admonished = group.items.filter(item => item.admonished_at).length;
+            const confirmed = group.items.filter(item => item.decision === 'bestaetigt').length;
+            const dismissed = group.items.filter(item => item.decision === 'verworfen').length;
+            const pending = group.items.filter(item => !item.decision).length;
+            const replied = group.items.filter(item => item.reply_at && !item.decision).length;
             const card = el('article', 'driver-file-card');
             card.dataset.driver = group.id || '';
             card.dataset.open = unseen ? 'ja' : '';
             card.tabIndex = -1;
             const head = el('div', 'driver-file-head');
-            head.append(el('strong', null, group.name), el('span', 'driver-file-count', String(group.items.length)));
+            head.append(el('strong', null, group.name), el('span', 'driver-file-count', String(confirmed)));
+            head.title = `${confirmed} bestätigt (zählt) · ${pending} in Prüfung · ${dismissed} verworfen`;
             const sum = el('div', 'driver-file-sum');
             const counts = { unsauber: 0, tank: 0, schaden: 0, hinweis: 0 };
             group.items.forEach(item => { counts[item.kind in counts ? item.kind : 'hinweis'] += 1; });
             sum.append(...Object.entries(counts).filter(([, n]) => n).map(([kind, n]) => { const s = el('span'); s.append(el('b', null, String(n)), ` ${DRIVER_NOTE_KIND[kind]}`); return s; }));
             const state = el('div', 'driver-file-sum');
             state.append(el('span', null, `zuletzt ${formatDateTime(group.items[0].created_at)}`));
+            state.append(el('span', null, `${confirmed} bestätigt · ${pending} in Prüfung${dismissed ? ` · ${dismissed} verworfen` : ''}`));
+            if (replied) { const s = el('span', 'driver-file-inbox', `${replied} ${replied === 1 ? 'Stellungnahme' : 'Stellungnahmen'} zu prüfen`); state.append(s); }
             if (unseen) { const s = el('span', 'driver-file-inbox', `${unseen} neu`); state.append(s); }
             if (admonished) { const s = el('span', 'driver-file-note', `${admonished} ${admonished === 1 ? 'Ermahnung' : 'Ermahnungen'}`); state.append(s); }
             const details = el('details');
@@ -1948,10 +2047,31 @@
                 if (item.text) entry.append(el('p', 'driver-file-text', `„${item.text}“`));
                 const photos = Array.isArray(item.photo_paths) ? item.photo_paths : [];
                 if (photos.length) entry.append(photoButtons(photos));
+                // R96: Stellungnahme des Fahrers und Entscheidung
+                entry.dataset.decision = item.decision || '';
+                if (item.reply || (Array.isArray(item.reply_photo_paths) && item.reply_photo_paths.length)) {
+                    const reply = el('div', 'driver-file-reply');
+                    reply.append(el('strong', null, `Stellungnahme von ${item.driver_name || 'dem Fahrer'}${item.reply_at ? ` · ${formatDateTime(item.reply_at)}` : ''}`));
+                    if (item.reply) reply.append(el('p', 'driver-file-text', `„${item.reply}“`));
+                    const replyPhotos = Array.isArray(item.reply_photo_paths) ? item.reply_photo_paths : [];
+                    if (replyPhotos.length) reply.append(photoButtons(replyPhotos));
+                    entry.append(reply);
+                }
+                if (item.decision === 'bestaetigt') entry.append(el('span', 'driver-file-note', `Bestätigt am ${formatDateTime(item.decided_at)} von ${item.decided_by || 'Einsatzleitung'} – zählt in der Akte${item.decision_note ? ` („${item.decision_note}“)` : ''}`));
+                else if (item.decision === 'verworfen') entry.append(el('span', 'driver-file-meta', `Verworfen am ${formatDateTime(item.decided_at)} von ${item.decided_by || 'Einsatzleitung'} – zählt nicht${item.decision_note ? ` („${item.decision_note}“)` : ''}`));
+                else entry.append(el('span', 'driver-file-meta driver-file-pending', item.reply_at ? 'In Prüfung – Stellungnahme liegt vor. Bitte bestätigen oder verwerfen.' : 'In Prüfung – noch keine Entscheidung (der Fahrer kann Stellung nehmen).'));
                 if (item.admonished_at) entry.append(el('span', 'driver-file-note', `Ermahnt am ${formatDateTime(item.admonished_at)} von ${item.admonished_by || 'Einsatzleitung'}${item.office_note ? ` – „${item.office_note}“` : ''}`));
                 else if (item.office_seen_at) entry.append(el('span', 'driver-file-meta', `gesehen von ${item.office_seen_by || 'Einsatzleitung'} ${formatDateTime(item.office_seen_at)}`));
                 const actions = el('div', 'driver-file-actions');
                 if (!item.office_seen_at) { const seen = el('button', 'button-primary', 'Gesehen'); seen.type = 'button'; seen.addEventListener('click', () => markDriverNoteSeen(item, seen)); actions.append(seen); }
+                if (!item.decision) {
+                    const confirm = el('button', 'button-primary driver-note-confirm', 'Bestätigen – zählt in der Akte'); confirm.type = 'button'; confirm.addEventListener('click', () => openDecision(item, 'bestaetigt')); actions.append(confirm);
+                    const dismiss = el('button', 'button-secondary driver-note-dismiss', 'Verwerfen – zählt nicht'); dismiss.type = 'button'; dismiss.addEventListener('click', () => openDecision(item, 'verworfen')); actions.append(dismiss);
+                } else {
+                    const undo = el('button', 'button-quiet', 'Entscheidung zurücknehmen'); undo.type = 'button';
+                    undo.addEventListener('click', async () => { if (await confirmDialog(`Die Entscheidung zu dieser Meldung zurücknehmen? Sie steht dann wieder als „in Prüfung“.`, 'Zurücknehmen')) await saveDriverNote(item, { decision: '', decided_at: null, decided_by: '', decision_note: '' }, undo); });
+                    actions.append(undo);
+                }
                 const warn = el('button', item.admonished_at ? 'button-quiet' : 'button-secondary', item.admonished_at ? 'Vermerk ändern' : 'Ermahnung vermerken');
                 warn.type = 'button';
                 warn.addEventListener('click', () => openAdmonish(item));
