@@ -15,13 +15,13 @@
 .doc-chip { min-height: 42px; padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: .98rem; font-weight: 750; cursor: pointer; }
 .doc-chip.is-active { border-color: var(--glow); background: var(--glow); color: #fff; }
 .doc-chip:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
-.doc-search { margin-left: auto; }
+.doc-search { margin-inline-start: auto; }
 .doc-search input { min-width: 260px; min-height: 42px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 1rem; }
 
 /* Zwei Spalten: links die Übersicht nach Tagen, rechts die Unterlagen */
 .doc-body { display: grid; min-height: 0; grid-template-columns: clamp(250px, 19vw, 330px) minmax(0, 1fr); gap: 20px; padding: 14px 28px 22px; }
 .doc-side { display: flex; min-height: 0; flex-direction: column; gap: 10px; }
-.doc-open-all { display: grid; gap: 2px; padding: 16px 18px; border: 2px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; box-shadow: 0 8px 26px rgba(12, 27, 46, .07); }
+.doc-open-all { display: grid; gap: 2px; padding: 16px 18px; border: 2px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--ink); text-align: start; cursor: pointer; box-shadow: 0 8px 26px rgba(12, 27, 46, .07); }
 .doc-open-all b { font-size: clamp(2rem, 2.8vw, 3rem); line-height: 1; color: var(--go); }
 .doc-open-all[data-open="ja"] b { color: var(--warn); }
 .doc-open-all[data-open="ja"] { border-color: #f0a020; background: #fffaf0; }
@@ -29,8 +29,8 @@
 .doc-open-all small { color: var(--soft); font-weight: 650; }
 .doc-open-all.is-active { border-color: var(--glow); box-shadow: 0 0 0 3px rgba(10, 132, 214, .25); }
 .doc-side-title { margin: 6px 0 0; color: var(--soft); font-size: .8rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.doc-days { display: grid; grid-auto-rows: max-content; align-content: start; gap: 6px; margin: 0; padding: 0 4px 4px 0; overflow-y: auto; list-style: none; min-height: 0; }
-.doc-day { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; }
+.doc-days { display: grid; grid-auto-rows: max-content; align-content: start; gap: 6px; margin: 0; padding-block: 0 4px; padding-inline: 0 4px; overflow-y: auto; list-style: none; min-height: 0; }
+.doc-day { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); text-align: start; cursor: pointer; }
 .doc-day:hover { border-color: var(--glow); }
 .doc-day.is-active { border-color: var(--glow); background: rgba(10, 132, 214, .09); }
 .doc-day-label { display: grid; gap: 1px; min-width: 0; }
@@ -51,8 +51,8 @@
 
 /* Fragen an den Dolmetscher */
 .doc-questions { display: grid; gap: 8px; margin-top: 4px; }
-.doc-question { display: grid; gap: 4px; padding: 10px 14px; border-left: 4px solid var(--glow); border-radius: 10px; background: #f1f7fd; }
-.doc-question[data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-question { display: grid; gap: 4px; padding: 10px 14px; border-inline-start: 4px solid var(--glow); border-radius: 10px; background: #f1f7fd; }
+.doc-question[data-state="beantwortet"] { border-inline-start-color: var(--go); background: #f0faf4; }
 .doc-question-head { color: var(--soft); font-size: .84rem; font-weight: 750; }
 .doc-question-text, .doc-question-answer { margin: 0; font-size: 1rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
 .doc-question-answer { font-weight: 650; }
@@ -65,9 +65,9 @@
 
 /* Liste nach Patient */
 .doc-main { display: flex; min-height: 0; flex-direction: column; }
-.doc-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 18px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
-.doc-patient { border: 1px solid var(--line); border-left: 6px solid #c9d8e8; border-radius: 20px; background: var(--panel); box-shadow: 0 10px 30px rgba(12, 27, 46, .07); overflow: hidden; }
-.doc-patient[data-unread="ja"] { border-left-color: #f0a020; }
+.doc-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 18px; margin: 0; padding-block: 0 6px; padding-inline: 0 6px; overflow-y: auto; list-style: none; }
+.doc-patient { border: 1px solid var(--line); border-inline-start: 6px solid #c9d8e8; border-radius: 20px; background: var(--panel); box-shadow: 0 10px 30px rgba(12, 27, 46, .07); overflow: hidden; }
+.doc-patient[data-unread="ja"] { border-inline-start-color: #f0a020; }
 .doc-patient-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(10, 132, 214, .08), rgba(10, 132, 214, .02)); }
 .doc-patient-lead { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .doc-avatar { display: grid; width: 54px; height: 54px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--glow); color: #fff; font-size: 1.25rem; font-weight: 850; letter-spacing: .02em; }
@@ -117,15 +117,15 @@
   .doc-days { max-height: 260px; }
   .doc-entry { grid-template-columns: 1fr; grid-template-areas: "head" "title" "body" "actions"; }
   .doc-entry-actions { grid-auto-flow: column; justify-content: start; }
-  .doc-search { margin-left: 0; width: 100%; }
+  .doc-search { margin-inline-start: 0; width: 100%; }
   .doc-search input { width: 100%; }
   .doc-list { overflow: visible; }
 }
 
 /* Frage / Info / Anweisung (Update 40) */
-.doc-question[data-kind="info"] { border-left-color: #64748b; background: #f4f6f9; }
-.doc-question[data-kind="anweisung"] { border-left-color: var(--warn); background: #fff1ef; }
-.doc-question[data-kind="anweisung"][data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-question[data-kind="info"] { border-inline-start-color: #64748b; background: #f4f6f9; }
+.doc-question[data-kind="anweisung"] { border-inline-start-color: var(--warn); background: #fff1ef; }
+.doc-question[data-kind="anweisung"][data-state="beantwortet"] { border-inline-start-color: var(--go); background: #f0faf4; }
 .doc-question-head.is-ok { color: var(--go); }
 .doc-order-open { min-height: 44px; font-size: .95rem; border-color: #f1b5ae; background: #fff1ef; color: var(--warn); font-weight: 850; }
 .doc-ask-kinds { display: grid; gap: 6px; margin: 6px 0 10px; }
@@ -139,14 +139,14 @@
 
 /* Meldung an die Einsatzleitung (Update 42) */
 .doc-feedback-open { position: relative; }
-.doc-feedback-badge { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--warn, #b42318); color: #fff; font-size: .8rem; line-height: 22px; text-align: center; }
+.doc-feedback-badge { position: absolute; top: -8px; inset-inline-end: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--warn, #b42318); color: #fff; font-size: .8rem; line-height: 22px; text-align: center; }
 .doc-feedback-ref { display: grid; gap: 4px; margin-top: 8px; font-size: .9rem; color: var(--muted, #64748b); }
 .doc-feedback-ref input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; font-size: 1rem; }
 .doc-feedback-history { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .doc-feedback-history h3 { margin: 0 0 8px; font-size: 1rem; }
 .doc-feedback-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 40vh; overflow: auto; }
-.doc-feedback-item { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-left: 5px solid #1d4ed8; border-radius: 10px; }
-.doc-feedback-item[data-answered="ja"] { border-left-color: #18794e; }
+.doc-feedback-item { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-inline-start: 5px solid #1d4ed8; border-radius: 10px; }
+.doc-feedback-item[data-answered="ja"] { border-inline-start-color: #18794e; }
 .doc-feedback-item small { color: var(--muted, #64748b); }
 .doc-feedback-item p { margin: 0; white-space: pre-line; }
 .doc-feedback-answer { padding: 6px 10px; border-radius: 8px; background: #ecfdf3; color: #14532d; }
@@ -165,11 +165,11 @@
 .doc-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 8px 22px; border: 0; border-radius: 12px; background: transparent; color: var(--soft); font: inherit; font-size: 1.02rem; font-weight: 800; cursor: pointer; }
 .doc-tab.is-active { background: var(--panel); color: var(--ink); box-shadow: 0 4px 14px rgba(12, 27, 46, .12); }
 .doc-tab-count { display: inline-grid; min-width: 26px; height: 26px; padding: 0 7px; place-items: center; border-radius: 999px; background: var(--glow); color: #fff; font-size: .86rem; }
-.live-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 12px; margin: 0; padding: 0 6px 6px 0; overflow-y: auto; list-style: none; }
-.live-row { display: grid; grid-template-columns: 86px minmax(200px, 1.1fr) minmax(170px, 1fr) minmax(170px, 1fr) auto; grid-template-areas: "time who where patient report" "q q q q q"; gap: 8px 18px; align-items: center; padding: 14px 20px; border: 1px solid var(--line); border-left: 6px solid #c9d8e8; border-radius: 18px; background: var(--panel); box-shadow: 0 8px 24px rgba(12, 27, 46, .06); }
-.live-row[data-state="unterwegs"] { border-left-color: var(--glow); background: linear-gradient(90deg, rgba(10, 132, 214, .07), var(--panel) 40%); }
-.live-row[data-state="fertig"] { border-left-color: var(--go); }
-.live-row[data-state="aus"] { border-left-color: #b8c2cf; opacity: .72; }
+.live-list { display: grid; grid-auto-rows: max-content; align-content: start; gap: 12px; margin: 0; padding-block: 0 6px; padding-inline: 0 6px; overflow-y: auto; list-style: none; }
+.live-row { display: grid; grid-template-columns: 86px minmax(200px, 1.1fr) minmax(170px, 1fr) minmax(170px, 1fr) auto; grid-template-areas: "time who where patient report" "q q q q q"; gap: 8px 18px; align-items: center; padding: 14px 20px; border: 1px solid var(--line); border-inline-start: 6px solid #c9d8e8; border-radius: 18px; background: var(--panel); box-shadow: 0 8px 24px rgba(12, 27, 46, .06); }
+.live-row[data-state="unterwegs"] { border-inline-start-color: var(--glow); background: linear-gradient(90deg, rgba(10, 132, 214, .07), var(--panel) 40%); }
+.live-row[data-state="fertig"] { border-inline-start-color: var(--go); }
+.live-row[data-state="aus"] { border-inline-start-color: #b8c2cf; opacity: .72; }
 .live-row[data-report="nein"][data-state="fertig"] { border-color: #f0a020; box-shadow: 0 8px 24px rgba(240, 160, 32, .18); }
 .live-time { grid-area: time; display: grid; justify-items: center; line-height: 1; }
 .live-time strong { font-size: clamp(1.3rem, 1.6vw, 1.8rem); font-variant-numeric: tabular-nums; }
@@ -197,15 +197,15 @@
 .live-report .live-sub { text-align: center; }
 .live-questions { grid-area: q; padding-top: 4px; border-top: 1px dashed var(--line); }
 .doc-question-about { color: var(--soft); font-size: .88rem; font-weight: 650; }
-.doc-question[data-kind="bericht"] { border-left-color: #f0a020; background: #fff8e8; }
-.doc-question[data-kind="bericht"][data-state="beantwortet"] { border-left-color: var(--go); background: #f0faf4; }
+.doc-question[data-kind="bericht"] { border-inline-start-color: #f0a020; background: #fff8e8; }
+.doc-question[data-kind="bericht"][data-state="beantwortet"] { border-inline-start-color: var(--go); background: #f0faf4; }
 .doc-job-questions { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
 .doc-job-questions h3 { margin: 0 0 8px; color: var(--soft); font-size: 1rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .doc-job-question-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 @media (max-width: 1100px) {
   .live-row { grid-template-columns: 70px minmax(0, 1fr); grid-template-areas: "time who" "where where" "patient patient" "report report" "q q"; }
   .live-report { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-  .live-report .live-report-state, .live-report .live-sub { flex: 1 1 100%; text-align: left; }
+  .live-report .live-report-state, .live-report .live-sub { flex: 1 1 100%; text-align: start; }
   .live-list { overflow: visible; }
 }
 /* Sieben Zähler im Kopf (PR): umbrechen statt über die Uhr laufen */
@@ -225,7 +225,7 @@
   .doc-app .gate-top { grid-template-columns: auto auto minmax(0, 1fr); gap: 12px 28px; }
 }
 /* Schnellantwort des Dolmetschers (R81) */
-.doc-reply-pill { display: inline-block; margin-right: 6px; padding: 3px 10px; border-radius: 999px; background: #e3edf8; color: #1e4a7a; font-size: .86rem; font-weight: 800; }
+.doc-reply-pill { display: inline-block; margin-inline-end: 6px; padding: 3px 10px; border-radius: 999px; background: #e3edf8; color: #1e4a7a; font-size: .86rem; font-weight: 800; }
 .doc-reply-pill[data-status="erledigt"] { background: #e6f5ec; color: #0f6b3c; }
 .doc-reply-pill[data-status="arbeit"] { background: #e3edf8; color: #1e4a7a; }
 .doc-reply-pill[data-status="kommt"] { background: #fff6dd; color: var(--warn); }

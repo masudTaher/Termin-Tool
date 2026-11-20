@@ -2,7 +2,7 @@
 
 /* ---------- Ablauf oben ---------- */
 .akte-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
-.akte-steps li { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px 7px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: .86rem; font-weight: 650; }
+.akte-steps li { display: inline-flex; align-items: center; gap: 8px; padding-block: 7px 7px; padding-inline: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: .86rem; font-weight: 650; }
 .akte-steps li b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--surface-soft); color: var(--muted); font-size: .78rem; }
 .akte-steps li[data-state="now"] { border-color: var(--brand); color: var(--ink); box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 30%, transparent); }
 .akte-steps li[data-state="now"] b { background: var(--brand); color: #fff; }
@@ -27,7 +27,7 @@
 .akte-privacy { margin-top: 10px; }
 .akte-tips { margin-top: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--ink-soft); font-size: .9rem; }
 .akte-tips summary { color: var(--brand); cursor: pointer; font-weight: 700; }
-.akte-tips ul { display: grid; gap: 6px; margin: 10px 0 2px; padding-left: 20px; line-height: 1.45; }
+.akte-tips ul { display: grid; gap: 6px; margin: 10px 0 2px; padding-inline-start: 20px; line-height: 1.45; }
 .akte-start-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; }
 .akte-start-actions .big-button { min-width: 240px; }
 
@@ -47,8 +47,8 @@
 .akte-count[data-state="fehlt"] { background: var(--danger-soft); color: var(--danger); }
 .akte-summary-side { display: grid; justify-items: end; gap: 8px; }
 .akte-summary-side .field-hint { margin: 0; }
-.akte-space[data-state="voll"] { max-width: 420px; padding: 8px 12px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font-weight: 650; text-align: left; }
-.akte-compact { max-width: 420px; margin: 0; font-size: .86rem; font-weight: 500; text-align: left; }
+.akte-space[data-state="voll"] { max-width: 420px; padding: 8px 12px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font-weight: 650; text-align: start; }
+.akte-compact { max-width: 420px; margin: 0; font-size: .86rem; font-weight: 500; text-align: start; }
 .akte-compact[hidden] { display: none; }
 .akte-compact strong { color: var(--ink); font-weight: 700; }
 .akte-compact small { display: block; margin-top: 2px; color: var(--ink-soft); font-size: .82rem; }
@@ -57,7 +57,7 @@
 .akte-order button[aria-pressed="true"], :root[data-theme="dark"] .akte-order button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 :root[data-theme="dark"] .akte-order button[aria-pressed="true"] { background: var(--brand); color: #fff; }
 @media (max-width: 760px) { .akte-summary { position: static; } .akte-summary-side { justify-items: stretch; width: 100%; } }
-.akte-problems { display: grid; gap: 6px; margin: 0 0 14px; padding: 12px 14px 12px 32px; border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: .9rem; }
+.akte-problems { display: grid; gap: 6px; margin: 0 0 14px; padding-block: 12px 12px; padding-inline: 32px 14px; border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: .9rem; }
 :root[data-theme="dark"] .akte-problems { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
 
 /* ---------- Kategorien ---------- */
@@ -70,13 +70,13 @@
 .akte-group[data-state="bestätigt"] .akte-confirm, :root[data-theme="dark"] .akte-group[data-state="bestätigt"] .akte-confirm { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); background: color-mix(in srgb, var(--ok) 13%, var(--surface)); color: var(--ok); }
 .akte-doc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .akte-card { min-width: 0; }
-.akte-card-open, :root[data-theme="dark"] .akte-card-open { display: flex; width: 100%; min-height: 0; align-items: stretch; gap: 12px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: left; box-shadow: none; }
+.akte-card-open, :root[data-theme="dark"] .akte-card-open { display: flex; width: 100%; min-height: 0; align-items: stretch; gap: 12px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: start; box-shadow: none; }
 .akte-card-open:hover { border-color: var(--brand); background: var(--surface-hover); }
 .akte-card[data-state="unsicher"] .akte-card-open { border-color: color-mix(in srgb, var(--warn) 70%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); }
 .akte-card[data-state="geprüft"] .akte-card-open { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
 .akte-card-thumb { position: relative; flex: 0 0 62px; }
 .akte-card-thumb img { display: block; width: 62px; height: 88px; border: 1px solid var(--line); border-radius: 5px; background: #fff; object-fit: cover; object-position: top; }
-.akte-card-thumb b { position: absolute; right: -4px; bottom: -4px; padding: 2px 6px; border-radius: 999px; background: var(--nav-bg); color: #fff; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+.akte-card-thumb b { position: absolute; inset-inline-end: -4px; bottom: -4px; padding: 2px 6px; border-radius: 999px; background: var(--nav-bg); color: #fff; font-size: .68rem; font-weight: 700; white-space: nowrap; }
 .akte-card-text { display: grid; min-width: 0; flex: 1 1 auto; align-content: start; gap: 4px; }
 .akte-card-text strong { overflow: hidden; font-size: .93rem; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .akte-card-date { color: var(--muted); font-size: .85rem; font-weight: 600; }
@@ -116,7 +116,7 @@ dialog.akte-doc::backdrop { background: rgba(15, 23, 42, .55); backdrop-filter: 
 .akte-close, :root[data-theme="dark"] .akte-close { width: 38px; min-height: 38px; flex: 0 0 auto; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink-soft); font-size: 1.3rem; line-height: 1; box-shadow: none; }
 .akte-close:hover { border-color: var(--brand); color: var(--ink); }
 .akte-doc-body { display: grid; min-height: 0; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 340px; }
-.akte-view { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface-soft); }
+.akte-view { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-inline-end: 1px solid var(--line); background: var(--surface-soft); }
 .akte-view-bar { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .akte-view-bar span { flex: 1 1 auto; color: var(--ink-soft); font-size: .86rem; font-weight: 650; text-align: center; }
 .akte-view-bar button { min-height: 36px; padding: 4px 13px; }
@@ -127,10 +127,10 @@ dialog.akte-doc::backdrop { background: rgba(15, 23, 42, .55); backdrop-filter: 
 .akte-view-pages button, :root[data-theme="dark"] .akte-view-pages button { position: relative; width: 46px; min-height: 0; flex: 0 0 auto; padding: 2px; border: 2px solid transparent; border-radius: 6px; background: transparent; box-shadow: none; }
 .akte-view-pages button.is-active { border-color: var(--brand); }
 .akte-view-pages button img { display: block; width: 38px; height: 54px; }
-.akte-view-pages button span { position: absolute; right: 2px; bottom: 2px; padding: 0 4px; border-radius: 6px; background: var(--nav-bg); color: #fff; font-size: .64rem; font-weight: 700; }
+.akte-view-pages button span { position: absolute; inset-inline-end: 2px; bottom: 2px; padding: 0 4px; border-radius: 6px; background: var(--nav-bg); color: #fff; font-size: .64rem; font-weight: 700; }
 .akte-doc-form { display: flex; min-height: 0; flex-direction: column; gap: 6px; overflow-y: auto; padding: 14px 16px 16px; }
 .akte-doc-form label { margin-top: 4px; }
-.akte-hints { display: grid; gap: 5px; margin: 0 0 4px; padding: 10px 12px 10px 28px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: .85rem; line-height: 1.4; }
+.akte-hints { display: grid; gap: 5px; margin: 0 0 4px; padding-block: 10px 10px; padding-inline: 28px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: .85rem; line-height: 1.4; }
 :root[data-theme="dark"] .akte-hints { background: color-mix(in srgb, var(--warn) 16%, var(--surface)); }
 .akte-page-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
 .akte-page-tools legend { padding: 0 6px; color: var(--muted); font-size: .76rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
@@ -140,7 +140,7 @@ dialog.akte-doc::backdrop { background: rgba(15, 23, 42, .55); backdrop-filter: 
 @media (max-width: 900px) {
   dialog.akte-doc { width: 100vw; height: 100vh; height: 100dvh; border: 0; border-radius: 0; }
   .akte-doc-body { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 46%) minmax(0, 1fr); overflow: hidden; }
-  .akte-view { border-right: 0; border-bottom: 1px solid var(--line); }
+  .akte-view { border-inline-end: 0; border-bottom: 1px solid var(--line); }
 }
 
 /* ---------- Akte: Knopf „Papierakte einlesen“, Ordnen, eingelesene Papierakten ---------- */

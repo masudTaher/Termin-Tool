@@ -30,8 +30,8 @@ body { background: #dde4ec; color: var(--ink); font-family: Arial, "Segoe UI", H
 .pk-info { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0 24px; margin: 0 0 18px; padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--paper); }
 .pk-info-col { display: grid; align-content: start; gap: 6px; }
 .pk-info-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 26px; }
-.pk-info-right .pk-info-row { grid-template-columns: minmax(0, 1fr) auto; text-align: right; }
-.pk-info-right .pk-info-row span { text-align: left; }
+.pk-info-right .pk-info-row { grid-template-columns: minmax(0, 1fr) auto; text-align: end; }
+.pk-info-right .pk-info-row span { text-align: start; }
 .pk-info-row span { color: var(--ink); font-weight: 700; font-size: 10.5pt; }
 .pk-info-row b { font-weight: 500; }
 .pk-info-row strong { font-size: 11.5pt; }
@@ -40,18 +40,18 @@ body { background: #dde4ec; color: var(--ink); font-family: Arial, "Segoe UI", H
 
 /* Tabellen */
 .pk-table { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
-.pk-table thead th { padding: 9px 10px; background: var(--navy); color: #fff; font-weight: 700; text-align: left; }
+.pk-table thead th { padding: 9px 10px; background: var(--navy); color: #fff; font-weight: 700; text-align: start; }
 .pk-table tbody td { padding: 6px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
 .pk-table tbody tr.pk-blank td { height: 24px; }
 .pk-table tbody tr.is-unchecked td { color: #7a8794; font-style: italic; }
 .pk-nr { width: 36px; text-align: center !important; }
 .pk-date { width: 92px; white-space: nowrap; }
 .pk-proof { width: 130px; }
-.pk-num { text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pk-num { text-align: end !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pk-name { font-weight: 700; }
 .pk-full { color: var(--soft); }
 .pk-table tfoot td { padding: 10px 10px 6px; }
-.pk-sum-label { text-align: right; font-weight: 700; font-size: 11.5pt; }
+.pk-sum-label { text-align: end; font-weight: 700; font-size: 11.5pt; }
 .pk-sum { border-top: 2px solid var(--navy); border-bottom: 2px solid var(--navy); color: var(--navy); font-weight: 800; font-size: 13pt; }
 .pk-empty { color: var(--soft); font-style: italic; }
 

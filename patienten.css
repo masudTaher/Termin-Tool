@@ -40,7 +40,7 @@
 .doc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .doc-entry .doc-head strong { font-size: .95rem; letter-spacing: 0; overflow-wrap: anywhere; }
 /* Die Zeile mit dem Patienten öffnet die Akte – ein Knopf, der wie ein Link aussieht. */
-.doc-patient, :root[data-theme="dark"] .doc-patient { display: inline; align-self: flex-start; min-height: 0; padding: 2px 0; border: 0; border-radius: 4px; background: none; color: var(--brand-dark); font-size: .84rem; font-weight: 650; line-height: 1.4; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 35%, transparent); text-underline-offset: 3px; overflow-wrap: anywhere; }
+.doc-patient, :root[data-theme="dark"] .doc-patient { display: inline; align-self: flex-start; min-height: 0; padding: 2px 0; border: 0; border-radius: 4px; background: none; color: var(--brand-dark); font-size: .84rem; font-weight: 650; line-height: 1.4; text-align: start; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 35%, transparent); text-underline-offset: 3px; overflow-wrap: anywhere; }
 .doc-patient:hover, :root[data-theme="dark"] .doc-patient:hover { background: none; color: var(--brand); text-decoration-color: currentColor; }
 .doc-entry small { overflow-wrap: anywhere; }
 .doc-note { margin-top: 3px; color: var(--ink-soft); font-size: .84rem; line-height: 1.45; overflow-wrap: anywhere; }
@@ -48,14 +48,14 @@
 .doc-warnings .status-pill { max-width: 100%; border-radius: 9px; overflow-wrap: anywhere; white-space: normal; }
 .doc-entry .vehicle-entry-actions { flex: 1 1 100%; justify-content: flex-start; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
 .doc-entry .vehicle-entry-actions button { padding-inline: 9px; }
-.doc-entry .vehicle-entry-actions .button-quiet-danger { margin-left: auto; }
+.doc-entry .vehicle-entry-actions .button-quiet-danger { margin-inline-start: auto; }
 
 /* ---------- Patientenkarten (Suche und Kachel „Patienten“) ---------- */
 .patient-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
 .patient-grid:empty { display: none; }
 .patient-grid .directory-empty { grid-column: 1 / -1; }
 .fleet-form + .patient-grid { margin-top: 10px; }
-.patient-card, :root[data-theme="dark"] .patient-card { display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); font-weight: 400; text-align: left; }
+.patient-card, :root[data-theme="dark"] .patient-card { display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); font-weight: 400; text-align: start; }
 .patient-card:hover, :root[data-theme="dark"] .patient-card:hover { border-color: var(--brand); background: var(--surface-hover); }
 .patient-card.is-active, :root[data-theme="dark"] .patient-card.is-active { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 1px var(--brand); }
 .patient-card strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; letter-spacing: .01em; overflow-wrap: anywhere; }
@@ -85,7 +85,7 @@
 .forward-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); color: var(--ink-soft); font-size: .86rem; list-style: none; }
 .forward-items li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; overflow-wrap: anywhere; }
 .recipient-checks { display: flex; flex-direction: column; gap: 4px; list-style: none; }
-.recipient-checks li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.recipient-checks li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 4px 4px; padding-inline: 10px 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
 .recipient-checks .recipient-empty { padding: 10px 12px; border-style: dashed; border-color: var(--line-strong); background: transparent; color: var(--muted); font-size: .84rem; }
 .recipient-checks label { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 9px; color: var(--ink); font-size: .88rem; cursor: pointer; }
 .recipient-checks input { width: 17px; flex: 0 0 auto; }
@@ -127,7 +127,7 @@ body[data-view="archiv"] #patientFile > .file-heading, body[data-view="archiv"] 
 body[data-view="archiv"] #patientList, body[data-view="archiv"] #patientResults { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); max-height: none; }
 .patient-card.patient-card-plain, :root[data-theme="dark"] .patient-card.patient-card-plain { flex-direction: row; align-items: center; gap: 11px; padding: 11px 13px; }
 .patient-card-text { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 1px; }
-.patient-card-plain strong { font-size: .98rem; letter-spacing: 0; text-align: left; }
+.patient-card-plain strong { font-size: .98rem; letter-spacing: 0; text-align: start; }
 .patient-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-style: normal; font-weight: 800; }
 /* Die Akte: Kopf wie ein Deckblatt, Reiter je Bereich, Übersicht als Zeitleiste */
 .chart { display: flex; flex-direction: column; gap: 14px; }
@@ -144,27 +144,27 @@ body[data-view="archiv"] #patientList, body[data-view="archiv"] #patientResults 
 .chart-facts dd { margin: 1px 0 0; font-size: 1rem; font-weight: 750; font-variant-numeric: tabular-nums; }
 .chart-tabs { margin: 0; }
 .chart-body { min-height: 120px; }
-.chart-timeline { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); list-style: none; }
-.chart-year { margin: 10px 0 2px -14px; padding-left: 12px; color: var(--muted); font-size: .76rem; font-weight: 800; letter-spacing: .08em; }
+.chart-timeline { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-block: 0 0; padding-inline: 14px 0; border-inline-start: 2px solid var(--line); list-style: none; }
+.chart-year { margin-block: 10px 2px; margin-inline: -14px 0; padding-inline-start: 12px; color: var(--muted); font-size: .76rem; font-weight: 800; letter-spacing: .08em; }
 .chart-event { position: relative; }
-.chart-event::before { position: absolute; top: 15px; left: -20px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--brand); content: ""; }
+.chart-event::before { position: absolute; top: 15px; inset-inline-start: -20px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--brand); content: ""; }
 .chart-event[data-tab="termine"]::before { background: #64748b; }
 .chart-event[data-tab="rezepte"]::before, .chart-event[data-tab="ueberweisung"]::before { background: #18794e; }
 .chart-event[data-tab="arzt"]::before { background: #b7791f; }
-.chart-event-button, :root[data-theme="dark"] .chart-event-button { display: flex; width: 100%; min-height: 40px; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 500; text-align: left; }
+.chart-event-button, :root[data-theme="dark"] .chart-event-button { display: flex; width: 100%; min-height: 40px; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 500; text-align: start; }
 .chart-event-button:hover { border-color: var(--brand); background: var(--surface-hover); }
 .chart-event-day { min-width: 46px; color: var(--muted); font-size: .86rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .chart-event-button strong { font-size: .94rem; }
 .chart-event-text { min-width: 0; flex: 1 1 220px; color: var(--ink-soft); font-size: .88rem; overflow-wrap: anywhere; }
 
 /* Unsichtbarer Rahmen für „Drucken“ */
-.print-frame { position: fixed; right: 0; bottom: 0; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
+.print-frame { position: fixed; inset-inline-end: 0; bottom: 0; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 
 .doc-edited { color: #8a5a00; font-weight: 650; }
 :root[data-theme="dark"] .doc-edited { color: #f0c060; }
 
 /* Übersicht der Akte: Unterlage klappt an Ort und Stelle auf (Vorschau + Knöpfe) */
-.chart-event-fold { margin-left: auto; flex: 0 0 auto; color: var(--brand); font-size: .78rem; font-weight: 650; white-space: nowrap; }
+.chart-event-fold { margin-inline-start: auto; flex: 0 0 auto; color: var(--brand); font-size: .78rem; font-weight: 650; white-space: nowrap; }
 .chart-inline { margin: 6px 0 12px; padding: 10px; border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent); border-radius: 12px; background: var(--surface); }
 .chart-preview { display: grid; min-height: 120px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft, var(--surface-hover)); overflow: hidden; }
 .chart-preview > .field-hint { margin: 0; padding: 14px; }
@@ -179,4 +179,4 @@ img.chart-preview-frame { height: auto; max-height: 80vh; object-fit: contain; }
 .chart-search { flex: 1 1 260px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
 .chart-years { flex: 0 1 auto; }
 .chart-month { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
-.chart-filter-reset { margin-left: auto; }
+.chart-filter-reset { margin-inline-start: auto; }

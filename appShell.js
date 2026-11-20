@@ -154,6 +154,8 @@
                 </div>
             </div>`;
         document.body.prepend(nav);
+        // R99: Sprache (DE · EN · AR) direkt unter dem Namen.
+        if (window.I18n) { const brand = nav.querySelector('.app-brand'); const slot = document.createElement('div'); brand.after(slot); window.I18n.mount(slot); slot.replaceWith(...slot.childNodes); }
 
         // Handy: unten eine feste Leiste mit den wichtigsten Seiten, „Mehr“ öffnet das ganze Menü.
         const tabs = [
