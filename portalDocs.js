@@ -48,7 +48,7 @@ window.PortalDocs = (function () {
         'Überweisung Radiologie': 'MRT, CT, Röntgen'
     };
     const STATUS = { neu: ['in Arbeit', 'gesendet'], 'geprüft': ['erledigt', 'geprüft'], weitergeleitet: ['erledigt', 'weitergeleitet'] };
-    const ISSUE_SHORT = { dunkel: 'ist zu dunkel', hell: 'ist überbelichtet', unscharf: 'ist unscharf', klein: 'ist sehr klein', kontrast: 'hat kaum erkennbare Schrift', rand: 'ist nicht zugeschnitten (Rand nicht erkannt)' };
+    const ISSUE_SHORT = { dunkel: 'ist zu dunkel', hell: 'ist überbelichtet', unscharf: 'ist unscharf – bitte neu aufnehmen', weich: 'ist etwas weich (Schrift nicht knackig)', klein: 'ist sehr klein', kontrast: 'hat kaum erkennbare Schrift', rand: 'ist nicht zugeschnitten (Rand nicht erkannt)' };
 
     // ---------- Liste „Zuletzt gesendet“ ----------
     async function load() {
@@ -291,7 +291,7 @@ window.PortalDocs = (function () {
             if (KINDS.includes(known.kind)) {
                 draft.kind = known.kind;
                 $('docPatientLine').textContent = patientLine();
-                $('docCameraLabel').textContent = 'Seite scannen';
+                $('docCameraLabel').textContent = 'Seite fotografieren';
                 wizard.show(3);
             } else showKinds();
         } else if (direct) chooseSource(sourceOf(direct));
@@ -355,7 +355,7 @@ window.PortalDocs = (function () {
             button.append(svgSpan('doc-kind-icon', KIND_ICONS[kind] || KIND_ICONS.Sonstiges), label);
             button.addEventListener('click', () => {
                 draft.kind = kind;
-                $('docCameraLabel').textContent = 'Seite scannen';
+                $('docCameraLabel').textContent = 'Seite fotografieren';
                 wizard.show(3);
             });
             return button;
@@ -470,7 +470,9 @@ window.PortalDocs = (function () {
             if (!result.captured) replaceId = null;      // „Neu aufnehmen“ abgebrochen: Die alte Seite bleibt.
         } finally { cameraOpen = false; }
     }
-    document.querySelector('label[for="docCamera"]')?.addEventListener('click', event => { event.preventDefault(); openCamera(); });
+    // R95: Der große Knopf öffnet die Foto-App des Handys (schärfstes Bild – volle Auflösung, Autofokus). Die Kamera in der App
+    // (Videobild, auf vielen Handys deutlich gröber) bleibt als „Schnell-Scan“ für viele Seiten hintereinander.
+    $('docLiveScan')?.addEventListener('click', () => openCamera());
 
     $('docCamera').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; addFiles(files); });
     $('docGallery').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; addFiles(files); });
@@ -572,7 +574,7 @@ window.PortalDocs = (function () {
             item.append(picture, body);
             return item;
         }));
-        $('docCameraLabel').textContent = pages.length ? 'Nächste Seite scannen' : 'Seite scannen';
+        $('docCameraLabel').textContent = pages.length ? 'Nächste Seite fotografieren' : 'Seite fotografieren';
         $('docPagesNext').disabled = busy > 0 || !pages.length;
         $('docPagesNext').textContent = pages.length ? `Weiter mit ${pages.length} ${pages.length === 1 ? 'Seite' : 'Seiten'}` : 'Weiter';
         if (wizard?.step === 4) renderCheck();

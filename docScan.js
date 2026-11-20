@@ -25,7 +25,9 @@ const DocScan = (() => {
         fineReach: 8,           // … gesucht wird bis so viele Punkte beiderseits der vermuteten Kante
         fineInset: 0.7,         // … und der Zuschnitt liegt um so viel innerhalb der Kante
         edgeClean: 0.005,       // so breit wird der Rand eines zugeschnittenen Blatts weiß übermalt (Anteil der kürzeren Seite)
-        loadSide: 3000,         // so groß wird das Foto höchstens geladen (das fertige Blatt: höchstens maxSide, sonst 2000)
+        loadSide: 4000,         // so groß wird das Foto höchstens geladen (das fertige Blatt: höchstens maxSide, sonst 2600) – R95: höher, damit Schrift scharf bleibt
+        outSide: 2600,          // längere Seite des fertigen Blatts (A4 ≈ 220 dpi) – R95: vorher 2000
+        quality: 0.9,           // JPEG-Qualität des fertigen Blatts – R95: vorher 0.82
         find: {                 // Blattsuche über Kanten und Linien (alle Längen in Punkten der kleinen Kopie)
             edgeFloor: 0.012,    // kleinster Helligkeitssprung (Anteil), der als Kante zählt …
             edgeNoise: 4.5,      // … mindestens dieses Vielfache des Rauschens (gemessen im ruhigsten Fünftel des Bildes)
@@ -54,7 +56,9 @@ const DocScan = (() => {
         inkLevel: 0.75,         // „Schrift“ ist, was dunkler als 75 % der Papierhelligkeit ist
         inkShare: 0.0005,       // Anteil solcher Stellen darunter: Die Schrift ist kaum zu sehen → „hell“ oder „kontrast“
         bright: 200,            // … „hell“ (überbelichtet), wenn die mittlere Helligkeit darüber liegt, sonst „kontrast“
-        sharpness: 0.25,        // Schärfe geteilt durch den Kontrast im Kleinen darunter → „unscharf“
+        sharpness: 0.25,        // Schärfe geteilt durch den Kontrast im Kleinen darunter → „unscharf“ (grobe Kopie, 800)
+        focusBlur: 2.6,         // R95: Verhältnis Laplace-Varianz vor/nach leichter Weichzeichnung (Kopie 1600) darunter → „unscharf“
+        focusSoft: 3.3,         // … darunter → „weich“ (lesbar, aber nicht knackig: näher heran oder ruhiger halten)
         minSide: 560,           // kürzere Seite in Bildpunkten darunter → „klein“
         maxGain: 3,             // so stark werden Schatten höchstens aufgehellt
         paperSide: 320,         // längere Seite der kleinen Kopie für die Papierfarbe
@@ -82,6 +86,7 @@ const DocScan = (() => {
         dunkel: 'Das Foto ist zu dunkel. Bitte mit mehr Licht noch einmal aufnehmen.',
         hell: 'Das Foto ist überbelichtet oder spiegelt. Bitte ohne Blitz noch einmal aufnehmen.',
         unscharf: 'Das Foto ist unscharf. Bitte ruhig halten und noch einmal aufnehmen.',
+        weich: 'Die Schrift ist etwas weich. Näher herangehen, ruhig halten – oder noch einmal aufnehmen.',
         klein: 'Das Foto ist sehr klein. Bitte näher herangehen.',
         kontrast: 'Die Schrift ist kaum zu erkennen. Bitte bei besserem Licht aufnehmen.',
         rand: 'Der Rand des Blatts wurde nicht sicher erkannt. Bitte die Ecken anpassen – oder noch einmal aufnehmen.'
@@ -901,7 +906,7 @@ const DocScan = (() => {
 
     // ---------- Gerade ziehen ----------
     // Zieht das Viereck corners zu einem Rechteck. Größe: Mittel der gegenüberliegenden Seiten, längere Seite höchstens maxSide.
-    function warp(canvas, corners, { maxSide = 2000 } = {}) {
+    function warp(canvas, corners, { maxSide = LIMITS.outSide } = {}) {
         const [tl, tr, br, bl] = corners;
         const span = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
         const wide = (span(tl, tr) + span(bl, br)) / 2, high = (span(tl, bl) + span(tr, br)) / 2;
@@ -973,7 +978,7 @@ const DocScan = (() => {
         }
     }
 
-    function toBlob(canvas, quality = 0.82) {
+    function toBlob(canvas, quality = LIMITS.quality) {
         return new Promise((resolve, reject) => {
             canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Das Foto konnte nicht gespeichert werden.')), 'image/jpeg', quality);
         });
@@ -1325,6 +1330,11 @@ const DocScan = (() => {
             }
         }
         const sharpness = inner ? edgeSquares / inner - (edgeSum / inner) ** 2 : 0;
+        // R95: Schärfe zusätzlich in feiner Auflösung (1600) prüfen – leichte Unschärfe fällt in der groben Kopie nicht auf,
+        // macht die Schrift aber unleserlich. focus = Schärfe geteilt durch die Schwelle (unter 1 = unscharf).
+        const coarse = inner && detail > 0 ? sharpness / (LIMITS.sharpness * detail / inner) : 1;
+        const fine = focusRatio(canvas, 1600);                                          // 1 = gerade noch scharf, unter 1 = unscharf
+        const focus = Math.round(Math.min(coarse, fine) * 100) / 100;
         // Papierhelligkeit = heller als 90 % aller Stellen; „Tinte“ = alles, was deutlich dunkler ist.
         let paper = 255, ink = 0;
         for (let seen = 0; paper > 0 && (seen += hist[paper]) < count * 0.1; paper--);
@@ -1334,10 +1344,28 @@ const DocScan = (() => {
         const add = code => issues.push({ code, text: ISSUES[code] });
         if (brightness < LIMITS.dark) add('dunkel');
         else if (ink / count < LIMITS.inkShare) add(brightness > LIMITS.bright ? 'hell' : 'kontrast');
-        if (inner && sharpness < LIMITS.sharpness * detail / inner) add('unscharf');
+        if (focus < 1) add('unscharf');
+        else if (fine < LIMITS.focusSoft / LIMITS.focusBlur) add('weich');
         if (Math.min(canvas.width, canvas.height) < LIMITS.minSide) add('klein');
         const round = value => Math.round(value * 10) / 10;
-        return { brightness: round(brightness), contrast: round(contrast), sharpness: round(sharpness), issues };
+        return { brightness: round(brightness), contrast: round(contrast), sharpness: round(sharpness), focus, issues };
+    }
+    // R95: Schärfe unabhängig vom Kontrast – Laplace-Varianz des Bildes geteilt durch die Laplace-Varianz desselben Bildes nach einer
+    // leichten Weichzeichnung (3×3). Ein scharfes Foto verliert dabei viel (Verhältnis 4–6), ein schon unscharfes kaum (1–2).
+    // Gemessen in einer Kopie mit längerer Seite side (1600). Ergebnis bezogen auf die Schwelle focusBlur: unter 1 = unscharf.
+    function focusRatio(canvas, side) {
+        if (Math.max(canvas.width, canvas.height) < side * 0.6) return 10;              // zu klein für die Prüfung – zählt nicht
+        const { gray, width, height } = grayOf(canvas, side);
+        if (width < 8 || height < 8) return 10;
+        const soft = new Float32Array(gray.length);
+        for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
+            const i = y * width + x;
+            soft[i] = (gray[i - width - 1] + 2 * gray[i - width] + gray[i - width + 1] + 2 * gray[i - 1] + 4 * gray[i] + 2 * gray[i + 1] + gray[i + width - 1] + 2 * gray[i + width] + gray[i + width + 1]) / 16;
+        }
+        const lap = map => { let sum = 0, squares = 0, n = 0; for (let y = 2; y < height - 2; y++) for (let x = 2; x < width - 2; x++, n++) { const i = y * width + x; const e = 4 * map[i] - map[i - 1] - map[i + 1] - map[i - width] - map[i + width]; sum += e; squares += e * e; } return n ? squares / n - (sum / n) ** 2 : 0; };
+        const before = lap(gray), after = lap(soft);
+        if (!(after > 0.05)) return 10;                                                  // (fast) leere Seite: keine Aussage
+        return (before / after) / LIMITS.focusBlur;
     }
 
     // Füllt das Blatt das ganze Foto (nah fotografiert, kein Tisch zu sehen)? Dann ist am Bildrand ringsum dieselbe Papierfarbe
@@ -1378,7 +1406,7 @@ const DocScan = (() => {
         const found = manual || options.crop === false ? null : detect(original);
         const cropped = manual || Boolean(found && found.confidence >= LIMITS.confidence);
         const corners = manual ? options.corners.map(p => ({ x: p.x, y: p.y })) : found ? found.corners : null;
-        const page = cropped ? warp(original, corners, options) : shrink(original, options.maxSide || 2000);
+        const page = cropped ? warp(original, corners, options) : shrink(original, options.maxSide || LIMITS.outSide);
         // Ohne erkanntes Blatt: Nur wenn das Blatt das Foto füllt, wird es wie ein Scan aufbereitet. Sonst bliebe vom Tisch ein
         // heller, ausgewaschener Rest – dann lieber das Foto mit etwas mehr Kontrast, bis die Ecken gesetzt sind.
         const whole = !cropped && options.crop !== false && fillsFrame(original);
@@ -1391,7 +1419,8 @@ const DocScan = (() => {
             ctx.fillRect(0, 0, canvas.width, edge); ctx.fillRect(0, canvas.height - edge, canvas.width, edge);
             ctx.fillRect(0, 0, edge, canvas.height); ctx.fillRect(canvas.width - edge, 0, edge, canvas.height);
         }
-        const issues = assess(canvas).issues;
+        const quality = assess(canvas);
+        const issues = quality.issues;
         // Ob das Foto zu dunkel oder überbelichtet war, sieht man nach dem Aufhellen nicht mehr – deshalb auch vorher prüfen.
         for (const issue of assess(page).issues) {
             if (['dunkel', 'hell'].includes(issue.code) && !issues.some(other => other.code === issue.code)) issues.unshift(issue);
@@ -1400,7 +1429,7 @@ const DocScan = (() => {
         const blob = await toBlob(canvas, options.quality);
         return {
             canvas, blob, width: canvas.width, height: canvas.height, cropped, corners, manual, mode, whole,
-            confidence: manual ? 1 : found ? found.confidence : 0, open: found && cropped ? found.open : 0, issues, original
+            confidence: manual ? 1 : found ? found.confidence : 0, open: found && cropped ? found.open : 0, issues, original, focus: quality.focus
         };
     }
 

@@ -31,7 +31,8 @@ window.ScanCam = (function () {
         fillSheet: 0.55,      // so weit muss das Blatt das Bild in der Breite oder der Höhe füllen, bevor von selbst aufgenommen wird
         fillSlip: 0.4,        // (sonst: „Näher herangehen“) – ein Kassenzettel darf kleiner sein
         calm: 0.012,          // größte Bewegung einer Ecke zwischen zwei Blicken (Anteil der Bilddiagonale), die noch als „ruhig“ gilt
-        calmTime: 650,        // so lange muss das Blatt ruhig liegen (Millisekunden)
+        calmTime: 900,        // so lange muss das Blatt ruhig liegen (Millisekunden) – R95: etwas länger, damit die Kamera scharf stellt
+        retakes: 2,           // R95: so oft wird eine unscharfe Aufnahme von selbst wiederholt (nur beim Auto-Scan)
         fresh: 0.06,          // erst wenn sich die Ecken so weit bewegt haben, gilt das Blatt als neues Blatt
         lookMin: 130,         // kürzester Abstand zwischen zwei Blicken
         zoomMax: 6, zoomStep: 1.6, zoomTap: 2.5
@@ -190,7 +191,7 @@ window.ScanCam = (function () {
 
     // ---------- Vorschau ----------
     const MODES = [['auto', 'Scan'], ['gray', 'Grau'], ['color', 'Foto']];
-    const SHORT = { dunkel: 'Zu dunkel aufgenommen.', hell: 'Überbelichtet oder spiegelt.', unscharf: 'Unscharf.', klein: 'Sehr klein – näher herangehen.', kontrast: 'Schrift kaum zu erkennen.', rand: 'Rand nicht erkannt – bitte „Ecken anpassen“.' };
+    const SHORT = { dunkel: 'Zu dunkel aufgenommen.', hell: 'Überbelichtet oder spiegelt.', unscharf: 'UNSCHARF – bitte neu aufnehmen.', weich: 'Schrift etwas weich – näher heran, ruhig halten.', klein: 'Sehr klein – näher herangehen.', kontrast: 'Schrift kaum zu erkennen.', rand: 'Rand nicht erkannt – bitte „Ecken anpassen“.' };
 
     function review({ file, result = null, settings = null, title = 'Vorschau', canRetake = true, okLabel = 'Passt ✓' } = {}) {
         return new Promise(resolve => {
@@ -405,7 +406,8 @@ window.ScanCam = (function () {
         if (!supported()) return { captured: 0, reason: 'fehler', error: 'Auf diesem Gerät kann die App die Kamera nicht direkt öffnen.' };
         let stream;
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } } });
+            // R95: Foto-Seitenverhältnis 4:3 in höchster Auflösung anfordern – das Gerät liefert, was es kann.
+            stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } } });
         } catch (error) {
             return { captured: 0, reason: 'fehler', error: errorText(error) };
         }
@@ -524,10 +526,19 @@ window.ScanCam = (function () {
             }
 
             // Das Bild holen: als Foto in voller Auflösung, wo das Gerät es anbietet – sonst das aktuelle Bild des Videos.
+            // R95: echtes Foto in der höchsten Auflösung, die die Kamera anbietet (nicht nur das Videobild); mehr Zeit zum Scharfstellen.
+            let imageCapture = null, photoSize = null;
             async function grab() {
                 if (typeof window.ImageCapture === 'function' && track && !options.frameOnly) {
                     try {
-                        const photo = await Promise.race([new window.ImageCapture(track).takePhoto(), new Promise((unused, reject) => window.setTimeout(() => reject(new Error('zu langsam')), 2500))]);
+                        if (!imageCapture) {
+                            imageCapture = new window.ImageCapture(track);
+                            try {
+                                const caps = await Promise.race([imageCapture.getPhotoCapabilities(), new Promise((unused, reject) => window.setTimeout(() => reject(new Error('zu langsam')), 1500))]);
+                                if (caps?.imageWidth?.max && caps?.imageHeight?.max) photoSize = { imageWidth: Math.min(caps.imageWidth.max, 4608), imageHeight: Math.min(caps.imageHeight.max, 3456) };
+                            } catch (error) { photoSize = null; }
+                        }
+                        const photo = await Promise.race([imageCapture.takePhoto(photoSize || undefined), new Promise((unused, reject) => window.setTimeout(() => reject(new Error('zu langsam')), 6000))]);
                         if (photo && photo.size > 20000) return photo;
                     } catch (error) { /* weiter mit dem Bild des Videos */ }
                 }
@@ -545,12 +556,25 @@ window.ScanCam = (function () {
                 const position = target;
                 try {
                     flash.classList.remove('is-on'); void flash.offsetWidth; flash.classList.add('is-on');
-                    const blob = await grab();
+                    let blob = await grab();
                     if (!blob) throw new Error('kein Bild');
-                    const file = new File([blob], `scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    let file = new File([blob], `scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
                     working.hidden = false;
                     let result = null, settings = null;
                     try { result = window.DocScan ? await window.DocScan.process(file) : null; } catch (error) { result = null; }
+                    // R95: Unscharf? Beim Auto-Scan noch einmal aufnehmen (die Kamera stellt inzwischen scharf) – die schärfste Aufnahme gewinnt.
+                    const blurry = item => Boolean(item?.issues?.some(issue => issue.code === 'unscharf' || issue.code === 'weich'));
+                    for (let attempt = 0; result && automatic && blurry(result) && attempt < LIMITS.retakes && !closed; attempt++) {
+                        working.textContent = 'Unscharf – wird noch einmal aufgenommen …';
+                        await new Promise(done => window.setTimeout(done, 600));
+                        const again = await grab().catch(() => null);
+                        if (!again) break;
+                        const againFile = new File([again], `scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                        let other = null;
+                        try { other = window.DocScan ? await window.DocScan.process(againFile) : null; } catch (error) { other = null; }
+                        if (other && (other.focus || 0) > (result.focus || 0)) { window.DocScan?.release?.(result); result = other; file = againFile; blob = again; } else if (other) window.DocScan?.release?.(other);      // release gibt Canvas-Speicher frei; das Original der gewählten Aufnahme bleibt
+                    }
+                    working.textContent = 'Wird aufbereitet …';
                     working.hidden = true;
                     if (closed) return;
                     if (result && options.review !== false) {

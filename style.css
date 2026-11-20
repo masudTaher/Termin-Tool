@@ -2664,6 +2664,10 @@ dialog.day-done::backdrop { background: var(--bg); }
 .scan-review button.scan-review-button.is-main:hover, .scan-adjust button.scan-review-button.is-main:hover { background: #24a56d; }
 .scan-review button.scan-review-button:disabled, .scan-adjust button.scan-review-button:disabled { background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .4); }
 .scan-review-button[hidden] { display: none; }
+/* R95: unscharf – deutlich rot, „Neu aufnehmen“ hervorgehoben */
+.scan-review[data-issues~="unscharf"] .scan-review-note { color: #ff8a80; font-weight: 800; }
+.scan-review[data-issues~="unscharf"] button.scan-review-button:first-child { background: #d64545; color: #fff; }
+.scan-review[data-issues~="weich"] .scan-review-note { color: #ffd98a; }
 .scan-review[data-issues~="rand"] button.scan-review-button.is-edit { background: #ffd400; color: #1b1b1b; }
 .scan-review[data-issues~="rand"] button.scan-review-button.is-edit:hover { background: #ffe24d; color: #1b1b1b; }
 

@@ -461,13 +461,14 @@
 
                <div data-doc-step="3" hidden>
                   <h2 class="wizard-title">Seiten scannen</h2>
-                  <p class="wizard-hint">Die Kamera öffnet sich hier in der App: Das Blatt wird gelb markiert und von selbst aufgenommen. Danach siehst du die Seite groß und kannst sie vergrößern und prüfen. Jede Seite einzeln – am Ende wird daraus ein PDF.</p>
+                  <p class="wizard-hint">„Seite fotografieren“ öffnet die Foto-App deines Handys – das gibt das schärfste Bild (volle Auflösung, Autofokus). Die App schneidet das Blatt danach zu, richtet es gerade und zeigt es dir groß zum Prüfen. Jede Seite einzeln. Für viele Seiten hintereinander gibt es den Schnell-Scan mit der Kamera in der App.</p>
                   <div class="doc-capture">
                      <label class="button-primary big-button doc-capture-button" for="docCamera">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.500A1.500 1.500 0 0 1 5.500 7H8l1.500-2.500h5L16 7h2.500A1.500 1.500 0 0 1 20 8.500V18a1.500 1.500 0 0 1-1.500 1.500h-13A1.500 1.500 0 0 1 4 18z"/><circle cx="12" cy="13" r="3.500"/></svg>
-                        <span id="docCameraLabel">Seite scannen</span>
+                        <span id="docCameraLabel">Seite fotografieren</span>
                      </label>
                      <input id="docCamera" class="visually-hidden" type="file" accept="image/*" capture="environment">
+                     <button type="button" class="button-secondary doc-gallery-button" id="docLiveScan">Schnell-Scan: Kamera in der App (mehrere Seiten)</button>
                      <label class="button-secondary doc-gallery-button" for="docGallery">Fotos aus der Galerie wählen</label>
                      <input id="docGallery" class="visually-hidden" type="file" accept="image/*" multiple>
                   </div>

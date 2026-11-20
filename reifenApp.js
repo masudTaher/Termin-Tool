@@ -71,6 +71,8 @@
         if (checks) main.append(checks);
         const side = el('div', 'tyre-side');
         const button = (className, text, handler) => { const node = el('button', `tyre-button ${className}`, text); node.type = 'button'; node.addEventListener('click', () => handler(node)); return node; };
+        // R95: In jeder Stufe eine Bemerkung oder Prüfpunkte eintragen, ohne den Stand zu ändern („Reifen bestellt“, „Fahrzeug kam nicht“ …).
+        if (stage !== 'fertig') side.append(button('tyre-button-quiet tyre-note', item.note ? 'Bemerkung ändern' : 'Bemerkung', () => openDone(item, { noteOnly: true })));
         if (stage === 'fertig') {
             side.append(el('span', 'tyre-check', '✓'), button('tyre-button-quiet tyre-edit', 'Angaben ändern', () => openDone(item)), button('tyre-button-quiet tyre-undo', 'Doch nicht fertig', node => mark(item, false, node)));
         } else if (stage === 'werkstatt') {
@@ -133,14 +135,17 @@
         } finally { busy = false; }
     }
 
-    function openDone(item) {
+    let noteOnly = false;
+    function openDone(item, options = {}) {
         if (!whoName()) { status('Bitte zuerst unten deinen Namen eintragen – dann steht er beim Abhaken dabei.', 'info'); $('tyreWho').focus(); return; }
         pending = item;
-        $('tyreDoneTitle').textContent = `${item.plate} · ${item.vehicle}`;
+        noteOnly = Boolean(options.noteOnly);
+        $('tyreDoneTitle').textContent = `${item.plate} · ${item.vehicle}${noteOnly ? ' – Bemerkung' : ''}`;
         $('tyreDoneNote').value = item.note || '';
         fillChecks(item.checks);
-        $('tyreDoneOk').textContent = item.done ? 'Angaben speichern' : 'Fertig – zurückgebracht';
+        $('tyreDoneOk').textContent = noteOnly ? 'Speichern' : item.done ? 'Angaben speichern' : 'Fertig – zurückgebracht';
         $('tyreDone').showModal();
+        if (noteOnly) $('tyreDoneNote').focus();
     }
     $('tyreDoneCancel').addEventListener('click', () => $('tyreDone').close());
     $('tyreDoneForm').addEventListener('submit', event => {
@@ -149,10 +154,10 @@
         const checks = readChecks();
         if (needsAxle(checks.bremsen) && !checks.bremsen_vorne && !checks.bremsen_hinten) { $('tyreBrakesWhere').hidden = false; $('tyreChkBremsenVorne').focus(); status('Bitte bei den Bremsen noch „vorne“ und/oder „hinten“ ankreuzen.', 'info'); return; }
         $('tyreDone').close();
-        if (item) mark(item, true, null, $('tyreDoneNote').value.trim(), checks);
+        if (item) mark(item, noteOnly ? Boolean(item.done) : true, null, $('tyreDoneNote').value.trim(), checks, noteOnly);
     });
 
-    async function mark(item, done, button, note = null, checks = null) {
+    async function mark(item, done, button, note = null, checks = null, onlyNote = false) {
         if (button) button.disabled = true;
         let { data: row, error } = await client.rpc('tt_tyre_mark', { p_token: token, p_item: item.id, p_done: done, p_by: whoName(), p_note: note, ...(checks ? { p_checks: checks } : {}) });
         // Ohne Update 52 kennt die Datenbank die Prüfpunkte noch nicht – dann wenigstens abhaken und Bemerkung speichern.
@@ -163,7 +168,7 @@
         const index = (data.items || []).findIndex(entry => entry.id === item.id);
         if (index >= 0) data.items[index] = row;
         const anyCheck = checks && (checks.adblue || checks.wischwasser || checks.checkup || checks.bremsen);
-        status(dropped && anyCheck ? `${row.plate} ist eingetragen – die Prüfpunkte konnten noch nicht gespeichert werden (Update 52 fehlt). Bitte in die Bemerkung schreiben.` : done ? (item.done ? `${row.plate}: Angaben gespeichert.` : `${row.plate} ist als fertig und zurückgebracht eingetragen.${checks?.bremsen === 'wechsel' ? ' Die Einsatzleitung sieht die Meldung zu den Bremsen.' : ''}`) : `${row.plate} steht wieder als ${row.in_shop_at ? 'in der Werkstatt' : 'noch nicht bearbeitet'}.`, dropped && anyCheck ? 'error' : 'success');
+        status(dropped && anyCheck ? `${row.plate} ist eingetragen – die Prüfpunkte konnten noch nicht gespeichert werden (Update 52 fehlt). Bitte in die Bemerkung schreiben.` : onlyNote ? `${row.plate}: Bemerkung und Prüfpunkte gespeichert.` : done ? (item.done ? `${row.plate}: Angaben gespeichert.` : `${row.plate} ist als fertig und zurückgebracht eingetragen.${checks?.bremsen === 'wechsel' ? ' Die Einsatzleitung sieht die Meldung zu den Bremsen.' : ''}`) : `${row.plate} steht wieder als ${row.in_shop_at ? 'in der Werkstatt' : 'noch nicht bearbeitet'}.`, dropped && anyCheck ? 'error' : 'success');
         render();
     }
 
